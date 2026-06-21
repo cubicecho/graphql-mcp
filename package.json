@@ -1,0 +1,58 @@
+{
+  "name": "@cubicecho/graphql-mcp",
+  "version": "0.1.0",
+  "description": "Turn a GraphQL schema into a Model Context Protocol (MCP) server: each query/mutation becomes a tool, runnable side-by-side with your GraphQL server.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cubicecho/graphql-mcp.git"
+  },
+  "homepage": "https://github.com/cubicecho/graphql-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/cubicecho/graphql-mcp/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
+    "test:watch": "node --test --watch --experimental-strip-types \"src/**/*.test.ts\"",
+    "coverage": "node --test --experimental-strip-types --experimental-test-coverage --test-coverage-exclude=\"**/*.test.ts\" --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=85 \"src/**/*.test.ts\"",
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "check": "biome check ."
+  },
+  "peerDependencies": {
+    "@modelcontextprotocol/sdk": ">=1.12",
+    "graphql": ">=16"
+  },
+  "dependencies": {
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.8",
+    "@semantic-release/npm": "^13.1.5",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "@types/node": "^24.0.0",
+    "graphql": "^16.14.0",
+    "semantic-release": "^25.0.5",
+    "typescript": "^5.7.0"
+  }
+}

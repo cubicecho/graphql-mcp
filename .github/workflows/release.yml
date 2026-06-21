@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["Test"]
+    branches:
+      - main
+    types:
+      - completed
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # semantic-release derives the next version from `v*` tags and Conventional
+      # Commits, then bumps package.json, updates CHANGELOG.md, publishes to npm,
+      # and creates the GitHub release + tag.
+      - name: Release
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # OIDC trusted publishing (id-token: write) is preferred; NODE_AUTH_TOKEN
+          # is a fallback so the first publish (before a trusted-publisher entry
+          # exists) can authenticate.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
