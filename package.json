@@ -1,6 +1,6 @@
 {
   "name": "@cubicecho/graphql-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Turn a GraphQL schema into a Model Context Protocol (MCP) server: each query/mutation becomes a tool, runnable side-by-side with your GraphQL server.",
   "license": "MIT",
   "author": "Benjamin Van Treese",
