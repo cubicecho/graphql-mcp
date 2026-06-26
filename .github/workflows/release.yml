@@ -29,6 +29,11 @@ jobs:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
 
+      # npm >= 11.5.1 is required for OIDC trusted publishing; the version
+      # bundled with Node can lag behind it.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: npm ci
 

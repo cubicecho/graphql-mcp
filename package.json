@@ -2,7 +2,12 @@
   "name": "@cubicecho/graphql-mcp",
   "version": "0.1.0",
   "description": "Turn a GraphQL schema into a Model Context Protocol (MCP) server: each query/mutation becomes a tool, runnable side-by-side with your GraphQL server.",
+  "license": "MIT",
+  "author": "Benjamin Van Treese",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cubicecho/graphql-mcp.git"
@@ -24,7 +29,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc -p tsconfig.tests.json",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",

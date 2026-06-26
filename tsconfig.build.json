@@ -1,0 +1,10 @@
+{
+  // Production build for the published package. Extends the base config but drops
+  // source/declaration maps: they reference `../src/*.ts`, which isn't shipped
+  // (`files: ["dist"]`), so publishing them would leave consumers with dead maps.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "sourceMap": false,
+    "declarationMap": false
+  }
+}
