@@ -42,7 +42,7 @@
   },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": ">=1.12",
-    "graphql": ">=16"
+    "graphql": ">=16 <18"
   },
   "dependencies": {
     "@graphql-tools/schema": "^10.1.0",

@@ -164,8 +164,15 @@ const handler = createHttpHandler({
 });
 ```
 
-Patterns match GraphQL field names (not renamed tool names). For anything the
-patterns can't express, the `filter` callback still composes with both lists:
+Patterns match GraphQL field names (not renamed tool names), and they apply to
+**every** root field of the schema being wrapped — including fields added by
+`extend` (below), so an `include` list must name those too. Omitting `include`
+keeps every field; passing an empty array matches nothing and exposes no tools
+(it fails closed, so a computed-empty allow-list can't accidentally publish your
+whole API).
+
+For anything the patterns can't express, the `filter` callback still composes
+with both lists:
 
 ```ts
 createHttpHandler({ schema, filter: (field, kind) => !field.deprecationReason });

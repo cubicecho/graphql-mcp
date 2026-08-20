@@ -75,7 +75,11 @@ src/
 - **`extend` merges MCP-only SDL + resolvers** (via `extendSchemaForMcp` /
   `@graphql-tools/schema`'s `mergeSchemas`) before tool generation. The extended
   schema feeds both `buildTools` and the default local executor; a custom/HTTP
-  executor must itself know the extended fields.
+  executor must itself know the extended fields. Because the merge happens
+  first, `include`/`exclude` rules also apply to extend-added fields.
+- **`include` fails closed.** An omitted `include` keeps everything; a present
+  but empty array matches nothing (consistent with `compileRules([])`), so a
+  dynamically built allow-list can't silently expose the whole schema.
 - **One seam for execution: `GraphqlExecutor`.** A tool builds a
   `{ query, variables, operationName, context }` request and hands it to the
   executor; it never knows whether GraphQL runs in-process or over HTTP. The

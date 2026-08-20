@@ -204,4 +204,50 @@ describe('buildTools decorate', () => {
       /duplicate tool name 'same'/,
     );
   });
+
+  test('a patched title also updates annotations.title', () => {
+    const { schema } = makeTodoSchema();
+    const tools = buildTools(schema, {
+      decorate: (d) => (d.name === 'todo' ? { title: 'Patched Title' } : undefined),
+    });
+    const todo = tools.find((t) => t.name === 'todo');
+    assert.equal(todo?.title, 'Patched Title');
+    assert.equal(todo?.annotations.title, 'Patched Title');
+  });
+
+  test('patched annotations merge over the defaults', () => {
+    const { schema } = makeTodoSchema();
+    const tools = buildTools(schema, {
+      decorate: (d) =>
+        d.kind === 'mutation' ? { annotations: { destructiveHint: false } } : undefined,
+    });
+    const createTodo = tools.find((t) => t.name === 'createTodo');
+    assert.equal(createTodo?.annotations.destructiveHint, false);
+    // Defaults the patch didn't mention survive.
+    assert.equal(createTodo?.annotations.openWorldHint, true);
+    assert.equal(createTodo?.annotations.title, 'Create Todo');
+  });
+
+  test('explicitly undefined patch keys never blank a field', () => {
+    const { schema } = makeTodoSchema();
+    const tools = buildTools(schema, {
+      decorate: () => ({ description: undefined, name: undefined, query: undefined }),
+    });
+    const todo = tools.find((t) => t.name === 'todo');
+    assert.ok(todo);
+    assert.match(todo.description, /Fetch a single todo by id\./);
+    assert.match(todo.query, /^query todo/);
+  });
+});
+
+describe('buildTools empty include', () => {
+  test('an omitted include keeps every field', () => {
+    const { schema } = makeTodoSchema();
+    assert.equal(buildTools(schema, {}).length, 4);
+  });
+
+  test('a present but empty include exposes nothing (fails closed)', () => {
+    const { schema } = makeTodoSchema();
+    assert.deepEqual(buildTools(schema, { include: [] }), []);
+  });
 });

@@ -69,7 +69,8 @@ export interface BuildToolsOptions {
   selectionDepth?: number;
   /**
    * Keep only fields matching one of these patterns (`compileRules` syntax:
-   * `'todos'`, `'Query.*'`, `'delete*'`). Empty/omitted keeps everything.
+   * `'todos'`, `'Query.*'`, `'delete*'`). Omit to keep every field; a present
+   * but empty array matches nothing and so exposes no tools.
    */
   include?: string[];
   /** Drop fields matching one of these patterns. Wins over `include` and `filter`. */
@@ -82,9 +83,10 @@ export interface BuildToolsOptions {
   toolName?: (field: GraphQLField<any, any>, kind: OperationKind) => string;
   /**
    * Adjust a generated descriptor last, after `extensions.mcp` metadata. Return
-   * a full or partial descriptor to merge, or nothing to keep it as-is. If you
-   * override `query`, `argNames`, or `operationName`, they must stay mutually
-   * consistent.
+   * a full or partial descriptor to merge, or nothing to keep it as-is. Keys set
+   * to `undefined` are ignored and `annotations` merge over the existing ones.
+   * If you override `query`, `argNames`, or `operationName`, they must stay
+   * mutually consistent.
    */
   decorate?: (
     descriptor: ToolDescriptor,
@@ -115,8 +117,10 @@ export function buildTools(
   options: BuildToolsOptions = {},
 ): ToolDescriptor[] {
   const { includeQueries = true, includeMutations = true } = options;
-  const included = options.include?.length ? compileRules(options.include) : null;
-  const excluded = options.exclude?.length ? compileRules(options.exclude) : null;
+  // A present-but-empty `include` denies everything (matching `compileRules([])`);
+  // only an omitted `include` keeps every field.
+  const included = options.include ? compileRules(options.include) : null;
+  const excluded = options.exclude ? compileRules(options.exclude) : null;
   const descriptors: ToolDescriptor[] = [];
   const seen = new Set<string>();
 
@@ -138,7 +142,7 @@ export function buildTools(
       );
       if (ext) descriptor = applyExtensions(descriptor, ext);
       const patch = options.decorate?.(descriptor, field, kind);
-      if (patch) descriptor = { ...descriptor, ...patch };
+      if (patch) descriptor = applyPatch(descriptor, patch);
 
       if (seen.has(descriptor.name)) {
         throw new Error(
@@ -155,6 +159,28 @@ export function buildTools(
   if (includeQueries) collect(schema.getQueryType(), 'query');
   if (includeMutations) collect(schema.getMutationType(), 'mutation');
   return descriptors;
+}
+
+/**
+ * Merges a `decorate` return value onto the descriptor. Keys explicitly set to
+ * `undefined` are ignored (so a patch never blanks a required field),
+ * `annotations` merge rather than replace, and a patched `title` mirrors into
+ * `annotations.title` unless the patch sets that itself — the SDK advertises
+ * both, so they must not drift apart.
+ */
+function applyPatch(
+  d: ToolDescriptor,
+  patch: ToolDescriptor | Partial<ToolDescriptor>,
+): ToolDescriptor {
+  const merged: ToolDescriptor = { ...d };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value !== undefined) (merged as unknown as Record<string, unknown>)[key] = value;
+  }
+  if (patch.annotations) merged.annotations = { ...d.annotations, ...patch.annotations };
+  if (patch.title !== undefined && patch.annotations?.title === undefined) {
+    merged.annotations = { ...merged.annotations, title: patch.title };
+  }
+  return merged;
 }
 
 /** Overlays `field.extensions.mcp` metadata onto the SDL-derived descriptor. */
