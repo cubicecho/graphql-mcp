@@ -31,8 +31,13 @@ export interface GraphqlRequest {
   query: string;
   /** Variables keyed by the root field's argument names. */
   variables: Record<string, unknown>;
-  /** The operation name in the document (the root-field name — not the tool name). */
-  operationName: string;
+  /**
+   * The operation name in the document. Generated tools always set it (to the
+   * root-field name — not the tool name). It is optional because a hand-written
+   * document, such as one passed to the `execute` meta tool, may define a single
+   * anonymous operation; omitting it means "run the document's only operation".
+   */
+  operationName?: string;
   /**
    * Per-call context, opaque to the tool layer. Forwarded as the GraphQL
    * `contextValue` (local executor) or used to derive request headers (HTTP

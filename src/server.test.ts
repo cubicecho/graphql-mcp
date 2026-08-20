@@ -182,6 +182,152 @@ describe('createMcpServer', () => {
     await client.close();
   });
 
+  test('metaTools: true adds the four schema-exploration tools alongside generated ones', async () => {
+    const { schema, root } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      metaTools: true,
+    });
+    const client = await connect(server);
+
+    const { tools } = await client.listTools();
+    const names = tools.map((t) => t.name).sort();
+    assert.deepEqual(names, [
+      'createTodo',
+      'graphql_execute',
+      'graphql_introspect',
+      'graphql_search',
+      'graphql_validate',
+      'setCompleted',
+      'todo',
+      'todos',
+    ]);
+    await client.close();
+  });
+
+  test('the execute meta tool runs a document end to end', async () => {
+    const { schema, root } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      metaTools: true,
+    });
+    const client = await connect(server);
+
+    const result = await client.callTool({
+      name: 'graphql_execute',
+      arguments: { query: 'query All { todos { id description } }' },
+    });
+    const { isError, data } = parseResult(result);
+    assert.equal(isError, false);
+    assert.equal((data as { todos: unknown[] }).todos.length, 2);
+    await client.close();
+  });
+
+  test('the execute meta tool inherits the server exclude rules', async () => {
+    const { schema, root } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      exclude: ['Mutation.*'],
+      metaTools: true,
+    });
+    const client = await connect(server);
+
+    // The generated mutation tools are gone…
+    const { tools } = await client.listTools();
+    assert.ok(!tools.some((t) => t.name === 'createTodo'));
+
+    // …and the raw-document path can't reach them either.
+    const result = (await client.callTool({
+      name: 'graphql_execute',
+      arguments: {
+        query: 'mutation { createTodo(input: { userId: "u", description: "d" }) { id } }',
+      },
+    })) as TextResult;
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /Not permitted: `createTodo`/);
+    await client.close();
+  });
+
+  test('metaTools rules override the server rules when given explicitly', async () => {
+    const { schema, root } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      // No generated tools at all — the meta tools are the whole surface.
+      includeQueries: false,
+      includeMutations: false,
+      metaTools: { tools: ['execute'], prefix: 'gql_', include: ['todos'] },
+    });
+    const client = await connect(server);
+
+    const { tools } = await client.listTools();
+    assert.deepEqual(
+      tools.map((t) => t.name),
+      ['gql_execute'],
+    );
+
+    const ok = await client.callTool({
+      name: 'gql_execute',
+      arguments: { query: '{ todos { id } }' },
+    });
+    assert.equal(parseResult(ok).isError, false);
+
+    const denied = (await client.callTool({
+      name: 'gql_execute',
+      arguments: { query: '{ todo(id: "todo-1") { id } }' },
+    })) as TextResult;
+    assert.equal(denied.isError, true);
+    assert.match(denied.content[0].text, /Not permitted: `todo`/);
+    await client.close();
+  });
+
+  test('a custom tool overrides a meta tool by name', async () => {
+    const { schema } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      metaTools: true,
+      tools: [
+        {
+          name: 'graphql_search',
+          description: 'Overridden search',
+          handler: async () => ({ content: [{ type: 'text', text: 'mine' }] }),
+        },
+      ],
+    });
+    const client = await connect(server);
+
+    const { tools } = await client.listTools();
+    assert.equal(tools.filter((t) => t.name === 'graphql_search').length, 1);
+    assert.equal(tools.find((t) => t.name === 'graphql_search')?.description, 'Overridden search');
+    await client.close();
+  });
+
+  test('metaTools sees the extended schema', async () => {
+    const { schema, root } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      includeQueries: false,
+      includeMutations: false,
+      extend: {
+        typeDefs: 'extend type Query { usageGuide: String! }',
+        resolvers: { Query: { usageGuide: () => 'start with todos' } },
+      },
+      metaTools: { tools: ['introspect'] },
+    });
+    const client = await connect(server);
+
+    const result = (await client.callTool({
+      name: 'graphql_introspect',
+      arguments: {},
+    })) as TextResult;
+    assert.match(result.content[0].text, /usageGuide: String!/);
+    await client.close();
+  });
+
   test('per-call context is threaded into the executor', async () => {
     const { schema } = makeTodoSchema();
     let seenContext: unknown;

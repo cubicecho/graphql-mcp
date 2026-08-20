@@ -17,6 +17,7 @@ import type { GraphQLSchema } from 'graphql';
 import type { ZodRawShape } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
+import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
 import type { GraphqlExecutor, GraphqlResult, ToolAnnotations } from './types.ts';
 
@@ -61,8 +62,20 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
    * derive auth context per request.
    */
   context?: unknown | ContextFactory;
-  /** Custom tools to add or override generated ones by name. */
+  /** Custom tools to add or override generated (and meta) ones by name. */
   tools?: CustomTool[];
+  /**
+   * Expose the schema-exploration tools ({@link buildMetaTools}) — `introspect`,
+   * `search`, `validate`, `execute` — for schemas too large to project one tool
+   * per field. `true` enables all four with defaults; pass an object to choose
+   * which, rename them, or restrict what `execute` may call.
+   *
+   * `execute` inherits this server's `include`/`exclude`/`includeMutations` by
+   * default, so a hand-written document can't reach past the generated tool
+   * surface. Combine with `includeQueries: false, includeMutations: false` to
+   * expose *only* the meta tools.
+   */
+  metaTools?: boolean | MetaToolsOptions;
   /**
    * MCP-only schema additions ({@link extendSchemaForMcp}) merged before tool
    * generation. The extended schema is used both for building tools and for the
@@ -104,7 +117,16 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
   const descriptors = buildTools(schema, options);
   const executor = options.executor ?? createLocalExecutor(schema);
   const customTools = options.tools ?? [];
-  const overridden = new Set(customTools.map((tool) => tool.name));
+  // Meta tools default to the same surface the generated tools expose, so the
+  // raw-document `execute` path can't reach past it.
+  const metaOptions: MetaToolsOptions | null = options.metaTools
+    ? {
+        ...(typeof options.metaTools === 'object' ? options.metaTools : {}),
+        include: pickMeta(options, 'include') ?? options.include,
+        exclude: pickMeta(options, 'exclude') ?? options.exclude,
+        allowMutations: pickMeta(options, 'allowMutations') ?? options.includeMutations ?? true,
+      }
+    : null;
 
   return (contextOverride) => {
     const context = contextOverride ?? options.context;
@@ -112,15 +134,34 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
       name: options.name ?? 'graphql-mcp-server',
       version: options.version ?? '0.1.0',
     });
+    // Built per call: `execute` closes over this call's GraphQL context.
+    const metaTools = metaOptions
+      ? buildMetaTools(
+          { schema, executor, resolveContext: (extra) => resolveContext(context, extra) },
+          metaOptions,
+        )
+      : [];
+    // Later wins by name: user `tools` override meta tools, both override generated ones.
+    const byName = new Map<string, CustomTool>();
+    for (const tool of [...metaTools, ...customTools]) byName.set(tool.name, tool);
+
     for (const descriptor of descriptors) {
-      if (overridden.has(descriptor.name)) continue;
+      if (byName.has(descriptor.name)) continue;
       registerGeneratedTool(server, descriptor, executor, context);
     }
-    for (const tool of customTools) {
+    for (const tool of byName.values()) {
       registerCustomTool(server, tool);
     }
     return server;
   };
+}
+
+/** Reads a key off the `metaTools` object form (absent for the `true` form). */
+function pickMeta<K extends keyof MetaToolsOptions>(
+  options: CreateMcpServerOptions,
+  key: K,
+): MetaToolsOptions[K] | undefined {
+  return typeof options.metaTools === 'object' ? options.metaTools[key] : undefined;
 }
 
 /**

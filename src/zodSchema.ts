@@ -7,8 +7,8 @@
  * Mapping rules:
  * - `NonNull` → required (no `.nullish()`); a nullable arg/field becomes `.nullish()`
  * - `List` → `z.array(element)`
- * - built-in scalars → `Int`/`Float` ⇒ number, `String`/`ID` ⇒ string, `Boolean` ⇒ boolean
- * - custom scalars → `z.any()` (the server still validates them) tagged with the scalar name
+ * - scalars → the `scalars` option first, then the built-ins (`Int`/`Float` ⇒ number,
+ *   `String`/`ID` ⇒ string, `Boolean` ⇒ boolean), then `z.any()` tagged with the name
  * - enums → `z.enum([...names])` (enum *names*, the form passed as GraphQL variables)
  * - input objects → `z.object({...})`, recursively; a recursive input type falls back
  *   to `z.any()` once revisited (a pragmatic MVP guard — see TODO.md)
@@ -17,6 +17,7 @@
 import {
   type GraphQLArgument,
   type GraphQLInputType,
+  type GraphQLScalarType,
   isEnumType,
   isInputObjectType,
   isListType,
@@ -24,6 +25,32 @@ import {
   isScalarType,
 } from 'graphql';
 import { type ZodRawShape, type ZodTypeAny, z } from 'zod';
+
+/**
+ * Zod schemas keyed by GraphQL scalar name — the same shape scalar-map
+ * generators emit (e.g. `defaultScalarMap` from `@vantreeseba/graphql-zod`), so
+ * one can be spread in directly.
+ */
+export type ScalarMap = Record<string, ZodTypeAny>;
+
+/**
+ * Dynamic form of {@link ScalarMap}: return a schema for the scalar, or
+ * `undefined` to fall through to the built-in mapping.
+ */
+export type ScalarResolver = (scalar: GraphQLScalarType) => ZodTypeAny | undefined;
+
+/** A scalar mapping: either a name→schema record or a resolver function. */
+export type ScalarMapping = ScalarMap | ScalarResolver;
+
+/** Options shared by the arg→Zod conversion. */
+export interface ZodShapeOptions {
+  /**
+   * Zod schemas for GraphQL scalars, consulted **before** the built-ins — so
+   * this can retype `ID`/`String` as well as fill in custom scalars. Provide the
+   * *base* (non-null) schema; list/nullability wrapping is applied around it.
+   */
+  scalars?: ScalarMapping;
+}
 
 const SCALAR_BUILDERS: Record<string, () => ZodTypeAny> = {
   Int: () => z.number().int(),
@@ -33,20 +60,36 @@ const SCALAR_BUILDERS: Record<string, () => ZodTypeAny> = {
   ID: () => z.string(),
 };
 
+/** Recursion state: the input-object cycle guard plus the resolved scalar mapper. */
+interface Ctx {
+  seen: ReadonlySet<string>;
+  scalar: ScalarResolver;
+}
+
+/** Normalizes either mapping form into a single lookup function. */
+function toResolver(mapping: ScalarMapping | undefined): ScalarResolver {
+  if (!mapping) return () => undefined;
+  if (typeof mapping === 'function') return mapping;
+  return (scalar) => mapping[scalar.name];
+}
+
 /** Applies an element/field type's nullability: required for `NonNull`, else `.nullish()`. */
-function fieldToZod(type: GraphQLInputType, seen: ReadonlySet<string>): ZodTypeAny {
+function fieldToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
   if (isNonNullType(type)) {
-    return baseToZod(type.ofType, seen);
+    return baseToZod(type.ofType, ctx);
   }
-  return baseToZod(type, seen).nullish();
+  return baseToZod(type, ctx).nullish();
 }
 
 /** Builds the Zod type for a (already nullability-stripped) list/named GraphQL type. */
-function baseToZod(type: GraphQLInputType, seen: ReadonlySet<string>): ZodTypeAny {
+function baseToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
   if (isListType(type)) {
-    return z.array(fieldToZod(type.ofType, seen));
+    return z.array(fieldToZod(type.ofType, ctx));
   }
   if (isScalarType(type)) {
+    // User mapping wins over the built-ins so `ID`/`String` can be retyped.
+    const mapped = ctx.scalar(type);
+    if (mapped) return mapped;
     const builder = SCALAR_BUILDERS[type.name];
     return builder ? builder() : z.any().describe(`Custom scalar ${type.name}`);
   }
@@ -58,10 +101,10 @@ function baseToZod(type: GraphQLInputType, seen: ReadonlySet<string>): ZodTypeAn
   if (isInputObjectType(type)) {
     // Recursive input types (e.g. nested filter inputs) would recurse forever;
     // once a type reappears on the current path, fall back to an opaque value.
-    if (seen.has(type.name)) {
+    if (ctx.seen.has(type.name)) {
       return z.any().describe(`Recursive input ${type.name}`);
     }
-    const next = new Set(seen).add(type.name);
+    const next: Ctx = { seen: new Set(ctx.seen).add(type.name), scalar: ctx.scalar };
     const shape: ZodRawShape = {};
     for (const [name, field] of Object.entries(type.getFields())) {
       shape[name] = describe(fieldToZod(field.type, next), field.description);
@@ -83,12 +126,17 @@ function describe(schema: ZodTypeAny, description?: string | null): ZodTypeAny {
  * Zod type so it shows up in the tool's generated JSON Schema.
  *
  * @param args - The field's arguments (`field.args`).
+ * @param options - Scalar mapping overrides.
  * @returns A Zod raw shape; empty (`{}`) for a field with no arguments.
  */
-export function argsToZodShape(args: ReadonlyArray<GraphQLArgument>): ZodRawShape {
+export function argsToZodShape(
+  args: ReadonlyArray<GraphQLArgument>,
+  options: ZodShapeOptions = {},
+): ZodRawShape {
+  const ctx: Ctx = { seen: new Set(), scalar: toResolver(options.scalars) };
   const shape: ZodRawShape = {};
   for (const arg of args) {
-    shape[arg.name] = describe(fieldToZod(arg.type, new Set()), arg.description);
+    shape[arg.name] = describe(fieldToZod(arg.type, ctx), arg.description);
   }
   return shape;
 }

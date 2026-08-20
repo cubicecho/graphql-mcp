@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { buildSchema, type GraphQLObjectType } from 'graphql';
-import { argsToZodShape } from './zodSchema.ts';
+import { z } from 'zod';
+import { argsToZodShape, type ZodShapeOptions } from './zodSchema.ts';
 
 const schema = buildSchema(/* GraphQL */ `
   input Filter { tag: String, limit: Int }
@@ -20,9 +21,9 @@ const schema = buildSchema(/* GraphQL */ `
   }
 `);
 
-function searchArgs() {
+function searchArgs(options?: ZodShapeOptions) {
   const field = (schema.getQueryType() as GraphQLObjectType).getFields().search;
-  return argsToZodShape(field.args);
+  return argsToZodShape(field.args, options);
 }
 
 describe('argsToZodShape', () => {
@@ -67,5 +68,46 @@ describe('argsToZodShape', () => {
   test('arg descriptions are carried onto the schema', () => {
     const shape = searchArgs();
     assert.equal(shape.term.description, 'the term');
+  });
+});
+
+describe('argsToZodShape scalar mapping', () => {
+  test('a record maps a custom scalar instead of falling back to any', () => {
+    const shape = searchArgs({ scalars: { JSON: z.record(z.string(), z.number()) } });
+    assert.deepEqual(shape.meta.parse({ a: 1 }), { a: 1 });
+    assert.throws(() => shape.meta.parse({ a: 'not a number' }));
+    // Still nullable — the mapping supplies the base type, we wrap it.
+    assert.equal(shape.meta.parse(undefined), undefined);
+  });
+
+  test('a resolver function is consulted, and undefined falls through', () => {
+    const shape = searchArgs({
+      scalars: (scalar) => (scalar.name === 'JSON' ? z.string() : undefined),
+    });
+    assert.equal(shape.meta.parse('raw'), 'raw');
+    assert.throws(() => shape.meta.parse({}));
+    // `String` fell through to the built-in mapping.
+    assert.equal(shape.term.parse('hi'), 'hi');
+  });
+
+  test('the mapping wins over the built-in scalars', () => {
+    const shape = searchArgs({ scalars: { String: z.string().email() } });
+    assert.equal(shape.term.parse('a@b.com'), 'a@b.com');
+    assert.throws(() => shape.term.parse('not-an-email'));
+  });
+
+  test('a mapped scalar is wrapped by list and input-object structure', () => {
+    const shape = searchArgs({ scalars: { String: z.string().min(2) } });
+    // list element
+    assert.deepEqual(shape.tags.parse(['ab']), ['ab']);
+    assert.throws(() => shape.tags.parse(['a']));
+    // nested input-object field
+    assert.deepEqual(shape.filter.parse({ tag: 'ab' }), { tag: 'ab' });
+    assert.throws(() => shape.filter.parse({ tag: 'a' }));
+  });
+
+  test('an unmapped custom scalar still falls back to any', () => {
+    const shape = searchArgs({ scalars: { Other: z.string() } });
+    assert.deepEqual(shape.meta.parse({ anything: true }), { anything: true });
   });
 });

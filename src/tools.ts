@@ -14,7 +14,7 @@ import type { ZodRawShape } from 'zod';
 import { buildOperation } from './operation.ts';
 import { compileRules } from './rules.ts';
 import type { OperationKind, ToolAnnotations } from './types.ts';
-import { argsToZodShape } from './zodSchema.ts';
+import { argsToZodShape, type ScalarMapping } from './zodSchema.ts';
 
 /** A schema-derived MCP tool, prior to being bound to an executor/server. */
 export interface ToolDescriptor {
@@ -67,6 +67,14 @@ export interface BuildToolsOptions {
   includeMutations?: boolean;
   /** Selection-set depth for return types (see `buildSelectionSet`). Default `2`. */
   selectionDepth?: number;
+  /**
+   * Zod schemas for GraphQL scalars, keyed by scalar name (or a resolver
+   * function). Consulted before the built-in mapping, so custom scalars stop
+   * falling back to `z.any()` — and `ID`/`String` can be retyped. A generated
+   * map (e.g. `defaultScalarMap` from `@vantreeseba/graphql-zod`) can be spread
+   * in directly.
+   */
+  scalars?: ScalarMapping;
   /**
    * Keep only fields matching one of these patterns (`compileRules` syntax:
    * `'todos'`, `'Query.*'`, `'delete*'`). Omit to keep every field; a present
@@ -139,6 +147,7 @@ export function buildTools(
         field,
         kind,
         ext?.selectionDepth ?? options.selectionDepth,
+        options.scalars,
       );
       if (ext) descriptor = applyExtensions(descriptor, ext);
       const patch = options.decorate?.(descriptor, field, kind);
@@ -206,6 +215,7 @@ function toDescriptor(
   field: GraphQLField<any, any>,
   kind: OperationKind,
   selectionDepth?: number,
+  scalars?: ScalarMapping,
 ): ToolDescriptor {
   const { query, operationName, argNames } = buildOperation(kind, field, selectionDepth);
   return {
@@ -213,7 +223,7 @@ function toDescriptor(
     kind,
     title: humanize(field.name),
     description: buildDescription(field, kind),
-    inputSchema: argsToZodShape(field.args),
+    inputSchema: argsToZodShape(field.args, { scalars }),
     annotations: annotationsFor(kind, humanize(field.name)),
     query,
     operationName,

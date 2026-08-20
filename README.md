@@ -92,8 +92,8 @@ mutation createTodo($input: CreateTodoInput!) {
 | `buildTools(schema, opts?)` | The pure core: schema → `ToolDescriptor[]` (no SDK, no executor). |
 
 Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
-`registerGraphqlTools`, `compileRules`, `extendSchemaForMcp`) and all types are
-exported too.
+`registerGraphqlTools`, `compileRules`, `extendSchemaForMcp`, `stripRootTypes`,
+`buildMetaTools`) and all types are exported too.
 
 ## How fields become tools
 
@@ -101,7 +101,8 @@ exported too.
   distinction; queries are annotated `readOnlyHint`, mutations `destructiveHint`.
 - **Arguments → input schema.** Each field's args are converted to a Zod schema
   (the MCP input-schema format): non-null args are required, scalars/enums/lists/
-  input-objects map across, custom scalars fall back to an opaque value.
+  input-objects map across, custom scalars fall back to an opaque value (see
+  [Custom scalars](#custom-scalars)).
 - **Return type → selection set.** A selection set is auto-generated: every
   scalar/enum leaf plus nested objects up to `selectionDepth` (default 2), always
   including `__typename`. Fields that require arguments and cyclic types are skipped.
@@ -178,6 +179,54 @@ with both lists:
 createHttpHandler({ schema, filter: (field, kind) => !field.deprecationReason });
 ```
 
+## Custom scalars
+
+Built-in scalars map to the obvious Zod types; a custom scalar (`DateTime`,
+`JSON`, `URL`) has no shape we can infer, so it falls back to an opaque value —
+the GraphQL server still validates it, but the agent gets no guidance. Pass
+`scalars` to fix that:
+
+```ts
+import { z } from 'zod';
+
+createHttpHandler({
+  schema,
+  scalars: {
+    DateTime: z.string().datetime().describe('ISO 8601 timestamp'),
+    URL: z.string().url(),
+  },
+});
+```
+
+Keys are **scalar names**, and the mapping is consulted before the built-ins, so
+you can retype `ID` or `String` too. A function form gets the
+`GraphQLScalarType` itself; return `undefined` to fall through:
+
+```ts
+createHttpHandler({
+  schema,
+  scalars: (scalar) => (scalar.name.endsWith('Date') ? z.string().date() : undefined),
+});
+```
+
+Nullability, lists, and input-object nesting are applied around whatever you
+return — map the *base* type only.
+
+Since the map is a plain `Record<string, ZodTypeAny>`, a generated one drops
+straight in. With [`@vantreeseba/graphql-zod`](https://www.npmjs.com/package/@vantreeseba/graphql-zod):
+
+```ts
+import { defaultScalarMap } from '@vantreeseba/graphql-zod';
+
+createHttpHandler({
+  schema,
+  scalars: { ...defaultScalarMap, DateTime: z.string().datetime() },
+});
+```
+
+Tool arguments cross the wire as JSON, so keep the mapped types
+JSON-representable — `z.string().datetime()` rather than `z.date()`.
+
 ## Decorating tools for agents
 
 Descriptions come from your SDL, but agents often need more: workflow hints,
@@ -245,6 +294,86 @@ The extended schema feeds both tool generation and the default in-process
 executor. If you pass a custom `executor` (e.g. `createHttpExecutor` forwarding
 to a remote endpoint), that endpoint won't know the extended fields — keep
 MCP-only fields on the local path.
+
+### A tool-specific operation surface (`typesOnly`)
+
+`include`/`exclude` subtract from the root fields you already have. When you'd
+rather design the agent's operations from scratch — different names, different
+arguments, coarser granularity — set `typesOnly: true`. The base schema's
+`Query`/`Mutation`/`Subscription` types are dropped and everything else (objects,
+inputs, enums, interfaces, unions, **custom scalars with their serializers
+intact**) is kept, so your SDL can still refer to the real types:
+
+```ts
+const handler = createHttpHandler({
+  schema, // your real, full schema
+  extend: {
+    typesOnly: true,
+    typeDefs: /* GraphQL */ `
+      type Query {
+        "The one search an agent should use. Returns at most 20 todos."
+        findTodos(text: String!, status: TodoStatus): [Todo!]!
+      }
+    `,
+    resolvers: {
+      Query: { findTodos: (_, args, ctx) => searchTodos(args, ctx) },
+    },
+  },
+});
+```
+
+`Todo` and `TodoStatus` came from the real schema — you write the operations,
+not the types. Two consequences worth knowing:
+
+- Your `typeDefs` must declare `type Query { … }` (not `extend type Query`),
+  since there's no base root type left to extend. Omitting it throws.
+- Nothing from the original root types survives, so every field needs a
+  resolver — the base schema's are gone with it.
+
+`stripRootTypes(schema)` is exported if you want the stripped schema on its own.
+
+## Schema-exploration tools (large schemas)
+
+One tool per root field stops scaling somewhere past a few dozen fields — the
+tool list itself starts crowding the agent's context. `metaTools` swaps that for
+a handful of tools that let an agent navigate the schema instead:
+
+```ts
+const handler = createHttpHandler({
+  schema,
+  includeQueries: false, // no per-field tools at all…
+  includeMutations: false,
+  metaTools: true, // …just these four
+});
+```
+
+| Tool | What it does |
+|---|---|
+| `graphql_introspect` | Prints a type's SDL; with no argument, the callable root fields plus every type name. |
+| `graphql_search` | Finds types and fields by substring, across names and descriptions. |
+| `graphql_validate` | Checks a document against the schema without running it. |
+| `graphql_execute` | Runs a document, with `variables`. |
+
+The two modes compose — leave the generated tools on and add meta tools for the
+long tail. Names collide by design: a `tools` entry overrides a meta tool, which
+overrides a generated one.
+
+**`execute` respects your allow-list.** It runs documents the *agent* wrote, so
+without a check it would be a way around `include`/`exclude`. Every root field
+of the incoming document is matched against the same rules (fragment spreads and
+inline fragments expanded, so nothing hides behind one), and a mutation is
+refused unless `includeMutations` allows it. Override per-tool if the exploration
+surface should differ from the generated one:
+
+```ts
+metaTools: {
+  tools: ['introspect', 'search', 'execute'], // skip `validate`
+  prefix: 'todo_api_',                        // default `graphql_`
+  include: ['Query.*'],                       // defaults to the server's rules
+  allowMutations: false,
+  maxChars: 20_000,                           // result budget, default 50k
+}
+```
 
 ## Custom tools & overrides
 

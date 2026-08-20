@@ -27,12 +27,15 @@ Deferred work and known MVP limitations.
 - **Field arguments on nested selections** are skipped (we can't invent values).
   Consider letting a tool request specific nested fields via input, or a
   configurable field-selection strategy.
-- **Custom scalars** map to `z.any()`. Allow a user-supplied scalar→Zod map.
 - **Subscriptions** are ignored (MCP has no streaming-subscription tool shape).
+  The `execute` meta tool refuses them explicitly.
 
 ## Tools & output
 
 - **Structured output.** Tool results are JSON text. Consider deriving an
   `outputSchema` from the field's return type and returning `structuredContent`.
-- **Response size.** Large GraphQL results are returned whole. Add a
-  `CHARACTER_LIMIT`-style guard with truncation messaging, and pagination hints.
+- **Response size.** Generated tools return large GraphQL results whole. The
+  meta tools already clamp at `maxChars` with a truncation note; apply the same
+  guard to generated tools, plus pagination hints.
+- **Meta-tool result caching.** `graphql_introspect`/`graphql_search` recompute
+  from the schema on every call. Memoize per schema if it shows up in profiles.

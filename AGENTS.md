@@ -28,7 +28,10 @@ process and forward to a remote GraphQL endpoint.
   (`>=16`) are **peer deps**. Express is *not* a dependency — the HTTP handler
   is framework-agnostic.
 - **Guiding constraint:** avoid adding libraries unless writing it ourselves
-  isn't worth the effort (e.g. the GraphQL→Zod mapping is hand-written).
+  isn't worth the effort (e.g. the GraphQL→Zod mapping is hand-written). The
+  `scalars` option is a plain `Record<string, ZodTypeAny>` for the same reason —
+  it's structurally identical to what generators emit (e.g. `defaultScalarMap`
+  from `@vantreeseba/graphql-zod`), so interop needs no adapter or dependency.
 
 ## Scripts
 
@@ -55,8 +58,9 @@ src/
   selection.ts    — auto-built selection sets for return types (buildSelectionSet)
   operation.ts    — per-field operation documents (buildOperation)
   rules.ts        — include/exclude pattern matching (compileRules)
-  extend.ts       — MCP-only schema additions via mergeSchemas (extendSchemaForMcp)
+  extend.ts       — MCP-only schema additions via mergeSchemas (extendSchemaForMcp, stripRootTypes)
   tools.ts        — schema → ToolDescriptor[] (buildTools): names, descriptions, annotations
+  meta.ts         — opt-in schema-exploration tools (buildMetaTools): introspect/search/validate/execute
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
   server.ts       — createMcpServer / createServerFactory / registerGraphqlTools (+ custom tools)
   http.ts         — createHttpHandler for the Streamable HTTP transport
@@ -77,9 +81,27 @@ src/
   schema feeds both `buildTools` and the default local executor; a custom/HTTP
   executor must itself know the extended fields. Because the merge happens
   first, `include`/`exclude` rules also apply to extend-added fields.
+- **`extend.typesOnly` drops the base root types** (`stripRootTypes`) before the
+  merge, keeping every other type — objects, inputs, enums, interfaces, unions,
+  and custom scalars *with their serializers*, since the `GraphQLScalarType`
+  instances are carried over, not re-created. It lets a caller design a
+  tool-specific operation surface on top of the real schema's types. The
+  extension `typeDefs` must then declare `type Query` (not `extend type Query`);
+  `extendSchemaForMcp` throws with that guidance if the merged schema has no
+  query type.
 - **`include` fails closed.** An omitted `include` keeps everything; a present
   but empty array matches nothing (consistent with `compileRules([])`), so a
   dynamically built allow-list can't silently expose the whole schema.
+- **Meta tools enforce the same rules as tool generation.** `metaTools` is
+  opt-in because `graphql_execute` runs agent-written documents rather than a
+  pre-built operation. `buildMetaTools` defaults its `include`/`exclude`/
+  `allowMutations` to the server's own, and `executeTool` checks *every* root
+  field of the incoming document — expanding fragment spreads and inline
+  fragments first, so a root-level spread can't hide a denied field. Without
+  that check a raw document would be a way around the allow-list; keep the two
+  surfaces in sync when either changes.
+- **`meta.ts` imports `CustomTool` type-only.** `server.ts` imports `meta.ts` at
+  runtime, so the reverse import must stay erasable to avoid a cycle.
 - **One seam for execution: `GraphqlExecutor`.** A tool builds a
   `{ query, variables, operationName, context }` request and hands it to the
   executor; it never knows whether GraphQL runs in-process or over HTTP. The

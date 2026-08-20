@@ -26,8 +26,9 @@
  * - `selection` — auto-built selection sets (`buildSelectionSet`)
  * - `operation` — per-field operation documents (`buildOperation`)
  * - `rules` — include/exclude pattern matching (`compileRules`)
- * - `extend` — MCP-only schema additions (`extendSchemaForMcp`)
+ * - `extend` — MCP-only schema additions (`extendSchemaForMcp`, `stripRootTypes`)
  * - `tools` — schema → `ToolDescriptor`s (`buildTools`)
+ * - `meta` — opt-in schema-exploration tools (`buildMetaTools`)
  * - `executor` — `createLocalExecutor` (in-process) / `createHttpExecutor` (forwarding)
  * - `server` — `createMcpServer` / `createServerFactory` / `registerGraphqlTools` (+ custom tools)
  * - `http` — `createHttpHandler` for the Streamable HTTP transport
@@ -38,9 +39,11 @@
 export type { HttpExecutorOptions, LocalExecutorOptions } from './executor.ts';
 export { createHttpExecutor, createLocalExecutor } from './executor.ts';
 export type { SchemaExtension } from './extend.ts';
-export { extendSchemaForMcp } from './extend.ts';
+export { extendSchemaForMcp, stripRootTypes } from './extend.ts';
 export type { HttpHandlerOptions, McpHttpHandler, McpHttpRequest } from './http.ts';
 export { createHttpHandler } from './http.ts';
+export type { MetaToolDeps, MetaToolName, MetaToolsOptions } from './meta.ts';
+export { buildMetaTools } from './meta.ts';
 export type { BuiltOperation } from './operation.ts';
 export { buildOperation } from './operation.ts';
 export type { RuleMatcher } from './rules.ts';
@@ -68,4 +71,5 @@ export type {
   OperationKind,
   ToolAnnotations,
 } from './types.ts';
+export type { ScalarMap, ScalarMapping, ScalarResolver, ZodShapeOptions } from './zodSchema.ts';
 export { argsToZodShape } from './zodSchema.ts';
