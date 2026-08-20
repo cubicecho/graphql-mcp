@@ -45,6 +45,7 @@
     "graphql": ">=16"
   },
   "dependencies": {
+    "@graphql-tools/schema": "^10.1.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {

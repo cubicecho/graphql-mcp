@@ -138,6 +138,50 @@ describe('createMcpServer', () => {
     await client.close();
   });
 
+  test('a renamed tool still executes its operation', async () => {
+    const { schema, root } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      toolName: (field, kind) => `${kind}_${field.name}`,
+    });
+    const client = await connect(server);
+
+    const result = await client.callTool({ name: 'query_todo', arguments: { id: 'todo-1' } });
+    const { isError, data } = parseResult(result);
+    assert.equal(isError, false);
+    assert.equal((data as { todo: { description: string } }).todo.description, 'write the wrapper');
+    await client.close();
+  });
+
+  test('extend adds MCP-only fields served by the default local executor', async () => {
+    const { schema } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      extend: {
+        typeDefs: /* GraphQL */ `
+          extend type Query {
+            "How an agent should use this API."
+            usageGuide: String!
+          }
+        `,
+        resolvers: {
+          Query: { usageGuide: () => 'call todos first' },
+        },
+      },
+    });
+    const client = await connect(server);
+
+    const { tools } = await client.listTools();
+    assert.ok(tools.some((t) => t.name === 'usageGuide'));
+
+    const result = await client.callTool({ name: 'usageGuide', arguments: {} });
+    const { isError, data } = parseResult(result);
+    assert.equal(isError, false);
+    assert.equal((data as { usageGuide: string }).usageGuide, 'call todos first');
+    await client.close();
+  });
+
   test('per-call context is threaded into the executor', async () => {
     const { schema } = makeTodoSchema();
     let seenContext: unknown;

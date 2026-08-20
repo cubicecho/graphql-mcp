@@ -25,6 +25,8 @@
  * - `zodSchema` — GraphQL args → Zod input schema (`argsToZodShape`)
  * - `selection` — auto-built selection sets (`buildSelectionSet`)
  * - `operation` — per-field operation documents (`buildOperation`)
+ * - `rules` — include/exclude pattern matching (`compileRules`)
+ * - `extend` — MCP-only schema additions (`extendSchemaForMcp`)
  * - `tools` — schema → `ToolDescriptor`s (`buildTools`)
  * - `executor` — `createLocalExecutor` (in-process) / `createHttpExecutor` (forwarding)
  * - `server` — `createMcpServer` / `createServerFactory` / `registerGraphqlTools` (+ custom tools)
@@ -35,10 +37,14 @@
 
 export type { HttpExecutorOptions, LocalExecutorOptions } from './executor.ts';
 export { createHttpExecutor, createLocalExecutor } from './executor.ts';
+export type { SchemaExtension } from './extend.ts';
+export { extendSchemaForMcp } from './extend.ts';
 export type { HttpHandlerOptions, McpHttpHandler, McpHttpRequest } from './http.ts';
 export { createHttpHandler } from './http.ts';
 export type { BuiltOperation } from './operation.ts';
 export { buildOperation } from './operation.ts';
+export type { RuleMatcher } from './rules.ts';
+export { compileRules } from './rules.ts';
 export { buildSelectionSet } from './selection.ts';
 export type {
   ContextFactory,
@@ -52,7 +58,7 @@ export {
   createServerFactory,
   registerGraphqlTools,
 } from './server.ts';
-export type { BuildToolsOptions, ToolDescriptor } from './tools.ts';
+export type { BuildToolsOptions, McpFieldExtensions, ToolDescriptor } from './tools.ts';
 export { buildTools } from './tools.ts';
 export type {
   GraphqlError,

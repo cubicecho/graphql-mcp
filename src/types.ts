@@ -31,7 +31,7 @@ export interface GraphqlRequest {
   query: string;
   /** Variables keyed by the root field's argument names. */
   variables: Record<string, unknown>;
-  /** The operation name (equal to the tool / root-field name). */
+  /** The operation name in the document (the root-field name — not the tool name). */
   operationName: string;
   /**
    * Per-call context, opaque to the tool layer. Forwarded as the GraphQL

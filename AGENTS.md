@@ -22,9 +22,11 @@ process and forward to a remote GraphQL endpoint.
 - **Tests:** Node's built-in test runner (`node --test`) with type stripping —
   **no test framework dependency**. Test files are `src/**/*.test.ts`.
 - **Formatting/linting:** [Biome](https://biomejs.dev/) (`npm run check`).
-- **Dependencies:** `zod` (the SDK's input-schema format) is the only runtime
-  dependency. `@modelcontextprotocol/sdk` (`>=1.12`) and `graphql` (`>=16`) are
-  **peer deps**. Express is *not* a dependency — the HTTP handler is framework-agnostic.
+- **Dependencies:** `zod` (the SDK's input-schema format) and
+  `@graphql-tools/schema` (schema merging for the `extend` option) are the only
+  runtime dependencies. `@modelcontextprotocol/sdk` (`>=1.12`) and `graphql`
+  (`>=16`) are **peer deps**. Express is *not* a dependency — the HTTP handler
+  is framework-agnostic.
 - **Guiding constraint:** avoid adding libraries unless writing it ourselves
   isn't worth the effort (e.g. the GraphQL→Zod mapping is hand-written).
 
@@ -52,6 +54,8 @@ src/
   zodSchema.ts    — GraphQL args → Zod input schema (argsToZodShape)
   selection.ts    — auto-built selection sets for return types (buildSelectionSet)
   operation.ts    — per-field operation documents (buildOperation)
+  rules.ts        — include/exclude pattern matching (compileRules)
+  extend.ts       — MCP-only schema additions via mergeSchemas (extendSchemaForMcp)
   tools.ts        — schema → ToolDescriptor[] (buildTools): names, descriptions, annotations
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
   server.ts       — createMcpServer / createServerFactory / registerGraphqlTools (+ custom tools)
@@ -63,6 +67,15 @@ src/
 
 - **The schema is the source of truth.** Tool name, description, and input
   schema mirror the GraphQL surface one-to-one. Don't hardcode domain types.
+- **Per-field pipeline in `buildTools`** (later stages win): `exclude` rules →
+  `include` rules → `filter` callback → `extensions.mcp.hidden` → SDL-derived
+  defaults → `extensions.mcp` metadata → `decorate` callback → duplicate-name
+  check on the *final* name. Rules match GraphQL field names (never remapped
+  tool names) and only drop fields, never rename.
+- **`extend` merges MCP-only SDL + resolvers** (via `extendSchemaForMcp` /
+  `@graphql-tools/schema`'s `mergeSchemas`) before tool generation. The extended
+  schema feeds both `buildTools` and the default local executor; a custom/HTTP
+  executor must itself know the extended fields.
 - **One seam for execution: `GraphqlExecutor`.** A tool builds a
   `{ query, variables, operationName, context }` request and hands it to the
   executor; it never knows whether GraphQL runs in-process or over HTTP. The

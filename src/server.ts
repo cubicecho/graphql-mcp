@@ -16,6 +16,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { GraphQLSchema } from 'graphql';
 import type { ZodRawShape } from 'zod';
 import { createLocalExecutor } from './executor.ts';
+import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
 import type { GraphqlExecutor, GraphqlResult, ToolAnnotations } from './types.ts';
 
@@ -62,6 +63,14 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
   context?: unknown | ContextFactory;
   /** Custom tools to add or override generated ones by name. */
   tools?: CustomTool[];
+  /**
+   * MCP-only schema additions ({@link extendSchemaForMcp}) merged before tool
+   * generation. The extended schema is used both for building tools and for the
+   * default local executor. If you supply a custom `executor` (e.g.
+   * `createHttpExecutor`), it must be able to resolve the extended fields — a
+   * remote GraphQL endpoint will not know them.
+   */
+  extend?: SchemaExtension;
 }
 
 /**
@@ -89,8 +98,11 @@ export type ServerFactory = (contextOverride?: unknown | ContextFactory) => McpS
  * @returns A {@link ServerFactory}.
  */
 export function createServerFactory(options: CreateMcpServerOptions): ServerFactory {
-  const descriptors = buildTools(options.schema, options);
-  const executor = options.executor ?? createLocalExecutor(options.schema);
+  const schema = options.extend
+    ? extendSchemaForMcp(options.schema, options.extend)
+    : options.schema;
+  const descriptors = buildTools(schema, options);
+  const executor = options.executor ?? createLocalExecutor(schema);
   const customTools = options.tools ?? [];
   const overridden = new Set(customTools.map((tool) => tool.name));
 
@@ -155,7 +167,7 @@ function registerGeneratedTool(
       const result = await executor({
         query: descriptor.query,
         variables,
-        operationName: descriptor.name,
+        operationName: descriptor.operationName,
         context: resolvedContext,
       });
       return toCallToolResult(result);

@@ -36,5 +36,3 @@ Deferred work and known MVP limitations.
   `outputSchema` from the field's return type and returning `structuredContent`.
 - **Response size.** Large GraphQL results are returned whole. Add a
   `CHARACTER_LIMIT`-style guard with truncation messaging, and pagination hints.
-- **Per-operation overrides.** Allow overriding a single generated tool's
-  description / selection set / annotations without fully replacing it.

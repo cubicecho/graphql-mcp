@@ -12,6 +12,7 @@
 import type { GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
 import type { ZodRawShape } from 'zod';
 import { buildOperation } from './operation.ts';
+import { compileRules } from './rules.ts';
 import type { OperationKind, ToolAnnotations } from './types.ts';
 import { argsToZodShape } from './zodSchema.ts';
 
@@ -31,8 +32,31 @@ export interface ToolDescriptor {
   annotations: ToolAnnotations;
   /** The pre-built operation document this tool runs. */
   query: string;
+  /** The operation name inside `query` (the root-field name — not the tool name). */
+  operationName: string;
   /** The field's argument names (used to pluck variables from validated input). */
   argNames: string[];
+}
+
+/**
+ * Per-field MCP metadata read from `field.extensions.mcp`, set where the schema
+ * is defined. Applied over the SDL-derived defaults (and under `decorate`).
+ */
+export interface McpFieldExtensions {
+  /** Skip this field entirely. */
+  hidden?: boolean;
+  /** Override the tool name (wins over the `toolName` option). */
+  name?: string;
+  /** Override the humanized title (also reflected in `annotations.title`). */
+  title?: string;
+  /** Replace the SDL-derived description. */
+  description?: string;
+  /** Append to the description (after a blank line) instead of replacing it. */
+  appendDescription?: string;
+  /** Shallow-merged over the kind-derived default annotations. */
+  annotations?: Partial<ToolAnnotations>;
+  /** Per-field selection depth (overrides the `selectionDepth` option). */
+  selectionDepth?: number;
 }
 
 /** Options controlling which fields become tools and how they're named. */
@@ -43,50 +67,111 @@ export interface BuildToolsOptions {
   includeMutations?: boolean;
   /** Selection-set depth for return types (see `buildSelectionSet`). Default `2`. */
   selectionDepth?: number;
+  /**
+   * Keep only fields matching one of these patterns (`compileRules` syntax:
+   * `'todos'`, `'Query.*'`, `'delete*'`). Empty/omitted keeps everything.
+   */
+  include?: string[];
+  /** Drop fields matching one of these patterns. Wins over `include` and `filter`. */
+  exclude?: string[];
   /** Keep a field only when this returns `true`. Receives the field and its kind. */
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to a filter
   filter?: (field: GraphQLField<any, any>, kind: OperationKind) => boolean;
   /** Map a field to a custom tool name. Default: the field name verbatim. */
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to naming
   toolName?: (field: GraphQLField<any, any>, kind: OperationKind) => string;
+  /**
+   * Adjust a generated descriptor last, after `extensions.mcp` metadata. Return
+   * a full or partial descriptor to merge, or nothing to keep it as-is. If you
+   * override `query`, `argNames`, or `operationName`, they must stay mutually
+   * consistent.
+   */
+  decorate?: (
+    descriptor: ToolDescriptor,
+    // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
+    field: GraphQLField<any, any>,
+    kind: OperationKind,
+  ) => ToolDescriptor | Partial<ToolDescriptor> | undefined;
 }
 
 /**
  * Builds the {@link ToolDescriptor}s for a schema's root fields.
  *
+ * Each field runs through a fixed pipeline: `exclude`/`include` rules → the
+ * `filter` callback → `extensions.mcp.hidden` → SDL-derived defaults →
+ * `extensions.mcp` metadata → the `decorate` callback. Later stages win; the
+ * rule/filter stages only drop fields, never rename them.
+ *
  * @param schema - The GraphQL schema to wrap.
- * @param options - Inclusion, depth, filtering, and naming options.
+ * @param options - Inclusion, depth, filtering, naming, and decoration options.
  * @returns One descriptor per included root field.
- * @throws If two included fields map to the same tool name (e.g. a query and a
- *   mutation share a name) — resolve the clash with `toolName` or `filter`.
+ * @throws If two included fields map to the same final tool name (e.g. a query
+ *   and a mutation share a name) — resolve the clash with `toolName`,
+ *   `extensions.mcp.name`, `decorate`, or a filtering option. Also if an
+ *   `include`/`exclude` pattern has a prefix other than `Query`/`Mutation`.
  */
 export function buildTools(
   schema: GraphQLSchema,
   options: BuildToolsOptions = {},
 ): ToolDescriptor[] {
   const { includeQueries = true, includeMutations = true } = options;
+  const included = options.include?.length ? compileRules(options.include) : null;
+  const excluded = options.exclude?.length ? compileRules(options.exclude) : null;
   const descriptors: ToolDescriptor[] = [];
   const seen = new Set<string>();
 
   const collect = (root: GraphQLObjectType | null | undefined, kind: OperationKind) => {
     if (!root) return;
     for (const field of Object.values(root.getFields())) {
+      if (excluded?.(field.name, kind)) continue;
+      if (included && !included(field.name, kind)) continue;
       if (options.filter && !options.filter(field, kind)) continue;
-      const name = options.toolName ? options.toolName(field, kind) : field.name;
-      if (seen.has(name)) {
+      const ext = (field.extensions as { mcp?: McpFieldExtensions } | undefined)?.mcp;
+      if (ext?.hidden) continue;
+
+      const baseName = options.toolName ? options.toolName(field, kind) : field.name;
+      let descriptor = toDescriptor(
+        baseName,
+        field,
+        kind,
+        ext?.selectionDepth ?? options.selectionDepth,
+      );
+      if (ext) descriptor = applyExtensions(descriptor, ext);
+      const patch = options.decorate?.(descriptor, field, kind);
+      if (patch) descriptor = { ...descriptor, ...patch };
+
+      if (seen.has(descriptor.name)) {
         throw new Error(
-          `graphql-mcp: duplicate tool name '${name}'. A query and mutation field likely ` +
-            'collide — disambiguate with the `toolName` or `filter` option.',
+          `graphql-mcp: duplicate tool name '${descriptor.name}'. A query and mutation field ` +
+            'likely collide — disambiguate with the `toolName`, `extensions.mcp.name`, ' +
+            '`decorate`, or a filtering option.',
         );
       }
-      seen.add(name);
-      descriptors.push(toDescriptor(name, field, kind, options.selectionDepth));
+      seen.add(descriptor.name);
+      descriptors.push(descriptor);
     }
   };
 
   if (includeQueries) collect(schema.getQueryType(), 'query');
   if (includeMutations) collect(schema.getMutationType(), 'mutation');
   return descriptors;
+}
+
+/** Overlays `field.extensions.mcp` metadata onto the SDL-derived descriptor. */
+function applyExtensions(d: ToolDescriptor, ext: McpFieldExtensions): ToolDescriptor {
+  let description = ext.description ?? d.description;
+  if (ext.appendDescription) description = `${description}\n\n${ext.appendDescription}`;
+  return {
+    ...d,
+    name: ext.name ?? d.name,
+    title: ext.title ?? d.title,
+    description,
+    annotations: {
+      ...d.annotations,
+      ...(ext.title ? { title: ext.title } : {}),
+      ...ext.annotations,
+    },
+  };
 }
 
 function toDescriptor(
@@ -96,7 +181,7 @@ function toDescriptor(
   kind: OperationKind,
   selectionDepth?: number,
 ): ToolDescriptor {
-  const { query, argNames } = buildOperation(kind, field, selectionDepth);
+  const { query, operationName, argNames } = buildOperation(kind, field, selectionDepth);
   return {
     name,
     kind,
@@ -105,6 +190,7 @@ function toDescriptor(
     inputSchema: argsToZodShape(field.args),
     annotations: annotationsFor(kind, humanize(field.name)),
     query,
+    operationName,
     argNames,
   };
 }

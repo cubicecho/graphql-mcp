@@ -92,7 +92,8 @@ mutation createTodo($input: CreateTodoInput!) {
 | `buildTools(schema, opts?)` | The pure core: schema → `ToolDescriptor[]` (no SDK, no executor). |
 
 Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
-`registerGraphqlTools`) and all types are exported too.
+`registerGraphqlTools`, `compileRules`, `extendSchemaForMcp`) and all types are
+exported too.
 
 ## How fields become tools
 
@@ -149,6 +150,94 @@ const handler = createHttpHandler({
 
 For non-HTTP setups, pass `context` as a static value or a factory of the MCP
 request `extra`.
+
+## Choosing which fields become tools
+
+Allow/deny lists take graphql-shield-style patterns — a field name with optional
+`*` wildcards and an optional `Query.`/`Mutation.` prefix:
+
+```ts
+const handler = createHttpHandler({
+  schema,
+  include: ['Query.*', 'createTodo'], // only these become tools (omit to keep all)
+  exclude: ['delete*', 'Mutation.resetDb'], // wins over include
+});
+```
+
+Patterns match GraphQL field names (not renamed tool names). For anything the
+patterns can't express, the `filter` callback still composes with both lists:
+
+```ts
+createHttpHandler({ schema, filter: (field, kind) => !field.deprecationReason });
+```
+
+## Decorating tools for agents
+
+Descriptions come from your SDL, but agents often need more: workflow hints,
+warnings, when-to-use guidance. Two ways to layer that on without touching the
+public GraphQL surface:
+
+**In schema code**, via `extensions.mcp` on a field (read at tool-build time):
+
+```ts
+// graphql-js / @graphql-tools/schema field definition
+fields: {
+  todos: {
+    type: TodoList,
+    extensions: {
+      mcp: {
+        appendDescription: 'Prefer this over `todo` when listing; filter by status.',
+        title: 'List Todos',
+        // also: hidden, name, description, annotations, selectionDepth
+      },
+    },
+  },
+}
+```
+
+**Programmatically**, via the `decorate` callback — the last word on every
+generated descriptor:
+
+```ts
+createHttpHandler({
+  schema,
+  decorate: (descriptor, field, kind) =>
+    kind === 'mutation'
+      ? { description: `${descriptor.description}\n\nConfirm with the user first.` }
+      : undefined, // keep as-is
+});
+```
+
+Precedence: SDL-derived defaults < `extensions.mcp` < `decorate`.
+
+## MCP-only schema extensions
+
+Expose fields to agents that don't exist on your public GraphQL API — usage
+guides, aggregate helpers — by passing extension SDL (+ resolvers). The schema
+is merged with [`@graphql-tools/schema`](https://the-guild.dev/graphql/tools/docs/schema-merging)
+before tool generation:
+
+```ts
+const handler = createHttpHandler({
+  schema,
+  extend: {
+    typeDefs: /* GraphQL */ `
+      extend type Query {
+        "How an agent should use this API."
+        usageGuide: String!
+      }
+    `,
+    resolvers: {
+      Query: { usageGuide: () => 'List todos before creating duplicates…' },
+    },
+  },
+});
+```
+
+The extended schema feeds both tool generation and the default in-process
+executor. If you pass a custom `executor` (e.g. `createHttpExecutor` forwarding
+to a remote endpoint), that endpoint won't know the extended fields — keep
+MCP-only fields on the local path.
 
 ## Custom tools & overrides
 

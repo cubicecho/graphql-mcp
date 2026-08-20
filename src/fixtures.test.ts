@@ -9,6 +9,7 @@
  */
 
 import { buildSchema, type GraphQLSchema } from 'graphql';
+import type { McpFieldExtensions } from './tools.ts';
 
 export const TODO_SDL = /* GraphQL */ `
   "A user in the system"
@@ -112,6 +113,26 @@ export function makeTodoSchema(seed: TodoRecord[] = defaultSeed()): {
   };
 
   return { schema, root, store };
+}
+
+/**
+ * Sets `extensions.mcp` on a root field of `schema`. graphql-js extension
+ * objects are plain objects that are only `Readonly` at the type level, so a
+ * cast-and-assign is enough for tests.
+ */
+export function setMcpExtensions(
+  schema: GraphQLSchema,
+  root: 'Query' | 'Mutation',
+  fieldName: string,
+  mcp: McpFieldExtensions,
+): void {
+  const type = root === 'Query' ? schema.getQueryType() : schema.getMutationType();
+  const field = type?.getFields()[fieldName];
+  if (!field) throw new Error(`fixture: no ${root}.${fieldName} field`);
+  (field as { extensions: Record<string, unknown> }).extensions = {
+    ...field.extensions,
+    mcp,
+  };
 }
 
 function defaultSeed(): TodoRecord[] {
