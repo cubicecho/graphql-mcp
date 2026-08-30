@@ -404,7 +404,14 @@ function signature(field: GraphQLField<any, any>): string {
   const args = field.args.length
     ? `(${field.args.map((arg: GraphQLArgument) => `${arg.name}: ${arg.type}`).join(', ')})`
     : '';
-  return `${field.name}${args}: ${field.type}`;
+  // The per-type view prints real SDL, which carries `@deprecated`; the overview
+  // builds its own lines and so has to add it back. On a schema large enough to
+  // need the meta tools this listing may be the agent's whole view of the root
+  // fields, and a deprecated field that reads as ordinary gets picked.
+  const deprecated = field.deprecationReason
+    ? ` @deprecated(reason: ${JSON.stringify(field.deprecationReason)})`
+    : '';
+  return `${field.name}${args}: ${field.type}${deprecated}`;
 }
 
 function kindWord(type: GraphQLNamedType): string {

@@ -390,3 +390,41 @@ describe('meta tool context and truncation', () => {
     assert.match(body(result), /\[truncated \d+ of \d+ characters/);
   });
 });
+
+describe('graphql_introspect deprecation', () => {
+  const schema = buildSchema(/* GraphQL */ `
+    type T {
+      id: ID!
+      stale: String @deprecated(reason: "gone in v3")
+    }
+    type Query {
+      t: T!
+      old: T! @deprecated(reason: "use t")
+    }
+  `);
+
+  async function introspect(args: Record<string, unknown>) {
+    const tools = buildMetaTools({ schema, executor: createLocalExecutor(schema) }, {});
+    const tool = tools.find((t) => t.name === 'graphql_introspect');
+    assert.ok(tool);
+    const result = await tool.handler(args, {});
+    return (result.content[0] as { text: string }).text;
+  }
+
+  // On a schema large enough to need the meta tools, this listing can be the
+  // agent's whole view of the root fields.
+  test('the root-field overview marks a deprecated field', async () => {
+    const text = await introspect({});
+    assert.match(text, /old: T! @deprecated\(reason: "use t"\)/);
+  });
+
+  test('a live field is left unmarked', async () => {
+    const text = await introspect({});
+    assert.match(text, /^ {2}t: T!$/m);
+  });
+
+  test('the per-type view still prints SDL deprecations', async () => {
+    const text = await introspect({ type: 'T' });
+    assert.match(text, /stale: String @deprecated\(reason: "gone in v3"\)/);
+  });
+});

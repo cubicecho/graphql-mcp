@@ -154,7 +154,10 @@ src/
   stay callable by default (`includeDeprecated: false` drops them) — the schema
   is the source of truth, and a deprecated field is often still the only way to
   do something. When adding a projection, ask what graphql-js already knows that
-  we're discarding.
+  we're discarding — and apply it to *both* surfaces: `graphql_introspect`'s
+  root-field overview builds its own lines rather than printing SDL, so it needs
+  the same treatment as a tool description or a large schema's only discovery
+  path silently disagrees with its tools.
 - **Annotations:** queries are `readOnlyHint`/`idempotentHint`; mutations are
   `destructiveHint`. All tools set `openWorldHint` (they reach a backend).
 - **The advertised version comes from `package.json`** (`version.ts`), not a
