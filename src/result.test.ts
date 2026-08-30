@@ -95,6 +95,25 @@ describe('toCallToolResult error condensing', () => {
     assert.deepEqual(error.extensions, { code: 'UNAUTHENTICATED' });
   });
 
+  test('drops an empty extensions object, which graphql-js sets on every error', () => {
+    // A real `GraphQLError` from the local executor always carries `extensions`,
+    // so a truthiness check would put `"extensions": {}` on every failure.
+    const error = payloadOf(
+      toCallToolResult({
+        data: null,
+        errors: [{ message: 'kaboom', path: ['boom'], extensions: {} }],
+      }),
+    ).errors[0];
+    assert.deepEqual(error, { message: 'kaboom', path: ['boom'] });
+  });
+
+  test('drops an empty path array too', () => {
+    const error = payloadOf(
+      toCallToolResult({ data: null, errors: [{ message: 'kaboom', path: [] }] }),
+    ).errors[0];
+    assert.deepEqual(error, { message: 'kaboom' });
+  });
+
   test('omits path and extensions when absent rather than emitting nulls', () => {
     const error = payloadOf(toCallToolResult({ data: null, errors: [{ message: 'plain' }] }))
       .errors[0];

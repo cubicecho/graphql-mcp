@@ -16,7 +16,9 @@
  *   `locations` are line/column offsets into a query string the agent never
  *   wrote and cannot see; reporting them invites nonsense self-correction.
  *   `message`, `path`, and `extensions` (which carry app-level codes like
- *   `UNAUTHENTICATED`) survive.
+ *   `UNAUTHENTICATED`) survive — but only when they hold something, since
+ *   graphql-js populates `extensions` on every error whether or not the server
+ *   put anything in it.
  * - **Results are clamped.** A tool that returns a large collection would
  *   otherwise flood the agent's context with no warning.
  *
@@ -121,10 +123,19 @@ function hasUsableData(data: Record<string, unknown> | null | undefined): boolea
   return Object.values(data).some((value) => value !== null);
 }
 
-/** Keeps the parts of a GraphQL error an agent can act on. */
+/**
+ * Keeps the parts of a GraphQL error an agent can act on.
+ *
+ * Empty containers are dropped, not just absent ones: graphql-js initialises
+ * `extensions` to `{}` on every `GraphQLError`, so a truthiness check alone puts
+ * a useless `"extensions": {}` on every local-executor failure — the exact kind
+ * of noise this function exists to remove.
+ */
 function condense(error: GraphqlError): GraphqlError {
   const condensed: GraphqlError = { message: error.message };
-  if (error.path) condensed.path = error.path;
-  if (error.extensions) condensed.extensions = error.extensions;
+  if (error.path?.length) condensed.path = error.path;
+  if (error.extensions && Object.keys(error.extensions).length) {
+    condensed.extensions = error.extensions;
+  }
   return condensed;
 }
