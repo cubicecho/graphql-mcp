@@ -10,8 +10,6 @@ Deferred work and known MVP limitations.
   for other runtimes/frameworks (Fastify, Koa, Hono, the raw `node:http` server,
   Bun/Deno/edge `Request`/`Response`). Consider a small `toFetchHandler()` that
   wraps the transport for `(Request) => Response` environments.
-- **stdio transport.** Expose a `createStdioServer()` convenience for local MCP
-  clients (the SDK's `StdioServerTransport`).
 - **Stateful sessions.** Currently stateless JSON (`sessionIdGenerator:
   undefined`, fresh server per request). Optionally support session-based
   transports for streaming/long-lived connections.
@@ -47,3 +45,13 @@ Deferred work and known MVP limitations.
 - **Abstract types in `outputSchema`.** Interfaces contribute only their own
   fields, matching `buildSelectionSet`. Expanding per-implementation fields
   there should expand here too — the two must stay in lockstep.
+
+## Decided against
+
+- **stdio transport.** No `createStdioServer()` convenience. This package is
+  built to run *side-by-side* with a GraphQL server — mounted on a route in the
+  same app, or as a process forwarding to a remote endpoint — and both are HTTP
+  shapes. A caller who genuinely wants stdio can wrap `createMcpServer` with the
+  SDK's `StdioServerTransport` in a few lines, and owning that surface would
+  mean owning a lifecycle (process signals, stream teardown) the HTTP path never
+  touches. Revisit only if the side-by-side model stops being the primary one.
