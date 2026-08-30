@@ -8,17 +8,22 @@
  * single connection, so per-request isolation is what keeps concurrent calls
  * from clobbering each other.
  *
- * Express is assumed for the MVP, but nothing here imports it: any framework
- * works as long as it hands the handler a Node `IncomingMessage` whose parsed
- * JSON body is on `req.body` (Express's `express.json()` does this) and a Node
- * `ServerResponse`. Adapting other servers is tracked in TODO.md.
+ * Nothing here imports Express: any framework works as long as it hands the
+ * handler a Node `IncomingMessage` and a Node `ServerResponse`. A parsed JSON
+ * body on `req.body` (as `express.json()` provides) is passed through when
+ * present, but the transport reads the request stream itself when it isn't — so
+ * a bare `node:http` server needs no body parser. Non-Node runtimes, which speak
+ * `Request`/`Response`, are tracked in TODO.md.
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { type CreateMcpServerOptions, createServerFactory } from './server.ts';
 
-/** A request with its parsed JSON body attached (as `express.json()` provides). */
+/**
+ * A request, optionally carrying a parsed JSON body (as `express.json()`
+ * provides). Without one the transport reads the stream itself.
+ */
 export type McpHttpRequest = IncomingMessage & { body?: unknown };
 
 /** An Express/Node-compatible request handler for MCP-over-HTTP. */

@@ -4,12 +4,12 @@ Deferred work and known MVP limitations.
 
 ## HTTP / transport
 
-- **Other HTTP servers / endpoint handlers.** `createHttpHandler` returns an
-  Express-style `(req, res)` handler that expects a Node `IncomingMessage` with a
-  parsed JSON `req.body` and a Node `ServerResponse`. Add first-class adapters
-  for other runtimes/frameworks (Fastify, Koa, Hono, the raw `node:http` server,
-  Bun/Deno/edge `Request`/`Response`). Consider a small `toFetchHandler()` that
-  wraps the transport for `(Request) => Response` environments.
+- **Non-Node runtimes.** `createHttpHandler` needs a Node `IncomingMessage` /
+  `ServerResponse` pair, which covers Express, Fastify, Koa, and the raw
+  `node:http` server (a parsed `req.body` is optional — the transport reads the
+  stream when it's absent). It does *not* cover Bun/Deno/edge, which speak
+  `Request`/`Response`. Consider a small `toFetchHandler()` that wraps the
+  transport for those.
 - **Stateful sessions.** Currently stateless JSON (`sessionIdGenerator:
   undefined`, fresh server per request). Optionally support session-based
   transports for streaming/long-lived connections.

@@ -2,7 +2,8 @@
  * Exercises createHttpHandler against a real Node HTTP server (no Express) using
  * the SDK's Streamable HTTP client — the same "side-by-side" path a host app
  * uses, minus the framework. A tiny handler parses the JSON body onto `req.body`
- * exactly as `express.json()` would.
+ * exactly as `express.json()` would — though the transport reads the request
+ * stream itself when `req.body` is absent, which the last suite here pins down.
  */
 
 import assert from 'node:assert/strict';
@@ -25,6 +26,16 @@ async function host(handler: McpHttpHandler): Promise<{ url: URL; close: () => v
       (req as McpHttpRequest).body = raw ? JSON.parse(raw) : undefined;
       handler(req as McpHttpRequest, res);
     });
+  });
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const { port } = server.address() as { port: number };
+  return { url: new URL(`http://127.0.0.1:${port}/mcp`), close: () => server.close() };
+}
+
+/** The same host, with no body parser at all — `req.body` is never set. */
+async function hostRaw(handler: McpHttpHandler): Promise<{ url: URL; close: () => void }> {
+  const server = http.createServer((req, res) => {
+    handler(req as McpHttpRequest, res);
   });
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as { port: number };
@@ -97,6 +108,37 @@ describe('createHttpHandler', () => {
     assert.ok(
       seenContexts.some((ctx) => ctx !== undefined && (ctx as { auth: unknown }).auth === null),
     );
+    await client.close();
+  });
+});
+
+describe('createHttpHandler without a body parser', () => {
+  // The docs used to require `express.json()`. The transport falls back to
+  // reading the request stream when `req.body` is undefined, so a bare
+  // `node:http` server works — worth pinning so the claim can't rot.
+  let hosted: { url: URL; close: () => void };
+
+  before(async () => {
+    const { schema, root } = makeTodoSchema();
+    hosted = await hostRaw(
+      createHttpHandler({ schema, executor: createLocalExecutor(schema, { rootValue: root }) }),
+    );
+  });
+
+  after(() => hosted.close());
+
+  test('initialize and tools/list work with req.body unset', async () => {
+    const client = await connect(hosted.url);
+    const { tools } = await client.listTools();
+    assert.ok(tools.some((tool) => tool.name === 'todos'));
+    await client.close();
+  });
+
+  test('a tool call round-trips too', async () => {
+    const client = await connect(hosted.url);
+    const result = (await client.callTool({ name: 'todos', arguments: {} })) as TextResult;
+    const payload = JSON.parse(result.content[0].text) as { data: { todos: unknown[] } };
+    assert.ok(payload.data.todos.length > 0);
     await client.close();
   });
 });

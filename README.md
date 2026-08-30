@@ -453,10 +453,21 @@ const server = createMcpServer({
 
 ## Other HTTP servers
 
-`createHttpHandler` returns a framework-agnostic handler: it only needs a Node
-`IncomingMessage` with a parsed JSON body on `req.body` (as `express.json()`
-provides) and a Node `ServerResponse`. Express is assumed for the MVP; adapters
-for other frameworks/runtimes are tracked in [TODO.md](./TODO.md).
+`createHttpHandler` returns a framework-agnostic handler: it needs a Node
+`IncomingMessage` and a Node `ServerResponse`, and nothing else. A parsed JSON
+body on `req.body` (as `express.json()` provides) is used when present, but the
+transport reads the request stream itself when it isn't — so a bare `node:http`
+server works with no body parser at all:
+
+```ts
+import http from 'node:http';
+
+const handler = createHttpHandler({ schema });
+http.createServer((req, res) => handler(req, res)).listen(4000);
+```
+
+Adapters for non-Node runtimes (Bun/Deno/edge `Request`/`Response`) are tracked
+in [TODO.md](./TODO.md).
 
 ## Development
 
