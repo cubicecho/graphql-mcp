@@ -228,12 +228,12 @@ function toDescriptor(
   selectionDepth?: number,
   scalars?: ScalarMapping,
 ): ToolDescriptor {
-  const { query, operationName, argNames } = buildOperation(kind, field, selectionDepth);
+  const { query, operationName, argNames, selection } = buildOperation(kind, field, selectionDepth);
   return {
     name,
     kind,
     title: humanize(field.name),
-    description: buildDescription(field, kind),
+    description: buildDescription(field, kind, selection),
     inputSchema: argsToZodShape(field.args, { scalars }),
     outputSchema: buildOutputSchema(field.type, selectionDepth, scalars),
     annotations: annotationsFor(kind, humanize(field.name)),
@@ -243,9 +243,13 @@ function toDescriptor(
   };
 }
 
-/** Composes a tool description from the field's SDL: docstring, signature, and args. */
+/** Composes a tool description from the field's SDL: docstring, signature, args, and result. */
 // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
-function buildDescription(field: GraphQLField<any, any>, kind: OperationKind): string {
+function buildDescription(
+  field: GraphQLField<any, any>,
+  kind: OperationKind,
+  selection: string,
+): string {
   const lines: string[] = [];
   lines.push(field.description?.trim() || `The \`${field.name}\` ${kind}.`);
   lines.push('');
@@ -257,6 +261,15 @@ function buildDescription(field: GraphQLField<any, any>, kind: OperationKind): s
       const desc = arg.description ? ` — ${arg.description.trim()}` : '';
       lines.push(`- \`${arg.name}\`: \`${arg.type.toString()}\`${desc}`);
     }
+  }
+  // The return type alone doesn't tell an agent which fields arrive: the
+  // selection is built automatically and truncated at `selectionDepth`, so a
+  // nested object may come back with only some of its fields. Show the real
+  // selection rather than letting the agent assume the full type.
+  if (selection) {
+    lines.push('');
+    lines.push('Returns this fixed selection (chosen automatically — not requestable):');
+    lines.push(selection);
   }
   return lines.join('\n');
 }

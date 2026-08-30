@@ -113,7 +113,10 @@ src/
 - **Selection sets are auto-generated** (`buildSelectionSet`): all scalar/enum
   leaves at each level, descending into nested objects up to `selectionDepth`
   (default 2), always including `__typename`. Fields requiring arguments and
-  cyclic types are skipped.
+  cyclic types are skipped. Because the agent can't choose the selection, each
+  generated tool's description ends with the exact selection it will get back —
+  otherwise the agent assumes the full return type and plans around fields that
+  never arrive.
 - **`outputSchema.ts` mirrors `selection.ts`.** A descriptor's `outputSchema` is
   a Zod schema for what the generated operation actually returns, so it obeys the
   same skip/depth/cycle rules and is driven by the *same* `selectionDepth` —

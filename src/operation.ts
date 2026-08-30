@@ -24,6 +24,12 @@ export interface BuiltOperation {
   operationName: string;
   /** The field's argument names, in declared order. */
   argNames: string[];
+  /**
+   * The selection set this operation sends, e.g. `{ id title __typename }` —
+   * empty for a leaf (scalar/enum) return type. Exposed so a tool description
+   * can tell the agent which fields actually come back.
+   */
+  selection: string;
 }
 
 /**
@@ -47,5 +53,10 @@ export function buildOperation(
   const selection = buildSelectionSet(field.type, selectionDepth);
   const selectionBlock = selection ? ` ${selection}` : '';
   const query = `${kind} ${field.name}${varBlock} {\n  ${field.name}${argBlock}${selectionBlock}\n}`;
-  return { query, operationName: field.name, argNames: field.args.map((arg) => arg.name) };
+  return {
+    query,
+    operationName: field.name,
+    argNames: field.args.map((arg) => arg.name),
+    selection,
+  };
 }

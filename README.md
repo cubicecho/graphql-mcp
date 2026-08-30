@@ -107,7 +107,8 @@ Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
   scalar/enum leaf plus nested objects up to `selectionDepth` (default 2), always
   including `__typename`. Fields that require arguments and cyclic types are skipped.
 - **Descriptions come from the SDL** — the field docstring, its signature, and a
-  per-argument list.
+  per-argument list. Each description also ends with the exact selection the tool
+  will return, so an agent doesn't plan around fields it won't receive.
 
 ## What a tool returns
 

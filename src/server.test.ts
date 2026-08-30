@@ -203,6 +203,23 @@ describe('createMcpServer', () => {
     await client.close();
   });
 
+  test('a tool description states the selection the agent will get back', async () => {
+    const { schema, root } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+    });
+    const client = await connect(server);
+    const { tools } = await client.listTools();
+    const todos = tools.find((t) => t.name === 'todos');
+    assert.ok(todos?.description);
+    // The return type alone wouldn't tell the agent which fields arrive, nor
+    // that `createdBy` is truncated to `id` by the depth limit.
+    assert.match(todos.description, /Returns this fixed selection/);
+    assert.match(todos.description, /createdBy \{ id __typename \}/);
+    await client.close();
+  });
+
   test('a custom tool overrides a generated one by name', async () => {
     const { schema, root } = makeTodoSchema();
     const server = createMcpServer({
