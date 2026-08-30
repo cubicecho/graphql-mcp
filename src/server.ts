@@ -28,8 +28,9 @@ import type { ZodRawShape } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
 import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
+import { DEFAULT_MAX_CHARS, toCallToolResult } from './result.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
-import type { GraphqlExecutor, GraphqlResult, ToolAnnotations } from './types.ts';
+import type { GraphqlExecutor, ToolAnnotations } from './types.ts';
 
 /** The handler signature for a custom tool: validated args plus the MCP `extra`. */
 export type ToolHandler = (
@@ -74,6 +75,13 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
   context?: unknown | ContextFactory;
   /** Custom tools to add or override generated (and meta) ones by name. */
   tools?: CustomTool[];
+  /**
+   * Character budget for a tool result before it is truncated (with a note
+   * saying how much was cut). Guards an agent's context against a field that
+   * returns a large collection. Default `50_000`; also the default for
+   * {@link MetaToolsOptions.maxChars}.
+   */
+  maxChars?: number;
   /**
    * Expose the schema-exploration tools ({@link buildMetaTools}) — `introspect`,
    * `search`, `validate`, `execute` — for schemas too large to project one tool
@@ -127,6 +135,7 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
   const descriptors = buildTools(schema, options);
   const executor = options.executor ?? createLocalExecutor(schema);
   const customTools = options.tools ?? [];
+  const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   // Meta tools default to the same surface the generated tools expose, so the
   // raw-document `execute` path can't reach past it.
   const metaOptions: MetaToolsOptions | null = options.metaTools
@@ -135,6 +144,7 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
         include: pickMeta(options, 'include') ?? options.include,
         exclude: pickMeta(options, 'exclude') ?? options.exclude,
         allowMutations: pickMeta(options, 'allowMutations') ?? options.includeMutations ?? true,
+        maxChars: pickMeta(options, 'maxChars') ?? options.maxChars,
       }
     : null;
 
@@ -157,7 +167,7 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
 
     for (const descriptor of descriptors) {
       if (byName.has(descriptor.name)) continue;
-      registerGeneratedTool(server, descriptor, executor, context);
+      registerGeneratedTool(server, descriptor, executor, context, maxChars);
     }
     for (const tool of byName.values()) {
       registerCustomTool(server, tool);
@@ -183,15 +193,17 @@ function pickMeta<K extends keyof MetaToolsOptions>(
  * @param descriptors - Tool descriptors (from `buildTools`).
  * @param executor - Where the tools' operations run.
  * @param context - Per-call GraphQL context (value or factory of MCP `extra`).
+ * @param maxChars - Character budget for a result before truncation.
  */
 export function registerGraphqlTools(
   server: McpServer,
   descriptors: ToolDescriptor[],
   executor: GraphqlExecutor,
   context?: unknown | ContextFactory,
+  maxChars = DEFAULT_MAX_CHARS,
 ): void {
   for (const descriptor of descriptors) {
-    registerGeneratedTool(server, descriptor, executor, context);
+    registerGeneratedTool(server, descriptor, executor, context, maxChars);
   }
 }
 
@@ -200,6 +212,7 @@ function registerGeneratedTool(
   descriptor: ToolDescriptor,
   executor: GraphqlExecutor,
   context: unknown | ContextFactory,
+  maxChars: number,
 ): void {
   server.registerTool(
     descriptor.name,
@@ -221,7 +234,7 @@ function registerGeneratedTool(
         operationName: descriptor.operationName,
         context: resolvedContext,
       });
-      return toCallToolResult(result);
+      return toCallToolResult(result, maxChars);
     },
   );
 }
@@ -241,12 +254,4 @@ function registerCustomTool(server: McpServer, tool: CustomTool): void {
 
 async function resolveContext(context: unknown | ContextFactory, extra: unknown): Promise<unknown> {
   return typeof context === 'function' ? await (context as ContextFactory)(extra) : context;
-}
-
-/** Wraps a GraphQL result as an MCP tool result; flags GraphQL errors as `isError`. */
-function toCallToolResult(result: GraphqlResult): CallToolResult {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-    isError: Boolean(result.errors?.length),
-  };
 }

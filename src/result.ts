@@ -1,0 +1,95 @@
+/**
+ * Turns a {@link GraphqlResult} into the `CallToolResult` an agent actually
+ * reads. Shared by the generated tools (`server.ts`) and the `execute` meta tool
+ * (`meta.ts`) so both report success, failure, and size the same way.
+ *
+ * Three things matter here, and all three are about the *agent's* experience:
+ *
+ * - **Partial results are not failures.** GraphQL returns `data` *and* `errors`
+ *   when some fields resolve and others don't. Flagging that whole call
+ *   `isError` makes an agent discard rows it could have used, so `isError`
+ *   tracks whether anything usable came back — not whether `errors` is
+ *   non-empty. "Usable" means at least one root field is non-null: a nullable
+ *   root field whose resolver threw still yields `data: { field: null }`, which
+ *   is a total failure of that call however present `data` looks.
+ * - **Errors are trimmed to what an agent can act on.** A GraphQL error's
+ *   `locations` are line/column offsets into a query string the agent never
+ *   wrote and cannot see; reporting them invites nonsense self-correction.
+ *   `message`, `path`, and `extensions` (which carry app-level codes like
+ *   `UNAUTHENTICATED`) survive.
+ * - **Results are clamped.** A tool that returns a large collection would
+ *   otherwise flood the agent's context with no warning.
+ *
+ * The text is always pure JSON, so a client can parse it directly.
+ */
+
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { GraphqlError, GraphqlResult } from './types.ts';
+
+/** Default character budget for a tool result before truncation. */
+export const DEFAULT_MAX_CHARS = 50_000;
+
+/**
+ * Truncates `value` to `maxChars`, appending a note that says how much was cut
+ * and what to do about it.
+ */
+export function clamp(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n\n[truncated ${value.length - maxChars} of ${value.length} characters — narrow the query or request fewer fields]`;
+}
+
+/** Wraps a plain body as a (clamped) text tool result. */
+export function text(body: string, maxChars = DEFAULT_MAX_CHARS): CallToolResult {
+  return { content: [{ type: 'text', text: clamp(body, maxChars) }] };
+}
+
+/**
+ * Wraps a GraphQL result as an MCP tool result.
+ *
+ * `isError` is set only when no data came back, so a partial result stays usable
+ * — it carries a `note` explaining that some fields failed. Errors are condensed
+ * to `message`/`path`/`extensions`, and the JSON is clamped to `maxChars`.
+ *
+ * @param result - The executor's GraphQL result.
+ * @param maxChars - Character budget before truncation.
+ */
+export function toCallToolResult(
+  result: GraphqlResult,
+  maxChars = DEFAULT_MAX_CHARS,
+): CallToolResult {
+  const errors = result.errors ?? [];
+  const hasData = hasUsableData(result.data);
+  const failed = errors.length > 0 && !hasData;
+
+  const payload: Record<string, unknown> = {};
+  if (result.data !== undefined) payload.data = result.data;
+  if (errors.length) payload.errors = errors.map(condense);
+  if (errors.length && hasData) {
+    payload.note =
+      'Partial result: some fields failed and are null in `data`; the rest is valid. See `errors`.';
+  }
+
+  return {
+    content: [{ type: 'text', text: clamp(JSON.stringify(payload, null, 2), maxChars) }],
+    isError: failed,
+  };
+}
+
+/**
+ * Whether `data` holds anything the agent can use: at least one non-null root
+ * field. `null`/absent `data` is a top-level or transport failure, and
+ * `{ field: null }` — what a nullable root field yields when its resolver throws
+ * — is just as empty despite being a present object.
+ */
+function hasUsableData(data: Record<string, unknown> | null | undefined): boolean {
+  if (data === null || data === undefined) return false;
+  return Object.values(data).some((value) => value !== null);
+}
+
+/** Keeps the parts of a GraphQL error an agent can act on. */
+function condense(error: GraphqlError): GraphqlError {
+  const condensed: GraphqlError = { message: error.message };
+  if (error.path) condensed.path = error.path;
+  if (error.extensions) condensed.extensions = error.extensions;
+  return condensed;
+}

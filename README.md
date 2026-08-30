@@ -109,6 +109,33 @@ Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
 - **Descriptions come from the SDL** — the field docstring, its signature, and a
   per-argument list.
 
+## What a tool returns
+
+Every tool — generated or meta — returns JSON text you can parse directly:
+
+```json
+{
+  "data": { "todos": [{ "id": "1", "__typename": "Todo" }] },
+  "errors": [{ "message": "…", "path": ["todos", 1, "owner"] }],
+  "note": "Partial result: some fields failed and are null in `data`; …"
+}
+```
+
+- **`isError` means nothing usable came back.** GraphQL happily returns `data`
+  *and* `errors` when some fields resolve and others don't. Flagging that whole
+  call an error makes an agent throw away rows it could have used, so `isError`
+  is set only when no root field resolved — otherwise the result carries a
+  `note` saying part of it failed.
+- **Errors are condensed** to `message`, `path`, and `extensions` (where app
+  codes like `UNAUTHENTICATED` live). `locations` are dropped: they're line and
+  column offsets into a query string the agent never wrote and can't see.
+- **Results are clamped** to `maxChars` (default `50_000`) with a note saying how
+  much was cut, so one large collection can't flood the agent's context:
+
+```ts
+createMcpServer({ schema, maxChars: 20_000 });
+```
+
 ## Choosing where GraphQL runs
 
 The single seam is the **executor**. The default runs in-process against the

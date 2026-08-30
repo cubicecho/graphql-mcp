@@ -1,0 +1,135 @@
+import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { clamp, DEFAULT_MAX_CHARS, text, toCallToolResult } from './result.ts';
+
+/** The tool's text body — `content[0]` is always a text block here. */
+function bodyOf(result: CallToolResult): string {
+  return (result.content[0] as { text: string }).text;
+}
+
+function payloadOf(result: CallToolResult) {
+  return JSON.parse(bodyOf(result));
+}
+
+describe('toCallToolResult failure signalling', () => {
+  test('a clean result is not an error and carries no errors key', () => {
+    const result = toCallToolResult({ data: { todo: { id: '1' } } });
+    assert.equal(result.isError, false);
+    const payload = payloadOf(result);
+    assert.deepEqual(payload.data, { todo: { id: '1' } });
+    assert.equal('errors' in payload, false);
+    assert.equal('note' in payload, false);
+  });
+
+  test('errors with no data are a real failure', () => {
+    const result = toCallToolResult({ data: null, errors: [{ message: 'boom' }] });
+    assert.equal(result.isError, true);
+    assert.equal(payloadOf(result).errors[0].message, 'boom');
+  });
+
+  test('an absent data key (transport error) is a real failure', () => {
+    const result = toCallToolResult({ errors: [{ message: 'endpoint responded 500' }] });
+    assert.equal(result.isError, true);
+    assert.equal('data' in payloadOf(result), false);
+  });
+
+  test('partial data is NOT flagged as an error, so an agent keeps using it', () => {
+    const result = toCallToolResult({
+      data: { items: [{ id: 'a' }, { id: 'b', boom: null }] },
+      errors: [{ message: 'resolver exploded', path: ['items', 1, 'boom'] }],
+    });
+    assert.equal(result.isError, false);
+    const payload = payloadOf(result);
+    // The usable rows survive alongside the error.
+    assert.deepEqual(payload.data.items, [{ id: 'a' }, { id: 'b', boom: null }]);
+    assert.equal(payload.errors.length, 1);
+    assert.match(payload.note, /Partial result/);
+  });
+
+  test('a nullable root field that threw is a failure, despite data being present', () => {
+    // GraphQL yields `data: { boom: null }` here — an object, but nothing usable.
+    const result = toCallToolResult({ data: { boom: null }, errors: [{ message: 'exploded' }] });
+    assert.equal(result.isError, true);
+    assert.equal('note' in payloadOf(result), false);
+  });
+
+  test('one usable root field among nulls still counts as partial', () => {
+    const result = toCallToolResult({
+      data: { a: null, b: { id: '1' } },
+      errors: [{ message: 'a failed' }],
+    });
+    assert.equal(result.isError, false);
+    assert.match(payloadOf(result).note, /Partial result/);
+  });
+
+  test('data present with no errors gets no partial note', () => {
+    const result = toCallToolResult({ data: { a: 1 } });
+    assert.equal('note' in payloadOf(result), false);
+  });
+});
+
+describe('toCallToolResult error condensing', () => {
+  const raw = {
+    data: null,
+    errors: [
+      {
+        message: 'Unauthorized',
+        // Line/column into a query string the agent never wrote.
+        locations: [{ line: 2, column: 14 }],
+        path: ['viewer'],
+        extensions: { code: 'UNAUTHENTICATED' },
+      },
+    ],
+  };
+
+  test('drops locations, which point into a query the agent cannot see', () => {
+    const error = payloadOf(toCallToolResult(raw)).errors[0];
+    assert.equal('locations' in error, false);
+  });
+
+  test('keeps message, path, and extensions', () => {
+    const error = payloadOf(toCallToolResult(raw)).errors[0];
+    assert.equal(error.message, 'Unauthorized');
+    assert.deepEqual(error.path, ['viewer']);
+    assert.deepEqual(error.extensions, { code: 'UNAUTHENTICATED' });
+  });
+
+  test('omits path and extensions when absent rather than emitting nulls', () => {
+    const error = payloadOf(toCallToolResult({ data: null, errors: [{ message: 'plain' }] }))
+      .errors[0];
+    assert.deepEqual(error, { message: 'plain' });
+  });
+});
+
+describe('toCallToolResult size clamping', () => {
+  test('a large result is truncated with a note saying how much was cut', () => {
+    const rows = Array.from({ length: 500 }, (_, i) => ({ id: `row-${i}`, blob: 'x'.repeat(100) }));
+    const result = toCallToolResult({ data: { rows } }, 2_000);
+    const body = bodyOf(result);
+    assert.ok(body.length < 2_300, `expected a clamped body, got ${body.length} chars`);
+    assert.match(body, /\[truncated \d+ of \d+ characters/);
+    assert.equal(result.isError, false);
+  });
+
+  test('a result within budget is left untouched and stays parseable', () => {
+    const result = toCallToolResult({ data: { a: 1 } }, DEFAULT_MAX_CHARS);
+    assert.deepEqual(payloadOf(result).data, { a: 1 });
+  });
+});
+
+describe('clamp and text', () => {
+  test('clamp returns short input unchanged', () => {
+    assert.equal(clamp('short', 100), 'short');
+  });
+
+  test('clamp reports the exact overflow', () => {
+    const clamped = clamp('a'.repeat(30), 10);
+    assert.match(clamped, /truncated 20 of 30 characters/);
+    assert.ok(clamped.startsWith('a'.repeat(10)));
+  });
+
+  test('text wraps a body as a non-error tool result', () => {
+    assert.deepEqual(text('hello'), { content: [{ type: 'text', text: 'hello' }] });
+  });
+});

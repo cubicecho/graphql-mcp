@@ -30,9 +30,10 @@ Deferred work and known MVP limitations.
 
 ## Tools & output
 
-- **Response size.** Generated tools return large GraphQL results whole. The
-  meta tools already clamp at `maxChars` with a truncation note; apply the same
-  guard to generated tools, plus pagination hints.
+- **Pagination hints.** Results are clamped at `maxChars` with a truncation
+  note, but a truncated list gives the agent no way to ask for the rest. Detect
+  connection/pagination arguments (`first`/`after`, `limit`/`offset`) and have
+  the truncation note name the argument to page with.
 - **Meta-tool result caching.** `graphql_introspect`/`graphql_search` recompute
   from the schema on every call. Memoize per schema if it shows up in profiles.
 - **Structured output (SDK registration).** `ToolDescriptor.outputSchema`

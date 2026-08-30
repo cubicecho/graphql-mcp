@@ -9,6 +9,7 @@ import { describe, test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { buildSchema } from 'graphql';
 import { createLocalExecutor } from './executor.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
 import { createMcpServer } from './server.ts';
@@ -94,21 +95,111 @@ describe('createMcpServer', () => {
     await client.close();
   });
 
-  test('a GraphQL error comes back as isError', async () => {
+  test('a missing record is data: null, not an error', async () => {
     const { schema, root } = makeTodoSchema();
     const server = createMcpServer({
       schema,
       executor: createLocalExecutor(schema, { rootValue: root }),
     });
     const client = await connect(server);
-    // Unknown id resolves to null with no error; force an error via a bad variable type
-    // by calling setCompleted without the required `completed` — Zod blocks it client-side,
-    // so instead assert the happy path returns a clean result and trust executor.test.ts
-    // for the error mapping. Here we confirm a missing record yields data: null, not isError.
     const result = await client.callTool({ name: 'todo', arguments: { id: 'nope' } });
     const { isError, data } = parseResult(result);
     assert.equal(isError, false);
     assert.equal((data as { todo: unknown }).todo, null);
+    await client.close();
+  });
+
+  test('a failed root field is reported as an error', async () => {
+    const schema = buildSchema('type Query { boom: String }');
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, {
+        rootValue: {
+          boom: () => {
+            throw new Error('resolver exploded');
+          },
+        },
+      }),
+    });
+    const client = await connect(server);
+    const result = await client.callTool({ name: 'boom', arguments: {} });
+    const { isError, errors } = parseResult(result);
+    assert.equal(isError, true);
+    assert.equal((errors as Array<{ message: string }>)[0].message, 'resolver exploded');
+    await client.close();
+  });
+
+  test('a partial result stays usable instead of being flagged an error', async () => {
+    // One row resolves, the next throws — GraphQL returns data *and* errors.
+    const schema = buildSchema(
+      'type Item { id: String! boom: String } type Query { items: [Item!]! }',
+    );
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, {
+        rootValue: {
+          items: () => [
+            { id: 'a', boom: () => 'fine' },
+            {
+              id: 'b',
+              boom: () => {
+                throw new Error('resolver exploded');
+              },
+            },
+          ],
+        },
+      }),
+    });
+    const client = await connect(server);
+    const result = await client.callTool({ name: 'items', arguments: {} });
+    const { isError, data, errors } = parseResult(result);
+    // The good row survived, so the agent must not be told the call failed.
+    assert.equal(isError, false);
+    const items = (data as { items: Array<{ id: string; boom: string | null }> }).items;
+    assert.equal(items.length, 2);
+    assert.equal(items[0].boom, 'fine');
+    assert.equal(items[1].boom, null);
+    assert.equal((errors as unknown[]).length, 1);
+    await client.close();
+  });
+
+  test('error payloads drop locations but keep path and extensions', async () => {
+    const schema = buildSchema('type Query { boom: String }');
+    const server = createMcpServer({
+      schema,
+      executor: async () => ({
+        data: null,
+        errors: [
+          {
+            message: 'Unauthorized',
+            locations: [{ line: 2, column: 14 }],
+            path: ['boom'],
+            extensions: { code: 'UNAUTHENTICATED' },
+          },
+        ],
+      }),
+    });
+    const client = await connect(server);
+    const result = await client.callTool({ name: 'boom', arguments: {} });
+    const error = (parseResult(result).errors as Array<Record<string, unknown>>)[0];
+    // Line/column point into a query the agent never wrote.
+    assert.equal('locations' in error, false);
+    assert.deepEqual(error.path, ['boom']);
+    assert.deepEqual(error.extensions, { code: 'UNAUTHENTICATED' });
+    await client.close();
+  });
+
+  test('maxChars clamps a generated tool result', async () => {
+    const { schema, root } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      maxChars: 120,
+    });
+    const client = await connect(server);
+    const result = await client.callTool({ name: 'todos', arguments: {} });
+    const body = (result as TextResult).content[0].text;
+    assert.match(body, /\[truncated \d+ of \d+ characters/);
     await client.close();
   });
 

@@ -62,6 +62,7 @@ src/
   extend.ts       — MCP-only schema additions via mergeSchemas (extendSchemaForMcp, stripRootTypes)
   tools.ts        — schema → ToolDescriptor[] (buildTools): names, descriptions, annotations
   meta.ts         — opt-in schema-exploration tools (buildMetaTools): introspect/search/validate/execute
+  result.ts       — GraphqlResult → CallToolResult (toCallToolResult): isError, error condensing, clamping
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
   server.ts       — createMcpServer / createServerFactory / registerGraphqlTools (+ custom tools)
   http.ts         — createHttpHandler for the Streamable HTTP transport
@@ -118,6 +119,16 @@ src/
   same skip/depth/cycle rules and is driven by the *same* `selectionDepth` —
   there is no separate depth option, because a schema describing fields the query
   never selects would be wrong. Change one module and change the other.
+- **One place formats results: `result.ts`.** Generated tools and the `execute`
+  meta tool both hand their `GraphqlResult` to `toCallToolResult`, so success,
+  failure, and size read the same everywhere. Three rules live there, all about
+  the agent's experience: `isError` means *nothing usable came back* (at least
+  one non-null root field ⇒ partial success, which carries a `note` rather than
+  a failure flag, so an agent doesn't discard rows it could have used); errors
+  are condensed to `message`/`path`/`extensions`, dropping `locations` because
+  they index into a query string the agent never wrote and cannot see; and the
+  JSON is clamped to `maxChars` (default 50k) with a note saying how much was
+  cut. Don't format a result anywhere else.
 - **Pure vs. bound.** `buildTools` produces pure `ToolDescriptor`s (no SDK, no
   executor). `server.ts` binds them to an executor + `McpServer`. Keep that split.
 - **Stateless HTTP needs a fresh server per request.** An `McpServer` owns a

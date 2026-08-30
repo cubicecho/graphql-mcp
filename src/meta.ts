@@ -31,6 +31,7 @@ import {
   validate,
 } from 'graphql';
 import { z } from 'zod';
+import { DEFAULT_MAX_CHARS, text, toCallToolResult } from './result.ts';
 import { compileRules, type RuleMatcher } from './rules.ts';
 import type { CustomTool } from './server.ts';
 import type { GraphqlExecutor, OperationKind } from './types.ts';
@@ -69,8 +70,6 @@ export interface MetaToolDeps {
   /** Resolves the per-call GraphQL context from the MCP `extra`. */
   resolveContext?: (extra: unknown) => Promise<unknown>;
 }
-
-const DEFAULT_MAX_CHARS = 50_000;
 
 /**
  * Builds the opt-in schema-exploration tools as {@link CustomTool}s, ready to
@@ -279,10 +278,7 @@ function executeTool(
         ...(operationName ? { operationName } : {}),
         context,
       });
-      return {
-        content: [{ type: 'text', text: clamp(JSON.stringify(result, null, 2), maxChars) }],
-        isError: Boolean(result.errors?.length),
-      };
+      return toCallToolResult(result, maxChars);
     },
   };
 }
@@ -441,15 +437,6 @@ function suggest(input: string, candidates: string[]): string {
         .map((n) => `'${n}'`)
         .join(', ')}?`
     : '';
-}
-
-function clamp(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}\n\n[truncated ${value.length - maxChars} of ${value.length} characters — narrow the query or request fewer fields]`;
-}
-
-function text(body: string, maxChars = DEFAULT_MAX_CHARS): CallToolResult {
-  return { content: [{ type: 'text', text: clamp(body, maxChars) }] };
 }
 
 function errorText(body: string): CallToolResult {
