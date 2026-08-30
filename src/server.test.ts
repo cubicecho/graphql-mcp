@@ -220,6 +220,25 @@ describe('createMcpServer', () => {
     await client.close();
   });
 
+  test('an executor that throws still returns a parseable JSON body', async () => {
+    // A network failure reaches the SDK as a bare string unless we catch it,
+    // breaking `JSON.parse` on exactly the error a client needs to read.
+    const { schema } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      executor: async () => {
+        throw new Error('ECONNREFUSED 127.0.0.1:4000');
+      },
+    });
+    const client = await connect(server);
+    const result = await client.callTool({ name: 'todos', arguments: {} });
+    const body = (result as TextResult).content[0].text;
+    const payload = JSON.parse(body) as { errors: Array<{ message: string }> };
+    assert.equal(result.isError, true);
+    assert.equal(payload.errors[0].message, 'ECONNREFUSED 127.0.0.1:4000');
+    await client.close();
+  });
+
   test('a custom tool overrides a generated one by name', async () => {
     const { schema, root } = makeTodoSchema();
     const server = createMcpServer({

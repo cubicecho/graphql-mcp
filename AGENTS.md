@@ -132,7 +132,11 @@ src/
   are condensed to `message`/`path`/`extensions`, dropping `locations` because
   they index into a query string the agent never wrote and cannot see; and the
   JSON is clamped to `maxChars` (default 50k) with a note saying how much was
-  cut. Don't format a result anywhere else.
+  cut. Don't format a result anywhere else. Every executor call goes through
+  `runExecutor`, which turns a *thrown* executor error into an `{ errors }`
+  result — an uncaught throw reaches the SDK, which emits the bare message as
+  text and breaks the parseable-JSON promise on exactly the failure a client
+  most needs to read.
 - **Pure vs. bound.** `buildTools` produces pure `ToolDescriptor`s (no SDK, no
   executor). `server.ts` binds them to an executor + `McpServer`. Keep that split.
 - **Stateless HTTP needs a fresh server per request.** An `McpServer` owns a

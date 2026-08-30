@@ -28,7 +28,7 @@ import type { ZodRawShape } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
 import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
-import { DEFAULT_MAX_CHARS, toCallToolResult } from './result.ts';
+import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './result.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
 import type { GraphqlExecutor, ToolAnnotations } from './types.ts';
 import { VERSION } from './version.ts';
@@ -229,7 +229,7 @@ function registerGeneratedTool(
         if (args[argName] !== undefined) variables[argName] = args[argName];
       }
       const resolvedContext = await resolveContext(context, extra);
-      const result = await executor({
+      const result = await runExecutor(executor, {
         query: descriptor.query,
         variables,
         operationName: descriptor.operationName,

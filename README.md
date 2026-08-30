@@ -137,6 +137,10 @@ Every tool — generated or meta — returns JSON text you can parse directly:
 createMcpServer({ schema, maxChars: 20_000 });
 ```
 
+That holds when the executor *throws*, too — a refused connection or a broken
+custom executor comes back as `{ "errors": [{ "message": "…" }] }` with
+`isError` set, never as a bare string a client can't parse.
+
 ## Choosing where GraphQL runs
 
 The single seam is the **executor**. The default runs in-process against the

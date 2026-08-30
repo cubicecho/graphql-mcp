@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { clamp, DEFAULT_MAX_CHARS, text, toCallToolResult } from './result.ts';
+import { clamp, DEFAULT_MAX_CHARS, runExecutor, text, toCallToolResult } from './result.ts';
 
 /** The tool's text body — `content[0]` is always a text block here. */
 function bodyOf(result: CallToolResult): string {
@@ -131,5 +131,38 @@ describe('clamp and text', () => {
 
   test('text wraps a body as a non-error tool result', () => {
     assert.deepEqual(text('hello'), { content: [{ type: 'text', text: 'hello' }] });
+  });
+});
+
+describe('runExecutor', () => {
+  const request = { query: '{ a }', variables: {} };
+
+  test('passes a successful result straight through', async () => {
+    const result = await runExecutor(async () => ({ data: { a: 1 } }), request);
+    assert.deepEqual(result, { data: { a: 1 } });
+  });
+
+  test('a thrown Error becomes a GraphQL result, so the body stays parseable JSON', async () => {
+    const result = await runExecutor(async () => {
+      throw new Error('ECONNREFUSED 127.0.0.1:4000');
+    }, request);
+    assert.deepEqual(result, { errors: [{ message: 'ECONNREFUSED 127.0.0.1:4000' }] });
+    // The whole point: this still round-trips through the normal formatter.
+    const body = bodyOf(toCallToolResult(result));
+    assert.equal(JSON.parse(body).errors[0].message, 'ECONNREFUSED 127.0.0.1:4000');
+  });
+
+  test('a thrown non-Error is reported by its string form', async () => {
+    const result = await runExecutor(async () => {
+      throw 'gateway timeout';
+    }, request);
+    assert.deepEqual(result, { errors: [{ message: 'gateway timeout' }] });
+  });
+
+  test('a thrown value with no usable message still says something', async () => {
+    const result = await runExecutor(async () => {
+      throw {};
+    }, request);
+    assert.match((result.errors ?? [])[0].message, /executor failed/);
   });
 });

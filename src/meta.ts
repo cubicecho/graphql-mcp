@@ -31,7 +31,7 @@ import {
   validate,
 } from 'graphql';
 import { z } from 'zod';
-import { DEFAULT_MAX_CHARS, text, toCallToolResult } from './result.ts';
+import { DEFAULT_MAX_CHARS, runExecutor, text, toCallToolResult } from './result.ts';
 import { compileRules, type RuleMatcher } from './rules.ts';
 import type { CustomTool } from './server.ts';
 import type { GraphqlExecutor, OperationKind } from './types.ts';
@@ -272,7 +272,7 @@ function executeTool(
       }
 
       const context = await deps.resolveContext?.(extra);
-      const result = await deps.executor({
+      const result = await runExecutor(deps.executor, {
         query,
         variables: (args.variables as Record<string, unknown> | undefined) ?? {},
         ...(operationName ? { operationName } : {}),

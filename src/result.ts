@@ -20,11 +20,14 @@
  * - **Results are clamped.** A tool that returns a large collection would
  *   otherwise flood the agent's context with no warning.
  *
- * The text is always pure JSON, so a client can parse it directly.
+ * The text is always pure JSON, so a client can parse it directly — which is why
+ * {@link runExecutor} exists: an executor that *throws* would otherwise reach
+ * the SDK, which reports the bare message as text and breaks that promise on
+ * exactly the failure a client most needs to handle.
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { GraphqlError, GraphqlResult } from './types.ts';
+import type { GraphqlError, GraphqlExecutor, GraphqlRequest, GraphqlResult } from './types.ts';
 
 /** Default character budget for a tool result before truncation. */
 export const DEFAULT_MAX_CHARS = 50_000;
@@ -73,6 +76,38 @@ export function toCallToolResult(
     content: [{ type: 'text', text: clamp(JSON.stringify(payload, null, 2), maxChars) }],
     isError: failed,
   };
+}
+
+/**
+ * Runs `request` through `executor`, turning a thrown error into a GraphQL-shaped
+ * `{ errors }` result.
+ *
+ * Executors throw for reasons that have nothing to do with the schema — the
+ * endpoint is down, `fetch` rejected, a custom executor has a bug — and an
+ * uncaught throw reaches the SDK, which renders the bare message as the tool's
+ * text body. That body is documented as parseable JSON, so a client handling a
+ * network outage would hit a `JSON.parse` failure instead of the error it came
+ * for. Catching here keeps every tool result the same shape.
+ *
+ * @param executor - Where the operation runs.
+ * @param request - The GraphQL request to run.
+ */
+export async function runExecutor(
+  executor: GraphqlExecutor,
+  request: GraphqlRequest,
+): Promise<GraphqlResult> {
+  try {
+    return await executor(request);
+  } catch (cause) {
+    return { errors: [{ message: messageOf(cause) }] };
+  }
+}
+
+/** A thrown value's message, falling back to its string form. */
+function messageOf(cause: unknown): string {
+  if (cause instanceof Error && cause.message) return cause.message;
+  const text = String(cause);
+  return text === '[object Object]' ? 'The GraphQL executor failed.' : text;
 }
 
 /**
