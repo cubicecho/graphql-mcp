@@ -12,6 +12,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { buildSchema } from 'graphql';
 import { createLocalExecutor } from './executor.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
+import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './index.ts';
 import { createMcpServer } from './server.ts';
 
 async function connect(server: McpServer): Promise<Client> {
@@ -236,6 +237,33 @@ describe('createMcpServer', () => {
     const payload = JSON.parse(body) as { errors: Array<{ message: string }> };
     assert.equal(result.isError, true);
     assert.equal(payload.errors[0].message, 'ECONNREFUSED 127.0.0.1:4000');
+    await client.close();
+  });
+
+  test('a custom tool can reuse the exported result helpers', async () => {
+    // Without these on the public API a custom tool has to hand-roll `isError`,
+    // and would reintroduce the partial-result bug the generated tools fixed.
+    const { schema, root } = makeTodoSchema();
+    const executor = createLocalExecutor(schema, { rootValue: root });
+    const server = createMcpServer({
+      schema,
+      executor,
+      tools: [
+        {
+          name: 'firstTodo',
+          description: 'The first todo, via the exported helpers.',
+          handler: async () => {
+            const result = await runExecutor(executor, { query: '{ todos { id } }' });
+            return toCallToolResult(result, DEFAULT_MAX_CHARS);
+          },
+        },
+      ],
+    });
+    const client = await connect(server);
+    const result = await client.callTool({ name: 'firstTodo', arguments: {} });
+    const { isError, data } = parseResult(result);
+    assert.equal(isError, false);
+    assert.ok((data as { todos: unknown[] }).todos.length > 0);
     await client.close();
   });
 

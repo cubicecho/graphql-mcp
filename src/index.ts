@@ -30,6 +30,8 @@
  * - `extend` — MCP-only schema additions (`extendSchemaForMcp`, `stripRootTypes`)
  * - `tools` — schema → `ToolDescriptor`s (`buildTools`)
  * - `meta` — opt-in schema-exploration tools (`buildMetaTools`)
+ * - `result` — GraphQL result → MCP tool result (`toCallToolResult`, `runExecutor`);
+ *   reuse these in a custom tool so it reports failure and size like the rest
  * - `executor` — `createLocalExecutor` (in-process) / `createHttpExecutor` (forwarding)
  * - `server` — `createMcpServer` / `createServerFactory` / `registerGraphqlTools` (+ custom tools)
  * - `http` — `createHttpHandler` for the Streamable HTTP transport
@@ -48,6 +50,8 @@ export { buildMetaTools } from './meta.ts';
 export type { BuiltOperation } from './operation.ts';
 export { buildOperation } from './operation.ts';
 export { buildOutputSchema } from './outputSchema.ts';
+export type { ExecutorRequest } from './result.ts';
+export { clamp, DEFAULT_MAX_CHARS, runExecutor, text, toCallToolResult } from './result.ts';
 export type { RuleMatcher } from './rules.ts';
 export { compileRules } from './rules.ts';
 export { buildSelectionSet } from './selection.ts';
@@ -73,5 +77,6 @@ export type {
   OperationKind,
   ToolAnnotations,
 } from './types.ts';
+export { VERSION } from './version.ts';
 export type { ScalarMap, ScalarMapping, ScalarResolver, ZodShapeOptions } from './zodSchema.ts';
 export { argsToZodShape } from './zodSchema.ts';

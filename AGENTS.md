@@ -136,7 +136,9 @@ src/
   `runExecutor`, which turns a *thrown* executor error into an `{ errors }`
   result — an uncaught throw reaches the SDK, which emits the bare message as
   text and breaks the parseable-JSON promise on exactly the failure a client
-  most needs to read.
+  most needs to read. These helpers are exported from `index.ts` on purpose: a
+  custom tool that runs GraphQL must be able to produce the same envelope
+  instead of hand-rolling `isError` and reintroducing the bugs they fix.
 - **Pure vs. bound.** `buildTools` produces pure `ToolDescriptor`s (no SDK, no
   executor). `server.ts` binds them to an executor + `McpServer`. Keep that split.
 - **Stateless HTTP needs a fresh server per request.** An `McpServer` owns a

@@ -451,6 +451,31 @@ const server = createMcpServer({
 });
 ```
 
+A custom tool that runs GraphQL itself should reuse the same result handling the
+generated tools use, rather than rolling its own — `runExecutor` turns a thrown
+executor into an `{ errors }` result, and `toCallToolResult` applies the
+partial-result, error-condensing, and clamping rules described in
+[What a tool returns](#what-a-tool-returns):
+
+```ts
+import { runExecutor, toCallToolResult } from '@cubicecho/graphql-mcp';
+
+const executor = createLocalExecutor(schema, { rootValue });
+
+tools: [
+  {
+    name: 'urgentTodos',
+    description: 'Todos due today, sorted by priority.',
+    handler: async () => {
+      const result = await runExecutor(executor, {
+        query: '{ todos(status: OPEN) { id description } }',
+      });
+      return toCallToolResult(result);
+    },
+  },
+];
+```
+
 ## Other HTTP servers
 
 `createHttpHandler` returns a framework-agnostic handler: it needs a Node

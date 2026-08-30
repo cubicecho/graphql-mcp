@@ -81,6 +81,18 @@ export function toCallToolResult(
 }
 
 /**
+ * A request as a *caller* writes one: `variables` may be omitted.
+ *
+ * {@link GraphqlRequest} keeps `variables` required so an executor never has to
+ * check for it, which is the right guarantee for the implementer but noise for
+ * a custom tool running a document that takes none. {@link runExecutor} fills
+ * the gap in.
+ */
+export type ExecutorRequest = Omit<GraphqlRequest, 'variables'> & {
+  variables?: Record<string, unknown>;
+};
+
+/**
  * Runs `request` through `executor`, turning a thrown error into a GraphQL-shaped
  * `{ errors }` result.
  *
@@ -96,10 +108,10 @@ export function toCallToolResult(
  */
 export async function runExecutor(
   executor: GraphqlExecutor,
-  request: GraphqlRequest,
+  request: ExecutorRequest,
 ): Promise<GraphqlResult> {
   try {
-    return await executor(request);
+    return await executor({ ...request, variables: request.variables ?? {} });
   } catch (cause) {
     return { errors: [{ message: messageOf(cause) }] };
   }

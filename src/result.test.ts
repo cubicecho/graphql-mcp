@@ -185,3 +185,34 @@ describe('runExecutor', () => {
     assert.match((result.errors ?? [])[0].message, /executor failed/);
   });
 });
+
+describe('runExecutor request shaping', () => {
+  test('fills in empty variables, so a caller can pass just a query', async () => {
+    let seen: unknown;
+    await runExecutor(
+      async (request) => {
+        seen = request.variables;
+        return { data: {} };
+      },
+      { query: '{ a }' },
+    );
+    assert.deepEqual(seen, {});
+  });
+
+  test('passes given variables and the rest of the request through untouched', async () => {
+    let seen: unknown;
+    await runExecutor(
+      async (request) => {
+        seen = request;
+        return { data: {} };
+      },
+      { query: '{ a }', variables: { id: '1' }, operationName: 'A', context: { token: 't' } },
+    );
+    assert.deepEqual(seen, {
+      query: '{ a }',
+      variables: { id: '1' },
+      operationName: 'A',
+      context: { token: 't' },
+    });
+  });
+});
