@@ -10,8 +10,8 @@
  * - scalars → the `scalars` option first, then the built-ins (`Int`/`Float` ⇒ number,
  *   `String`/`ID` ⇒ string, `Boolean` ⇒ boolean), then `z.any()` tagged with the name
  * - enums → `z.enum([...names])` (enum *names*, the form passed as GraphQL variables)
- * - input objects → `z.object({...})`, recursively; a recursive input type falls back
- *   to `z.any()` once revisited (a pragmatic MVP guard — see TODO.md)
+ * - input objects → `z.object({...})`, recursively; self-references become `z.lazy()`
+ *   to model the recursion precisely instead of falling back to `z.any()`.
  */
 
 import {
@@ -62,12 +62,17 @@ const SCALAR_BUILDERS: Record<string, () => ZodTypeAny> = {
 
 /** Recursion state: the input-object cycle guard plus the resolved scalar mapper. */
 interface Ctx {
-  seen: ReadonlySet<string>;
+  /**
+   * Input objects whose shape is still being built, keyed by type name. A
+   * self-reference found while building links back to the same `z.lazy` node
+   * instead of recursing forever.
+   */
+  pending: Map<string, ZodTypeAny>;
   scalar: ScalarResolver;
 }
 
 /** Normalizes either mapping form into a single lookup function. */
-function toResolver(mapping: ScalarMapping | undefined): ScalarResolver {
+export function toResolver(mapping: ScalarMapping | undefined): ScalarResolver {
   if (!mapping) return () => undefined;
   if (typeof mapping === 'function') return mapping;
   return (scalar) => mapping[scalar.name];
@@ -99,17 +104,25 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
     return names.length ? z.enum(names as [string, ...string[]]) : z.string();
   }
   if (isInputObjectType(type)) {
-    // Recursive input types (e.g. nested filter inputs) would recurse forever;
-    // once a type reappears on the current path, fall back to an opaque value.
-    if (ctx.seen.has(type.name)) {
-      return z.any().describe(`Recursive input ${type.name}`);
-    }
-    const next: Ctx = { seen: new Set(ctx.seen).add(type.name), scalar: ctx.scalar };
+    // Self-referential input types (e.g. a nested filter tree) resolve to the
+    // `z.lazy` node registered before the shape is built, so the recursion is
+    // modelled precisely instead of collapsing to an opaque `z.any()`.
+    const pending = ctx.pending.get(type.name);
+    if (pending) return pending;
+    const holder: { schema?: ZodTypeAny } = {};
+    // `z.lazy` defers its getter until parse time, which is always after this
+    // call returns and sets `holder.schema` — so the cast can't observe undefined.
+    ctx.pending.set(
+      type.name,
+      z.lazy(() => holder.schema as ZodTypeAny),
+    );
     const shape: ZodRawShape = {};
     for (const [name, field] of Object.entries(type.getFields())) {
-      shape[name] = describe(fieldToZod(field.type, next), field.description);
+      shape[name] = describe(fieldToZod(field.type, ctx), field.description);
     }
-    return z.object(shape);
+    ctx.pending.delete(type.name);
+    holder.schema = z.object(shape);
+    return holder.schema;
   }
   // Unreachable for valid input types; keep type-checking happy and fail soft.
   return z.any();
@@ -133,7 +146,7 @@ export function argsToZodShape(
   args: ReadonlyArray<GraphQLArgument>,
   options: ZodShapeOptions = {},
 ): ZodRawShape {
-  const ctx: Ctx = { seen: new Set(), scalar: toResolver(options.scalars) };
+  const ctx: Ctx = { pending: new Map(), scalar: toResolver(options.scalars) };
   const shape: ZodRawShape = {};
   for (const arg of args) {
     shape[arg.name] = describe(fieldToZod(arg.type, ctx), arg.description);

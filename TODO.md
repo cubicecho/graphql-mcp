@@ -18,8 +18,6 @@ Deferred work and known MVP limitations.
 
 ## Schema coverage
 
-- **Recursive input objects** fall back to `z.any()` once a type reappears on
-  the path (`zodSchema.ts`). Use `z.lazy()` to model them precisely.
 - **Interfaces/unions in selection sets.** `buildSelectionSet` selects an
   interface's own fields and emits inline fragments for union members, but does
   not expand per-implementation fields of an interface. Add inline fragments for

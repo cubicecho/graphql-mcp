@@ -111,3 +111,66 @@ describe('argsToZodShape scalar mapping', () => {
     assert.deepEqual(shape.meta.parse({ anything: true }), { anything: true });
   });
 });
+
+describe('argsToZodShape recursive inputs', () => {
+  const recursiveSchema = buildSchema(/* GraphQL */ `
+    input TreeNode {
+      value: String!
+      children: [TreeNode!]
+    }
+    input TreeFilter {
+      node: TreeNode!
+      depth: Int
+    }
+    type Query {
+      find(filter: TreeFilter!): String
+      mutual(a: A!): String
+    }
+    input A {
+      b: B
+      label: String!
+    }
+    input B {
+      a: A
+      count: Int!
+    }
+  `);
+
+  function argsFor(fieldName: string) {
+    const field = (recursiveSchema.getQueryType() as GraphQLObjectType).getFields()[fieldName];
+    return argsToZodShape(field.args);
+  }
+
+  test('a self-referential input validates arbitrarily deep data', () => {
+    const { filter } = argsFor('find');
+    const value = {
+      node: { value: 'a', children: [{ value: 'b', children: [{ value: 'c', children: [] }] }] },
+      depth: 3,
+    };
+    assert.deepEqual(filter.parse(value), value);
+  });
+
+  test('the recursion is modelled, not opaque — nested nodes are still validated', () => {
+    const { filter } = argsFor('find');
+    // A child missing the required `value` must fail; `z.any()` would accept it.
+    assert.throws(() => filter.parse({ node: { value: 'a', children: [{}] } }));
+    assert.throws(() =>
+      filter.parse({ node: { value: 'a', children: [{ value: 'b', children: [{ value: 1 }] }] } }),
+    );
+  });
+
+  test('an omitted nullable recursive field is allowed', () => {
+    const { filter } = argsFor('find');
+    assert.deepEqual(filter.parse({ node: { value: 'x' } }), { node: { value: 'x' } });
+    const withNull = { node: { value: 'x', children: null } };
+    assert.deepEqual(filter.parse(withNull), withNull);
+  });
+
+  test('mutually recursive inputs terminate and validate both directions', () => {
+    const { a } = argsFor('mutual');
+    const value = { label: 'root', b: { count: 1, a: { label: 'leaf' } } };
+    assert.deepEqual(a.parse(value), value);
+    // `count` is required on B, so a malformed nested B is still caught.
+    assert.throws(() => a.parse({ label: 'root', b: { a: { label: 'leaf' } } }));
+  });
+});
