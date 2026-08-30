@@ -107,8 +107,21 @@ Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
   scalar/enum leaf plus nested objects up to `selectionDepth` (default 2), always
   including `__typename`. Fields that require arguments and cyclic types are skipped.
 - **Descriptions come from the SDL** — the field docstring, its signature, and a
-  per-argument list. Each description also ends with the exact selection the tool
-  will return, so an agent doesn't plan around fields it won't receive.
+  per-argument list carrying each argument's default (as the GraphQL literal
+  you'd write) and any argument-level deprecation. Each description also ends
+  with the exact selection the tool will return, so an agent doesn't plan around
+  fields it won't receive.
+- **Deprecations are stated, not hidden.** A field with `@deprecated` keeps its
+  tool — it's often still the only way to do something — but the reason sits
+  directly under the summary, where an agent reads it before choosing:
+
+  ```
+  The `legacyTodos` query.
+
+  DEPRECATED — Use todos instead.
+  ```
+
+  Pass `includeDeprecated: false` to drop them from the tool surface entirely.
 
 ## What a tool returns
 
@@ -214,9 +227,19 @@ createHttpHandler({ schema, filter: (field, kind) => !field.deprecationReason })
 ## Custom scalars
 
 Built-in scalars map to the obvious Zod types; a custom scalar (`DateTime`,
-`JSON`, `URL`) has no shape we can infer, so it falls back to an opaque value —
-the GraphQL server still validates it, but the agent gets no guidance. Pass
-`scalars` to fix that:
+`JSON`, `URL`) has no shape we can infer, so it falls back to an opaque value
+carrying the scalar's own SDL description — so documenting the format in your
+schema already helps:
+
+```graphql
+"An ISO-8601 timestamp, e.g. 2026-08-30T12:00:00Z."
+scalar DateTime
+```
+```
+Custom scalar DateTime — An ISO-8601 timestamp, e.g. 2026-08-30T12:00:00Z.
+```
+
+The value still isn't *validated* on our side. Pass `scalars` for that:
 
 ```ts
 import { z } from 'zod';

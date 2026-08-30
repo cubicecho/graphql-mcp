@@ -174,3 +174,38 @@ describe('argsToZodShape recursive inputs', () => {
     assert.throws(() => a.parse({ label: 'root', b: { a: { label: 'leaf' } } }));
   });
 });
+
+describe('unmapped custom scalars', () => {
+  const scalarSchema = buildSchema(/* GraphQL */ `
+    "An ISO-8601 timestamp, e.g. 2026-08-30T12:00:00Z."
+    scalar DateTime
+    scalar Undocumented
+    type Query {
+      at(when: DateTime!, other: Undocumented!): String
+    }
+  `);
+
+  function atArgs(options?: ZodShapeOptions) {
+    const field = (scalarSchema.getQueryType() as GraphQLObjectType).getFields().at;
+    return argsToZodShape(field.args, options);
+  }
+
+  // The SDL is where a custom scalar's wire format is documented; describing the
+  // arg as nothing but the scalar's name leaves an agent guessing at it.
+  test('the scalar description carries through, since it documents the format', () => {
+    assert.equal(
+      atArgs().when.description,
+      'Custom scalar DateTime — An ISO-8601 timestamp, e.g. 2026-08-30T12:00:00Z.',
+    );
+  });
+
+  test('an undocumented scalar falls back to its name alone', () => {
+    assert.equal(atArgs().other.description, 'Custom scalar Undocumented');
+  });
+
+  test('an explicit scalars mapping still wins over the fallback', () => {
+    const { when } = atArgs({ scalars: { DateTime: z.string().min(4) } });
+    assert.equal(when.parse('2026-08-30'), '2026-08-30');
+    assert.throws(() => when.parse('no'));
+  });
+});

@@ -9,7 +9,8 @@
  * them to an executor and an `McpServer`.
  */
 
-import type { GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
+import type { GraphQLArgument, GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
+import { print } from 'graphql';
 import type { ZodRawShape, ZodTypeAny } from 'zod';
 import { buildOperation } from './operation.ts';
 import { buildOutputSchema } from './outputSchema.ts';
@@ -73,6 +74,15 @@ export interface BuildToolsOptions {
   /** Wrap `Mutation` fields as tools. Default `true`. */
   includeMutations?: boolean;
   /**
+   * Project fields carrying `@deprecated` into tools. Default `true` — the
+   * schema is the source of truth, and a deprecated field is often still the
+   * only way to do something, so it stays callable with the reason stated
+   * loudly in its description. Set `false` to drop them, which is the right
+   * call when a replacement already exists and you'd rather an agent never
+   * reach for the old one.
+   */
+  includeDeprecated?: boolean;
+  /**
    * Selection-set depth for return types (see `buildSelectionSet`). Default `2`.
    * Also drives `outputSchema`, so the descriptor's schema always matches what
    * the generated operation actually selects.
@@ -135,7 +145,7 @@ export function buildTools(
   schema: GraphQLSchema,
   options: BuildToolsOptions = {},
 ): ToolDescriptor[] {
-  const { includeQueries = true, includeMutations = true } = options;
+  const { includeQueries = true, includeMutations = true, includeDeprecated = true } = options;
   // A present-but-empty `include` denies everything (matching `compileRules([])`);
   // only an omitted `include` keeps every field.
   const included = options.include ? compileRules(options.include) : null;
@@ -146,6 +156,7 @@ export function buildTools(
   const collect = (root: GraphQLObjectType | null | undefined, kind: OperationKind) => {
     if (!root) return;
     for (const field of Object.values(root.getFields())) {
+      if (!includeDeprecated && field.deprecationReason) continue;
       if (excluded?.(field.name, kind)) continue;
       if (included && !included(field.name, kind)) continue;
       if (options.filter && !options.filter(field, kind)) continue;
@@ -252,14 +263,19 @@ function buildDescription(
 ): string {
   const lines: string[] = [];
   lines.push(field.description?.trim() || `The \`${field.name}\` ${kind}.`);
+  // Directly under the summary, where it can't be missed: a tool that reads as
+  // ordinary is one an agent will pick as readily as its replacement.
+  if (field.deprecationReason) {
+    lines.push('');
+    lines.push(`DEPRECATED — ${field.deprecationReason.trim()}`);
+  }
   lines.push('');
   lines.push(`GraphQL ${kind}: \`${field.name}\` → \`${field.type.toString()}\``);
   if (field.args.length) {
     lines.push('');
     lines.push('Arguments:');
     for (const arg of field.args) {
-      const desc = arg.description ? ` — ${arg.description.trim()}` : '';
-      lines.push(`- \`${arg.name}\`: \`${arg.type.toString()}\`${desc}`);
+      lines.push(`- ${describeArg(arg)}`);
     }
   }
   // The return type alone doesn't tell an agent which fields arrive: the
@@ -272,6 +288,36 @@ function buildDescription(
     lines.push(selection);
   }
   return lines.join('\n');
+}
+
+/**
+ * One argument's description line: name, type, its default, and any deprecation.
+ *
+ * The default matters as much as the type. An agent told only `\`limit\`: \`Int\``
+ * can't tell whether omitting it returns everything or a server-chosen page, so
+ * it either guesses a value or is surprised by the result.
+ */
+function describeArg(arg: GraphQLArgument): string {
+  const parts = [`\`${arg.name}\`: \`${arg.type.toString()}\``];
+  const fallback = defaultOf(arg);
+  if (fallback) parts.push(`(default: \`${fallback}\`)`);
+  if (arg.deprecationReason) parts.push(`(deprecated: ${arg.deprecationReason.trim()})`);
+  const description = arg.description?.trim();
+  const suffix = description ? ` — ${description}` : '';
+  return `${parts.join(' ')}${suffix}`;
+}
+
+/**
+ * An argument's default rendered as GraphQL source, or `undefined` if it has
+ * none. The AST node is preferred over the coerced `defaultValue` because an
+ * enum's internal value need not be its SDL name — printing the AST always gives
+ * the literal a caller would actually write.
+ */
+function defaultOf(arg: GraphQLArgument): string | undefined {
+  const node = arg.astNode?.defaultValue;
+  if (node) return print(node);
+  // Schemas built programmatically carry no AST; fall back to the coerced value.
+  return arg.defaultValue === undefined ? undefined : JSON.stringify(arg.defaultValue);
 }
 
 /** Default MCP annotations: queries are read-only/idempotent, mutations are writes. */

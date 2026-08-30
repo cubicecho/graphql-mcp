@@ -32,15 +32,7 @@ import {
   isUnionType,
 } from 'graphql';
 import { type ZodRawShape, type ZodTypeAny, z } from 'zod';
-import { type ScalarMapping, type ScalarResolver, toResolver } from './zodSchema.ts';
-
-const SCALAR_BUILDERS: Record<string, () => ZodTypeAny> = {
-  Int: () => z.number().int(),
-  Float: () => z.number(),
-  String: () => z.string(),
-  Boolean: () => z.boolean(),
-  ID: () => z.string(),
-};
+import { builtinScalar, type ScalarMapping, type ScalarResolver, toResolver } from './zodSchema.ts';
 
 /**
  * Builds the Zod schema for a field's return `type`, mirroring the selection set
@@ -74,9 +66,7 @@ function schemaFor(
   if (isScalarType(named)) {
     // The user mapping wins over the built-ins, exactly as on the input side.
     const mapped = scalar(named);
-    if (mapped) return mapped;
-    const builder = SCALAR_BUILDERS[named.name];
-    return builder ? builder() : z.any().describe(`Custom scalar ${named.name}`);
+    return mapped ?? builtinScalar(named);
   }
   if (isEnumType(named)) {
     const names = named.getValues().map((value) => value.name);

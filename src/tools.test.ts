@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { buildSchema } from 'graphql';
+import { buildSchema, GraphQLInt, GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 import { makeTodoSchema, setMcpExtensions } from './fixtures.test.ts';
 import { buildTools } from './tools.ts';
 
@@ -312,5 +312,103 @@ describe('buildTools outputSchema', () => {
     assert.ok(todo);
     assert.ok(!todo.query.includes('createdBy'));
     assert.throws(() => todo.outputSchema.parse({ __typename: 'Todo', createdBy: {} }));
+  });
+});
+
+describe('buildTools deprecation', () => {
+  const sdl = `
+    type T { id: ID! }
+    type Query {
+      current: [T!]!
+      old: [T!]! @deprecated(reason: "Use current instead.")
+    }
+    type Mutation {
+      go(mode: String @deprecated(reason: "ignored since v2")): T!
+    }
+  `;
+
+  test('a deprecated field says so, right under the summary', () => {
+    const old = buildTools(buildSchema(sdl)).find((t) => t.name === 'old');
+    assert.ok(old);
+    assert.match(old.description, /DEPRECATED — Use current instead\./);
+    // Loud enough to be seen before the signature, not buried at the end.
+    assert.ok(
+      old.description.indexOf('DEPRECATED') < old.description.indexOf('GraphQL query'),
+      'the deprecation notice must precede the signature',
+    );
+  });
+
+  test('a live field carries no deprecation notice', () => {
+    const current = buildTools(buildSchema(sdl)).find((t) => t.name === 'current');
+    assert.ok(current);
+    assert.doesNotMatch(current.description, /DEPRECATED/);
+  });
+
+  test('deprecated fields are kept by default — they are still callable', () => {
+    const names = buildTools(buildSchema(sdl)).map((t) => t.name);
+    assert.ok(names.includes('old'));
+  });
+
+  test('includeDeprecated: false drops them entirely', () => {
+    const names = buildTools(buildSchema(sdl), { includeDeprecated: false }).map((t) => t.name);
+    assert.deepEqual(names.sort(), ['current', 'go']);
+  });
+
+  test('a deprecated argument is flagged on its own line', () => {
+    const go = buildTools(buildSchema(sdl)).find((t) => t.name === 'go');
+    assert.ok(go);
+    assert.match(go.description, /`mode`: `String` \(deprecated: ignored since v2\)/);
+  });
+});
+
+describe('buildTools argument defaults', () => {
+  const sdl = `
+    enum Status { OPEN DONE }
+    input Filter { tag: String }
+    type T { id: ID! }
+    type Query {
+      list(
+        status: Status = OPEN
+        limit: Int = 10
+        tags: [String!] = []
+        filter: Filter = { tag: "x" }
+        "The cursor to resume from."
+        after: String
+      ): [T!]!
+    }
+  `;
+  const description = () => {
+    const list = buildTools(buildSchema(sdl)).find((t) => t.name === 'list');
+    assert.ok(list);
+    return list.description;
+  };
+
+  test('scalar and enum defaults are shown as the literal a caller would write', () => {
+    assert.match(description(), /`status`: `Status` \(default: `OPEN`\)/);
+    assert.match(description(), /`limit`: `Int` \(default: `10`\)/);
+  });
+
+  test('list and object defaults are printed as GraphQL literals', () => {
+    assert.match(description(), /`tags`: `\[String!\]` \(default: `\[\]`\)/);
+    assert.match(description(), /`filter`: `Filter` \(default: `\{tag: "x"\}`\)/);
+  });
+
+  test('an argument with no default gets no default note', () => {
+    assert.match(description(), /`after`: `String` — The cursor to resume from\./);
+  });
+
+  test('a programmatic schema with no AST falls back to the coerced value', () => {
+    const schema = new GraphQLSchema({
+      query: new GraphQLObjectType({
+        name: 'Query',
+        fields: {
+          list: {
+            type: GraphQLString,
+            args: { limit: { type: GraphQLInt, defaultValue: 25 } },
+          },
+        },
+      }),
+    });
+    assert.match(buildTools(schema)[0].description, /`limit`: `Int` \(default: `25`\)/);
   });
 });

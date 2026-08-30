@@ -146,6 +146,15 @@ src/
 - **Custom tools** (the `tools` option) add to — or override by name — generated
   tools. `registerTool` throws on duplicate names, so overrides are resolved
   *before* registering.
+- **Anything the SDL says, the agent sees.** A description carries the field's
+  deprecation reason (right under the summary, before the signature), each
+  argument's default rendered as the GraphQL literal a caller would write, and
+  argument-level deprecations; an unmapped custom scalar keeps its own SDL
+  description, which is where the wire format is documented. Deprecated fields
+  stay callable by default (`includeDeprecated: false` drops them) — the schema
+  is the source of truth, and a deprecated field is often still the only way to
+  do something. When adding a projection, ask what graphql-js already knows that
+  we're discarding.
 - **Annotations:** queries are `readOnlyHint`/`idempotentHint`; mutations are
   `destructiveHint`. All tools set `openWorldHint` (they reach a backend).
 - **The advertised version comes from `package.json`** (`version.ts`), not a

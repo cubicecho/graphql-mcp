@@ -205,3 +205,18 @@ describe('buildOutputSchema matches real results', () => {
     assert.equal(descriptor.outputSchema.parse(data.todo), null);
   });
 });
+
+describe('buildOutputSchema scalar descriptions', () => {
+  // Input and output sides share `builtinScalar`, so a scalar reads the same
+  // whichever direction it appears in.
+  test('an unmapped scalar carries its SDL description on the output side too', () => {
+    const sdl = '"An ISO-8601 timestamp." scalar DateTime type Query { at: DateTime! }';
+    const schema = buildOutputSchema(fieldType(sdl, 'at'));
+    assert.equal(schema.description, 'Custom scalar DateTime — An ISO-8601 timestamp.');
+  });
+
+  test('an undocumented scalar falls back to its name alone', () => {
+    const schema = buildOutputSchema(fieldType('scalar Blob type Query { b: Blob! }', 'b'));
+    assert.equal(schema.description, 'Custom scalar Blob');
+  });
+});

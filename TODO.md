@@ -32,6 +32,13 @@ Deferred work and known MVP limitations.
   note, but a truncated list gives the agent no way to ask for the rest. Detect
   connection/pagination arguments (`first`/`after`, `limit`/`offset`) and have
   the truncation note name the argument to page with.
+- **Argument defaults in the input schema.** Defaults are stated in a tool's
+  description but not encoded as Zod `.default()`, because that would inject the
+  value into `variables` rather than letting GraphQL apply its own. The JSON
+  Schema therefore carries no `default` keyword. Revisit if a client turns out
+  to read it. Related: an argument with an SDL default is `.nullable()`, so an
+  agent can send explicit `null` — which GraphQL treats as null, not as
+  "use the default".
 - **Meta-tool result caching.** `graphql_introspect`/`graphql_search` recompute
   from the schema on every call. Memoize per schema if it shows up in profiles.
 - **Structured output (SDK registration).** `ToolDescriptor.outputSchema`

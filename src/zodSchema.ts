@@ -8,7 +8,8 @@
  * - `NonNull` → required (no `.nullish()`); a nullable arg/field becomes `.nullish()`
  * - `List` → `z.array(element)`
  * - scalars → the `scalars` option first, then the built-ins (`Int`/`Float` ⇒ number,
- *   `String`/`ID` ⇒ string, `Boolean` ⇒ boolean), then `z.any()` tagged with the name
+ *   `String`/`ID` ⇒ string, `Boolean` ⇒ boolean), then `z.any()` carrying the
+ *   scalar's own SDL description (see {@link builtinScalar})
  * - enums → `z.enum([...names])` (enum *names*, the form passed as GraphQL variables)
  * - input objects → `z.object({...})`, recursively; self-references become `z.lazy()`
  *   to model the recursion precisely instead of falling back to `z.any()`.
@@ -60,6 +61,27 @@ const SCALAR_BUILDERS: Record<string, () => ZodTypeAny> = {
   ID: () => z.string(),
 };
 
+/**
+ * The schema for a scalar with no entry in the user's `scalars` mapping: the
+ * built-in for a standard scalar, otherwise an opaque value.
+ *
+ * The opaque case carries the scalar's *own* SDL description, because that is
+ * where the wire format is documented (`"""An ISO-8601 timestamp.""" scalar
+ * DateTime`). Describing it as nothing but its name leaves an agent guessing at
+ * a format the schema spells out. Shared with `outputSchema.ts` so both sides
+ * describe a scalar identically.
+ *
+ * @param type - The scalar type to map.
+ */
+export function builtinScalar(type: GraphQLScalarType): ZodTypeAny {
+  const builder = SCALAR_BUILDERS[type.name];
+  if (builder) return builder();
+  const hint = type.description?.trim();
+  return z
+    .any()
+    .describe(hint ? `Custom scalar ${type.name} — ${hint}` : `Custom scalar ${type.name}`);
+}
+
 /** Recursion state: the input-object cycle guard plus the resolved scalar mapper. */
 interface Ctx {
   /**
@@ -94,9 +116,7 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
   if (isScalarType(type)) {
     // User mapping wins over the built-ins so `ID`/`String` can be retyped.
     const mapped = ctx.scalar(type);
-    if (mapped) return mapped;
-    const builder = SCALAR_BUILDERS[type.name];
-    return builder ? builder() : z.any().describe(`Custom scalar ${type.name}`);
+    return mapped ?? builtinScalar(type);
   }
   if (isEnumType(type)) {
     const names = type.getValues().map((value) => value.name);
