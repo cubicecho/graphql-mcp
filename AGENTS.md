@@ -65,6 +65,7 @@ src/
   result.ts       — GraphqlResult → CallToolResult (toCallToolResult): isError, error condensing, clamping
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
   server.ts       — createMcpServer / createServerFactory / registerGraphqlTools (+ custom tools)
+  version.ts      — VERSION, read from package.json (the version servers advertise)
   http.ts         — createHttpHandler for the Streamable HTTP transport
   *.test.ts       — co-located tests; fixtures.test.ts holds the shared "todos" schema
 ```
@@ -143,6 +144,9 @@ src/
   *before* registering.
 - **Annotations:** queries are `readOnlyHint`/`idempotentHint`; mutations are
   `destructiveHint`. All tools set `openWorldHint` (they reach a backend).
+- **The advertised version comes from `package.json`** (`version.ts`), not a
+  literal. semantic-release bumps the manifest, so a hardcoded default would
+  have every published server announcing the version it shipped with.
 
 ## Commit conventions
 

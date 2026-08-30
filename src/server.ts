@@ -31,6 +31,7 @@ import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
 import { DEFAULT_MAX_CHARS, toCallToolResult } from './result.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
 import type { GraphqlExecutor, ToolAnnotations } from './types.ts';
+import { VERSION } from './version.ts';
 
 /** The handler signature for a custom tool: validated args plus the MCP `extra`. */
 export type ToolHandler = (
@@ -60,7 +61,7 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
   schema: GraphQLSchema;
   /** MCP server name advertised to clients. Default `'graphql-mcp-server'`. */
   name?: string;
-  /** MCP server version. Default `'0.1.0'`. */
+  /** MCP server version advertised to clients. Default: this package's version. */
   version?: string;
   /**
    * Where tool operations run. Default: {@link createLocalExecutor} against
@@ -152,7 +153,7 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
     const context = contextOverride ?? options.context;
     const server = new McpServer({
       name: options.name ?? 'graphql-mcp-server',
-      version: options.version ?? '0.1.0',
+      version: options.version ?? VERSION,
     });
     // Built per call: `execute` closes over this call's GraphQL context.
     const metaTools = metaOptions
