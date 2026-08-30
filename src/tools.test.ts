@@ -251,3 +251,66 @@ describe('buildTools empty include', () => {
     assert.deepEqual(buildTools(schema, { include: [] }), []);
   });
 });
+
+describe('buildTools outputSchema', () => {
+  test('a list return type produces an array schema', () => {
+    const { schema } = makeTodoSchema();
+    const todos = buildTools(schema).find((t) => t.name === 'todos');
+    assert.ok(todos);
+    const todo = {
+      id: '1',
+      completed: false,
+      description: 'd',
+      createdBy: { id: 'u1', __typename: 'User' },
+      __typename: 'Todo',
+    };
+    // `todos: [Todo!]!` — an array, so a bare object must not validate.
+    assert.throws(() => todos.outputSchema.parse(todo));
+    assert.deepEqual(todos.outputSchema.parse([todo]), [todo]);
+  });
+
+  test('a nullable object return type accepts null', () => {
+    const { schema } = makeTodoSchema();
+    const todo = buildTools(schema).find((t) => t.name === 'todo');
+    assert.ok(todo);
+    assert.equal(todo.outputSchema.parse(null), null);
+  });
+
+  test('selectionDepth drives the output schema too, so the two agree', () => {
+    const { schema } = makeTodoSchema();
+    const shallow = buildTools(schema, { selectionDepth: 1 }).find((t) => t.name === 'todo');
+    const deep = buildTools(schema, { selectionDepth: 2 }).find((t) => t.name === 'todo');
+    assert.ok(shallow);
+    assert.ok(deep);
+    // Depth 1 selects no nested objects, so `createdBy` is absent from both the
+    // query and the schema; depth 2 selects it in both.
+    assert.ok(!shallow.query.includes('createdBy'));
+    assert.throws(() => shallow.outputSchema.parse({ __typename: 'Todo', createdBy: {} }));
+    assert.ok(deep.query.includes('createdBy'));
+    assert.deepEqual(
+      deep.outputSchema.parse({
+        id: '1',
+        completed: false,
+        description: 'd',
+        createdBy: { id: 'u1', __typename: 'User' },
+        __typename: 'Todo',
+      }),
+      {
+        id: '1',
+        completed: false,
+        description: 'd',
+        createdBy: { id: 'u1', __typename: 'User' },
+        __typename: 'Todo',
+      },
+    );
+  });
+
+  test('a per-field selectionDepth extension applies to the output schema', () => {
+    const { schema } = makeTodoSchema();
+    setMcpExtensions(schema, 'Query', 'todo', { selectionDepth: 1 });
+    const todo = buildTools(schema).find((t) => t.name === 'todo');
+    assert.ok(todo);
+    assert.ok(!todo.query.includes('createdBy'));
+    assert.throws(() => todo.outputSchema.parse({ __typename: 'Todo', createdBy: {} }));
+  });
+});

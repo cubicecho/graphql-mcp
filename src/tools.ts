@@ -10,8 +10,9 @@
  */
 
 import type { GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
-import type { ZodRawShape } from 'zod';
+import type { ZodRawShape, ZodTypeAny } from 'zod';
 import { buildOperation } from './operation.ts';
+import { buildOutputSchema } from './outputSchema.ts';
 import { compileRules } from './rules.ts';
 import type { OperationKind, ToolAnnotations } from './types.ts';
 import { argsToZodShape, type ScalarMapping } from './zodSchema.ts';
@@ -28,6 +29,12 @@ export interface ToolDescriptor {
   description: string;
   /** Zod raw shape for the field's arguments (the tool `inputSchema`). */
   inputSchema: ZodRawShape;
+  /**
+   * Zod schema describing the field's return type, mirroring the selection set
+   * this tool sends. A structural hint for introspection — the server does not
+   * validate results against it (see TODO.md).
+   */
+  outputSchema: ZodTypeAny;
   /** MCP behaviour hints, defaulted from the operation kind. */
   annotations: ToolAnnotations;
   /** The pre-built operation document this tool runs. */
@@ -65,7 +72,11 @@ export interface BuildToolsOptions {
   includeQueries?: boolean;
   /** Wrap `Mutation` fields as tools. Default `true`. */
   includeMutations?: boolean;
-  /** Selection-set depth for return types (see `buildSelectionSet`). Default `2`. */
+  /**
+   * Selection-set depth for return types (see `buildSelectionSet`). Default `2`.
+   * Also drives `outputSchema`, so the descriptor's schema always matches what
+   * the generated operation actually selects.
+   */
   selectionDepth?: number;
   /**
    * Zod schemas for GraphQL scalars, keyed by scalar name (or a resolver
@@ -224,6 +235,7 @@ function toDescriptor(
     title: humanize(field.name),
     description: buildDescription(field, kind),
     inputSchema: argsToZodShape(field.args, { scalars }),
+    outputSchema: buildOutputSchema(field.type, selectionDepth, scalars),
     annotations: annotationsFor(kind, humanize(field.name)),
     query,
     operationName,

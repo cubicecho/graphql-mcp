@@ -24,6 +24,7 @@
  * - `types` — `GraphqlExecutor`/`GraphqlRequest`/`GraphqlResult`, the execution seam
  * - `zodSchema` — GraphQL args → Zod input schema (`argsToZodShape`)
  * - `selection` — auto-built selection sets (`buildSelectionSet`)
+ * - `outputSchema` — return type → Zod result schema (`buildOutputSchema`)
  * - `operation` — per-field operation documents (`buildOperation`)
  * - `rules` — include/exclude pattern matching (`compileRules`)
  * - `extend` — MCP-only schema additions (`extendSchemaForMcp`, `stripRootTypes`)
@@ -46,6 +47,7 @@ export type { MetaToolDeps, MetaToolName, MetaToolsOptions } from './meta.ts';
 export { buildMetaTools } from './meta.ts';
 export type { BuiltOperation } from './operation.ts';
 export { buildOperation } from './operation.ts';
+export { buildOutputSchema } from './outputSchema.ts';
 export type { RuleMatcher } from './rules.ts';
 export { compileRules } from './rules.ts';
 export { buildSelectionSet } from './selection.ts';

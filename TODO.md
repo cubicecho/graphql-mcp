@@ -30,10 +30,19 @@ Deferred work and known MVP limitations.
 
 ## Tools & output
 
-- **Structured output.** Tool results are JSON text. Consider deriving an
-  `outputSchema` from the field's return type and returning `structuredContent`.
 - **Response size.** Generated tools return large GraphQL results whole. The
   meta tools already clamp at `maxChars` with a truncation note; apply the same
   guard to generated tools, plus pagination hints.
 - **Meta-tool result caching.** `graphql_introspect`/`graphql_search` recompute
   from the schema on every call. Memoize per schema if it shows up in profiles.
+- **Structured output (SDK registration).** `ToolDescriptor.outputSchema`
+  describes a field's return type (mirroring the generated selection set) and is
+  exposed for introspection, but isn't registered with the MCP SDK: registering
+  it obliges the handler to return `structuredContent` matching the schema,
+  while tools return the whole `{ data, errors }` envelope — and a partial
+  result with resolver errors nulls out fields the schema marks non-null.
+  Consider an opt-in `validate` option that parses `data[field]` against the
+  schema and attaches `structuredContent` only when it succeeds.
+- **Abstract types in `outputSchema`.** Interfaces contribute only their own
+  fields, matching `buildSelectionSet`. Expanding per-implementation fields
+  there should expand here too — the two must stay in lockstep.

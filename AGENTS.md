@@ -56,6 +56,7 @@ src/
   types.ts        — GraphqlExecutor / GraphqlRequest / GraphqlResult, the execution seam
   zodSchema.ts    — GraphQL args → Zod input schema (argsToZodShape)
   selection.ts    — auto-built selection sets for return types (buildSelectionSet)
+  outputSchema.ts — return type → Zod schema for results (buildOutputSchema)
   operation.ts    — per-field operation documents (buildOperation)
   rules.ts        — include/exclude pattern matching (compileRules)
   extend.ts       — MCP-only schema additions via mergeSchemas (extendSchemaForMcp, stripRootTypes)
@@ -112,6 +113,11 @@ src/
   leaves at each level, descending into nested objects up to `selectionDepth`
   (default 2), always including `__typename`. Fields requiring arguments and
   cyclic types are skipped.
+- **`outputSchema.ts` mirrors `selection.ts`.** A descriptor's `outputSchema` is
+  a Zod schema for what the generated operation actually returns, so it obeys the
+  same skip/depth/cycle rules and is driven by the *same* `selectionDepth` —
+  there is no separate depth option, because a schema describing fields the query
+  never selects would be wrong. Change one module and change the other.
 - **Pure vs. bound.** `buildTools` produces pure `ToolDescriptor`s (no SDK, no
   executor). `server.ts` binds them to an executor + `McpServer`. Keep that split.
 - **Stateless HTTP needs a fresh server per request.** An `McpServer` owns a

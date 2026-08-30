@@ -9,6 +9,16 @@
  * - {@link createServerFactory} — builds the (pure) descriptors once and returns
  *   a `() => McpServer` that mints a fresh server per call. The HTTP layer uses
  *   this so each stateless request gets its own server+transport.
+ *
+ * ## Structured output
+ *
+ * Descriptors carry an {@link ToolDescriptor.outputSchema} describing the
+ * field's return type, but it is deliberately *not* registered with the SDK.
+ * Registering it obliges the handler to return `structuredContent` matching the
+ * schema, whereas these tools return the whole GraphQL `{ data, errors }`
+ * envelope as JSON text — and on a resolver error `data` is partially null, so
+ * a conforming result can't be promised. It stays on the descriptor for
+ * introspection; see TODO.md for the opt-in validation idea.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
