@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/cubicecho/graphql-mcp/compare/v0.2.0...v0.2.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* attach the noExplicitAny suppression to the line it covers ([356a293](https://github.com/cubicecho/graphql-mcp/commit/356a293618548cade915c10b41037e881283978f))
+
 # [0.2.0](https://github.com/cubicecho/graphql-mcp/compare/v0.1.1...v0.2.0) (2026-08-31)
 
 
