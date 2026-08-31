@@ -39,12 +39,23 @@ Deferred work and known MVP limitations.
   from the schema on every call. Memoize per schema if it shows up in profiles.
 - **Structured output (SDK registration).** `ToolDescriptor.outputSchema`
   describes a field's return type (mirroring the generated selection set) and is
-  exposed for introspection, but isn't registered with the MCP SDK: registering
-  it obliges the handler to return `structuredContent` matching the schema,
-  while tools return the whole `{ data, errors }` envelope — and a partial
-  result with resolver errors nulls out fields the schema marks non-null.
-  Consider an opt-in `validate` option that parses `data[field]` against the
-  schema and attaches `structuredContent` only when it succeeds.
+  exposed for introspection, but isn't registered with the MCP SDK. The obvious
+  fix — attach `structuredContent` only when the data parses — does not work;
+  reading the SDK's `validateToolOutput` shows why, and any real attempt has to
+  clear three bars:
+  1. Registering an output schema makes `structuredContent` **mandatory** on
+     every non-error result. The SDK skips validation when `isError` is set and
+     throws `Output validation error` otherwise, so "attach it when it fits" is
+     really "fail the call whenever it doesn't".
+  2. `structuredContent` must be an **object**, while a field returning
+     `[Todo!]!` has an array schema. The registered schema would have to be an
+     envelope (`{ data, errors }`), not the field schema itself.
+  3. A **partial result** carries `isError: false` with resolver-failed fields
+     nulled — including fields the schema marks non-null. So the registered
+     schema has to be deep-nullable to describe what actually arrives.
+  Together that points at one coherent design: an opt-in flag that registers a
+  deep-nullable envelope schema and always attaches `structuredContent`. Worth
+  doing, but it is a design, not a patch.
 - **Abstract types in `outputSchema`.** Interfaces contribute only their own
   fields, matching `buildSelectionSet`. Expanding per-implementation fields
   there should expand here too — the two must stay in lockstep.
