@@ -235,7 +235,7 @@ function registerGeneratedTool(
         operationName: descriptor.operationName,
         context: resolvedContext,
       });
-      return toCallToolResult(result, maxChars);
+      return toCallToolResult(result, maxChars, descriptor.pageHint);
     },
   );
 }

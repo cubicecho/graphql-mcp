@@ -66,6 +66,7 @@ src/
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
   server.ts       — createMcpServer / createServerFactory / registerGraphqlTools (+ custom tools)
   version.ts      — VERSION, read from package.json (the version servers advertise)
+  pagination.ts   — paging-argument detection for truncation hints (paginationHint)
   http.ts         — createHttpHandler for the Streamable HTTP transport
   *.test.ts       — co-located tests; fixtures.test.ts holds the shared "todos" schema
 ```
@@ -132,7 +133,9 @@ src/
   are condensed to `message`/`path`/`extensions`, dropping `locations` because
   they index into a query string the agent never wrote and cannot see; and the
   JSON is clamped to `maxChars` (default 50k) with a note saying how much was
-  cut. Don't format a result anywhere else. Every executor call goes through
+  cut — naming the field's paging argument when it has one, because a bare
+  "truncated" leaves an agent with no move but to re-run the identical call.
+  Don't format a result anywhere else. Every executor call goes through
   `runExecutor`, which turns a *thrown* executor error into an `{ errors }`
   result — an uncaught throw reaches the SDK, which emits the bare message as
   text and breaks the parseable-JSON promise on exactly the failure a client

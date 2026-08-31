@@ -216,3 +216,25 @@ describe('runExecutor request shaping', () => {
     });
   });
 });
+
+describe('truncation hints', () => {
+  test('clamp appends a hint to the note', () => {
+    const clamped = clamp('a'.repeat(30), 10, 'This field paginates: pass `first`.');
+    assert.match(clamped, /narrow the query or request fewer fields\. This field paginates/);
+  });
+
+  test('a short value is returned unchanged even with a hint', () => {
+    assert.equal(clamp('short', 100, 'ignored'), 'short');
+  });
+
+  test('toCallToolResult passes the hint through to the truncation note', () => {
+    const rows = Array.from({ length: 200 }, (_, i) => ({ id: `row-${i}` }));
+    const result = toCallToolResult({ data: { rows } }, 200, 'This field paginates: pass `first`.');
+    assert.match(bodyOf(result), /This field paginates: pass `first`\./);
+  });
+
+  test('a result inside the budget carries no note and so no hint', () => {
+    const result = toCallToolResult({ data: { ok: true } }, 10_000, 'This field paginates.');
+    assert.doesNotMatch(bodyOf(result), /paginates/);
+  });
+});

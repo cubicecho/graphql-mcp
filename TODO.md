@@ -28,10 +28,6 @@ Deferred work and known MVP limitations.
 
 ## Tools & output
 
-- **Pagination hints.** Results are clamped at `maxChars` with a truncation
-  note, but a truncated list gives the agent no way to ask for the rest. Detect
-  connection/pagination arguments (`first`/`after`, `limit`/`offset`) and have
-  the truncation note name the argument to page with.
 - **Argument defaults in the input schema.** Defaults are stated in a tool's
   description but not encoded as Zod `.default()`, because that would inject the
   value into `variables` rather than letting GraphQL apply its own. The JSON

@@ -20,7 +20,10 @@
  *   graphql-js populates `extensions` on every error whether or not the server
  *   put anything in it.
  * - **Results are clamped.** A tool that returns a large collection would
- *   otherwise flood the agent's context with no warning.
+ *   otherwise flood the agent's context with no warning. The truncation note
+ *   carries a pagination hint when the field has an argument to page with,
+ *   since "this was cut" on its own leaves an agent with no move but to re-run
+ *   the identical call.
  *
  * The text is always pure JSON, so a client can parse it directly — which is why
  * {@link runExecutor} exists: an executor that *throws* would otherwise reach
@@ -37,10 +40,16 @@ export const DEFAULT_MAX_CHARS = 50_000;
 /**
  * Truncates `value` to `maxChars`, appending a note that says how much was cut
  * and what to do about it.
+ *
+ * @param value - The text to clamp.
+ * @param maxChars - Character budget.
+ * @param hint - Optional extra advice appended to the note — {@link paginationHint}
+ *   supplies one naming the field's paging argument.
  */
-export function clamp(value: string, maxChars: number): string {
+export function clamp(value: string, maxChars: number, hint?: string): string {
   if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}\n\n[truncated ${value.length - maxChars} of ${value.length} characters — narrow the query or request fewer fields]`;
+  const advice = `narrow the query or request fewer fields${hint ? `. ${hint}` : ''}`;
+  return `${value.slice(0, maxChars)}\n\n[truncated ${value.length - maxChars} of ${value.length} characters — ${advice}]`;
 }
 
 /** Wraps a plain body as a (clamped) text tool result. */
@@ -57,10 +66,12 @@ export function text(body: string, maxChars = DEFAULT_MAX_CHARS): CallToolResult
  *
  * @param result - The executor's GraphQL result.
  * @param maxChars - Character budget before truncation.
+ * @param hint - Optional advice added to the truncation note (see {@link clamp}).
  */
 export function toCallToolResult(
   result: GraphqlResult,
   maxChars = DEFAULT_MAX_CHARS,
+  hint?: string,
 ): CallToolResult {
   const errors = result.errors ?? [];
   const hasData = hasUsableData(result.data);
@@ -75,7 +86,7 @@ export function toCallToolResult(
   }
 
   return {
-    content: [{ type: 'text', text: clamp(JSON.stringify(payload, null, 2), maxChars) }],
+    content: [{ type: 'text', text: clamp(JSON.stringify(payload, null, 2), maxChars, hint) }],
     isError: failed,
   };
 }

@@ -500,3 +500,50 @@ describe('createMcpServer', () => {
     await client.close();
   });
 });
+
+describe('truncated results point at the paging argument', () => {
+  const schema = buildSchema('type Query { feed(first: Int, after: String): [String!]! }');
+  const root = { feed: () => Array.from({ length: 200 }, (_, i) => `item-${i}`) };
+
+  test('the truncation note names the argument to page with', async () => {
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      maxChars: 200,
+    });
+    const client = await connect(server);
+    const body = ((await client.callTool({ name: 'feed', arguments: {} })) as TextResult).content[0]
+      .text;
+    // Without this, an agent told only "truncated" can do nothing but re-run
+    // the identical call and get the identical oversized page.
+    assert.match(body, /\[truncated \d+ of \d+ characters/);
+    assert.match(body, /pass `first` to cap the page size, then `after`/);
+    await client.close();
+  });
+
+  test('a result that fits carries no note at all', async () => {
+    const server = createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+    });
+    const client = await connect(server);
+    const body = ((await client.callTool({ name: 'feed', arguments: {} })) as TextResult).content[0]
+      .text;
+    assert.doesNotMatch(body, /truncated|paginates/);
+    await client.close();
+  });
+
+  test('a field with no paging arguments keeps the plain note', async () => {
+    const { schema: todoSchema, root: todoRoot } = makeTodoSchema();
+    const server = createMcpServer({
+      schema: todoSchema,
+      executor: createLocalExecutor(todoSchema, { rootValue: todoRoot }),
+      maxChars: 120,
+    });
+    const client = await connect(server);
+    const body = ((await client.callTool({ name: 'todos', arguments: {} })) as TextResult)
+      .content[0].text;
+    assert.match(body, /narrow the query or request fewer fields\]/);
+    await client.close();
+  });
+});

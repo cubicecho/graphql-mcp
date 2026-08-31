@@ -14,6 +14,7 @@ import { print } from 'graphql';
 import type { ZodRawShape, ZodTypeAny } from 'zod';
 import { buildOperation } from './operation.ts';
 import { buildOutputSchema } from './outputSchema.ts';
+import { paginationHint } from './pagination.ts';
 import { compileRules } from './rules.ts';
 import type { OperationKind, ToolAnnotations } from './types.ts';
 import { argsToZodShape, type ScalarMapping } from './zodSchema.ts';
@@ -44,6 +45,11 @@ export interface ToolDescriptor {
   operationName: string;
   /** The field's argument names (used to pluck variables from validated input). */
   argNames: string[];
+  /**
+   * Advice naming the field's pagination argument, appended to a result's
+   * truncation note. Absent when the field takes no recognised paging argument.
+   */
+  pageHint?: string;
 }
 
 /**
@@ -240,6 +246,7 @@ function toDescriptor(
   scalars?: ScalarMapping,
 ): ToolDescriptor {
   const { query, operationName, argNames, selection } = buildOperation(kind, field, selectionDepth);
+  const pageHint = paginationHint(field.args);
   return {
     name,
     kind,
@@ -251,6 +258,7 @@ function toDescriptor(
     query,
     operationName,
     argNames,
+    ...(pageHint ? { pageHint } : {}),
   };
 }
 

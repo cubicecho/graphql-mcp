@@ -150,6 +150,20 @@ Every tool — generated or meta — returns JSON text you can parse directly:
 createMcpServer({ schema, maxChars: 20_000 });
 ```
 
+- **A truncated result names the argument to page with**, when the field has one.
+  "This was cut" on its own leaves an agent with no move but to re-run the
+  identical call, so the note goes further:
+
+```text
+[truncated 41203 of 91203 characters — narrow the query or request fewer fields.
+This field paginates: pass `first` to cap the page size, then `after` to
+continue from where this page ended.]
+```
+
+  The arguments are read off the schema, matching the conventions in wide use
+  (`first`/`after`, `limit`/`offset`, `take`/`skip`, `page`/`pageSize`). A field
+  with none keeps the plain note.
+
 That holds when the executor *throws*, too — a refused connection or a broken
 custom executor comes back as `{ "errors": [{ "message": "…" }] }` with
 `isError` set, never as a bare string a client can't parse.

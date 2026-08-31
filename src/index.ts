@@ -35,6 +35,7 @@
  * - `executor` — `createLocalExecutor` (in-process) / `createHttpExecutor` (forwarding)
  * - `server` — `createMcpServer` / `createServerFactory` / `registerGraphqlTools` (+ custom tools)
  * - `http` — `createHttpHandler` for the Streamable HTTP transport
+ * - `pagination` — paging-argument detection for truncation hints
  *
  * @packageDocumentation
  */
@@ -50,6 +51,8 @@ export { buildMetaTools } from './meta.ts';
 export type { BuiltOperation } from './operation.ts';
 export { buildOperation } from './operation.ts';
 export { buildOutputSchema } from './outputSchema.ts';
+export type { Pagination, PaginationStyle } from './pagination.ts';
+export { detectPagination, paginationHint } from './pagination.ts';
 export type { ExecutorRequest } from './result.ts';
 export { clamp, DEFAULT_MAX_CHARS, runExecutor, text, toCallToolResult } from './result.ts';
 export type { RuleMatcher } from './rules.ts';

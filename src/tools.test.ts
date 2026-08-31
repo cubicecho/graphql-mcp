@@ -412,3 +412,30 @@ describe('buildTools argument defaults', () => {
     assert.match(buildTools(schema)[0].description, /`limit`: `Int` \(default: `25`\)/);
   });
 });
+
+describe('buildTools pagination hints', () => {
+  test('a paginated field carries a hint naming its arguments', () => {
+    const schema = buildSchema(`
+      type Query {
+        feed(first: Int, after: String): [String!]!
+      }
+    `);
+    const feed = buildTools(schema).find((t) => t.name === 'feed');
+    assert.match(feed?.pageHint ?? '', /pass `first` to cap the page size, then `after`/);
+  });
+
+  test('a field with no paging arguments carries no hint', () => {
+    const { schema } = makeTodoSchema();
+    const todo = buildTools(schema).find((t) => t.name === 'todo');
+    assert.equal(todo?.pageHint, undefined);
+  });
+
+  test('the hint survives decoration like any other descriptor key', () => {
+    const schema = buildSchema('type Query { feed(limit: Int, offset: Int): [String!]! }');
+    const [feed] = buildTools(schema, {
+      decorate: () => ({ description: 'replaced' }),
+    });
+    assert.equal(feed.description, 'replaced');
+    assert.match(feed.pageHint ?? '', /`limit`/);
+  });
+});
