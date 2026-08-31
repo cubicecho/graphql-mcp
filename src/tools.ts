@@ -263,8 +263,8 @@ function toDescriptor(
 }
 
 /** Composes a tool description from the field's SDL: docstring, signature, args, and result. */
-// biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
 function buildDescription(
+  // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
   field: GraphQLField<any, any>,
   kind: OperationKind,
   selection: string,
