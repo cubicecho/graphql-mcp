@@ -17,6 +17,9 @@ npm install @cubicecho/graphql-mcp
 npm install @modelcontextprotocol/sdk graphql
 ```
 
+Needs Node ≥ 22, `@modelcontextprotocol/sdk` ≥ 1.12, and `graphql` ≥ 16.
+[`createFetchHandler`](#non-node-runtimes) alone needs SDK ≥ 1.25.
+
 ## Quick start
 
 Run the MCP endpoint beside your GraphQL endpoint in the same Express app:
@@ -505,8 +508,25 @@ const handler = createHttpHandler({ schema });
 http.createServer((req, res) => handler(req, res)).listen(4000);
 ```
 
-Adapters for non-Node runtimes (Bun/Deno/edge `Request`/`Response`) are tracked
-in [TODO.md](./TODO.md).
+## Non-Node runtimes
+
+Cloudflare Workers, Deno, Bun, and Hono speak `Request`/`Response` rather than
+Node's `IncomingMessage`/`ServerResponse`. `createFetchHandler` takes the same
+options and returns a fetch-shaped handler:
+
+```ts
+import { createFetchHandler } from '@cubicecho/graphql-mcp';
+
+const handler = createFetchHandler({ schema });
+
+export default { fetch: handler }; // Cloudflare Workers / Deno / Bun
+app.all('/mcp', (c) => handler(c.req.raw)); // Hono
+```
+
+It needs `@modelcontextprotocol/sdk` **1.25 or later**, which is where the SDK's
+web-standard transport was added. The import happens on the first call rather
+than at module load, so this package still loads on the older SDKs its peer
+range allows — only `createFetchHandler` is unavailable there, and it says so.
 
 ## Sessions
 

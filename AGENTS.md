@@ -26,7 +26,8 @@ process and forward to a remote GraphQL endpoint.
   `@graphql-tools/schema` (schema merging for the `extend` option) are the only
   runtime dependencies. `@modelcontextprotocol/sdk` (`>=1.12`) and `graphql`
   (`>=16`) are **peer deps**. Express is *not* a dependency — the HTTP handler
-  is framework-agnostic.
+  is framework-agnostic. `createFetchHandler` needs SDK ≥ 1.25 and loads that
+  transport lazily so the floor stays at 1.12 for everyone else.
 - **Guiding constraint:** avoid adding libraries unless writing it ourselves
   isn't worth the effort (e.g. the GraphQL→Zod mapping is hand-written). The
   `scalars` option is a plain `Record<string, ZodTypeAny>` for the same reason —
@@ -68,7 +69,8 @@ src/
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
   sessions.ts     — the bounded session table behind stateful HTTP (SessionStore)
-  http.ts         — createHttpHandler for the Streamable HTTP transport
+  http.ts         — createHttpHandler for Node (IncomingMessage/ServerResponse)
+  fetch.ts        — createFetchHandler for Request/Response runtimes
   *.test.ts       — co-located tests; fixtures.test.ts holds the shared "todos" schema
 ```
 
@@ -146,13 +148,20 @@ src/
 - **Pure vs. bound.** `buildTools` produces pure `ToolDescriptor`s (no SDK, no
   executor). `server.ts` binds them to an executor + `McpServer`. Keep that split.
 - **Stateless HTTP needs a fresh server per request.** An `McpServer` owns a
-  single transport, so `createHttpHandler` mints a new server+transport per
-  request (descriptors are built once and reused). Don't share one server across
+  single transport, so the handlers mint a new server+transport per request
+  (descriptors are built once and reused). Don't share one server across
   concurrent requests. Stateful mode (`sessions`) is the deliberate exception:
   one server per *session* is what makes server-initiated messages possible at
   all, and the price is state that has to be bounded — hence `SessionStore`'s
   idle timeout and LRU cap. It sweeps on lookup rather than on a timer, because
   a timer would need `unref`ing and would add a lifecycle callers must own.
+- **Two handlers, one behaviour.** `http.ts` (Node) and `fetch.ts`
+  (`Request`/`Response`) differ only in how a request reaches the transport;
+  session handling, context derivation, and the 404-for-an-unknown-session rule
+  are shared and must stay in step. `fetch.ts` imports the SDK's web-standard
+  transport *lazily* — it only exists in SDK ≥ 1.25 while the peer range starts
+  at 1.12, and a top-level import would make the whole package unloadable for
+  Node users who will never call it.
 - **Custom tools** (the `tools` option) add to — or override by name — generated
   tools. `registerTool` throws on duplicate names, so overrides are resolved
   *before* registering.

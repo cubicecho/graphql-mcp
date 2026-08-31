@@ -34,7 +34,8 @@
  *   reuse these in a custom tool so it reports failure and size like the rest
  * - `executor` — `createLocalExecutor` (in-process) / `createHttpExecutor` (forwarding)
  * - `server` — `createMcpServer` / `createServerFactory` / `registerGraphqlTools` (+ custom tools)
- * - `http` — `createHttpHandler` for the Streamable HTTP transport
+ * - `http` — `createHttpHandler` for the Streamable HTTP transport (Node)
+ * - `fetch` — `createFetchHandler` for `Request`/`Response` runtimes
  * - `sessions` — the session table behind stateful HTTP (`SessionStore`)
  * - `pagination` — paging-argument detection for truncation hints
  *
@@ -45,6 +46,8 @@ export type { HttpExecutorOptions, LocalExecutorOptions } from './executor.ts';
 export { createHttpExecutor, createLocalExecutor } from './executor.ts';
 export type { SchemaExtension } from './extend.ts';
 export { extendSchemaForMcp, stripRootTypes } from './extend.ts';
+export type { FetchHandlerOptions, McpFetchHandler } from './fetch.ts';
+export { createFetchHandler } from './fetch.ts';
 export type { HttpHandlerOptions, McpHttpHandler, McpHttpRequest } from './http.ts';
 export { createHttpHandler } from './http.ts';
 export type { MetaToolDeps, MetaToolName, MetaToolsOptions } from './meta.ts';

@@ -20,6 +20,8 @@
  * `ServerResponse`. A parsed JSON body on `req.body` (as `express.json()`
  * provides) is used when present, but the transport reads the request stream
  * itself when it isn't — so a bare `node:http` server needs no body parser.
+ * Runtimes that speak `Request`/`Response` instead want
+ * {@link createFetchHandler}.
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';

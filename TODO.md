@@ -9,8 +9,9 @@ Deferred work and known MVP limitations.
   flight rather than replaying it. The SDK transport accepts one; wiring it up
   means picking a storage shape that isn't per-process memory.
 - **Shared session state.** `SessionStore` is per-process, so a stateful
-  deployment behind a load balancer needs sticky routing. A pluggable store
-  (Redis) would lift that — note that a session owns a live `McpServer`, so what
+  deployment behind a load balancer needs sticky routing and can't work at all on
+  isolate-per-request platforms. A pluggable store (Redis, Durable Objects) would
+  lift both limits — note that a session owns a live `McpServer`, so what
   actually has to move is the routing, not the object.
 
 ## Schema coverage
