@@ -4,15 +4,14 @@ Deferred work and known MVP limitations.
 
 ## HTTP / transport
 
-- **Non-Node runtimes.** `createHttpHandler` needs a Node `IncomingMessage` /
-  `ServerResponse` pair, which covers Express, Fastify, Koa, and the raw
-  `node:http` server (a parsed `req.body` is optional — the transport reads the
-  stream when it's absent). It does *not* cover Bun/Deno/edge, which speak
-  `Request`/`Response`. Consider a small `toFetchHandler()` that wraps the
-  transport for those.
-- **Stateful sessions.** Currently stateless JSON (`sessionIdGenerator:
-  undefined`, fresh server per request). Optionally support session-based
-  transports for streaming/long-lived connections.
+- **Session resumability.** Stateful sessions (`sessions`) keep a server per
+  client but no `eventStore`, so a dropped SSE connection loses whatever was in
+  flight rather than replaying it. The SDK transport accepts one; wiring it up
+  means picking a storage shape that isn't per-process memory.
+- **Shared session state.** `SessionStore` is per-process, so a stateful
+  deployment behind a load balancer needs sticky routing. A pluggable store
+  (Redis) would lift that — note that a session owns a live `McpServer`, so what
+  actually has to move is the routing, not the object.
 
 ## Schema coverage
 

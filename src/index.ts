@@ -35,6 +35,7 @@
  * - `executor` — `createLocalExecutor` (in-process) / `createHttpExecutor` (forwarding)
  * - `server` — `createMcpServer` / `createServerFactory` / `registerGraphqlTools` (+ custom tools)
  * - `http` — `createHttpHandler` for the Streamable HTTP transport
+ * - `sessions` — the session table behind stateful HTTP (`SessionStore`)
  * - `pagination` — paging-argument detection for truncation hints
  *
  * @packageDocumentation
@@ -70,6 +71,12 @@ export {
   createServerFactory,
   registerGraphqlTools,
 } from './server.ts';
+export type { ClosableTransport, Session, SessionOptions } from './sessions.ts';
+export {
+  DEFAULT_IDLE_TIMEOUT_MS,
+  DEFAULT_MAX_SESSIONS,
+  SessionStore,
+} from './sessions.ts';
 export type { BuildToolsOptions, McpFieldExtensions, ToolDescriptor } from './tools.ts';
 export { buildTools } from './tools.ts';
 export type {

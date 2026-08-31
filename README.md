@@ -508,6 +508,38 @@ http.createServer((req, res) => handler(req, res)).listen(4000);
 Adapters for non-Node runtimes (Bun/Deno/edge `Request`/`Response`) are tracked
 in [TODO.md](./TODO.md).
 
+## Sessions
+
+Both handlers are **stateless** by default: every request gets its own server and
+transport, so any instance can serve any call and nothing has to be cleaned up.
+That is the right shape for a tool server, and it's what you want unless you need
+the server to *send* something unprompted.
+
+Setting `sessions` flips that. The client initializes once, gets an
+`Mcp-Session-Id` back, and every later request is routed to the same long-lived
+server — which is what makes progress notifications and the standalone SSE stream
+possible, since a connection stays open to deliver them on.
+
+```ts
+const handler = createHttpHandler({
+  schema,
+  sessions: {
+    idleTimeoutMs: 5 * 60 * 1000, // evict a client that walked away (default)
+    maxSessions: 1000, // LRU cap on live sessions (default)
+    enableJsonResponse: false, // SSE; set true behind a buffering proxy
+  },
+});
+
+// Close open streams on shutdown; a no-op when stateless.
+process.on('SIGTERM', () => handler.close());
+```
+
+The session table is per-process memory, so a stateful deployment behind a load
+balancer needs sticky routing — and on isolate-per-request platforms like
+Cloudflare Workers it can't work at all. Stay stateless there. An unknown or
+expired session id is answered with `404`, which tells a spec-compliant client to
+initialize again.
+
 ## Development
 
 ```bash

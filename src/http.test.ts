@@ -142,3 +142,121 @@ describe('createHttpHandler without a body parser', () => {
     await client.close();
   });
 });
+
+describe('createHttpHandler with sessions', () => {
+  let hosted: { url: URL; close: () => void };
+  let handler: McpHttpHandler;
+  // Every server closes over the request that built it, so the number of
+  // distinct requests seen here is the number of servers in play.
+  const seenRequests = new Set<unknown>();
+
+  before(async () => {
+    const { schema, root } = makeTodoSchema();
+    handler = createHttpHandler({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      sessions: true,
+      contextFromRequest: (req) => {
+        seenRequests.add(req);
+        return { auth: null };
+      },
+    });
+    hosted = await host(handler);
+  });
+
+  after(async () => {
+    await handler.close();
+    hosted.close();
+  });
+
+  test('keeps one server across a session instead of one per request', async () => {
+    seenRequests.clear();
+    const client = await connect(hosted.url);
+    await client.callTool({ name: 'todos', arguments: {} });
+    await client.callTool({ name: 'todos', arguments: {} });
+    // Two tool calls, five HTTP requests, one captured request: the server that
+    // handled `initialize` is the one still answering — which is also why
+    // `contextFromRequest` is documented as running against the initializing
+    // request rather than the current one.
+    assert.equal(seenRequests.size, 1);
+    await client.close();
+  });
+
+  test('two clients get independent sessions', async () => {
+    seenRequests.clear();
+    const first = await connect(hosted.url);
+    const second = await connect(hosted.url);
+    await first.callTool({ name: 'todos', arguments: {} });
+    await second.callTool({ name: 'todos', arguments: {} });
+    assert.equal(seenRequests.size, 2);
+    await first.close();
+    await second.close();
+  });
+
+  test('an unknown session id is rejected with 404 so the client re-initializes', async () => {
+    const response = await fetch(hosted.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'mcp-session-id': 'no-such-session',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    });
+    assert.equal(response.status, 404);
+    const body = (await response.json()) as { error: { code: number; message: string } };
+    assert.equal(body.error.code, -32001);
+    assert.match(body.error.message, /Session not found/);
+  });
+
+  test('a request with no session id and no initialize is refused', async () => {
+    const response = await fetch(hosted.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    });
+    // The transport rejects it (400, not initialized) and the handler throws the
+    // stray server away rather than leaving it in the table.
+    assert.equal(response.status, 400);
+  });
+
+  test('a tool call still round-trips inside a session', async () => {
+    const client = await connect(hosted.url);
+    const result = (await client.callTool({ name: 'todos', arguments: {} })) as TextResult;
+    const payload = JSON.parse(result.content[0].text) as { data: { todos: unknown[] } };
+    assert.ok(payload.data.todos.length > 0);
+    await client.close();
+  });
+});
+
+describe('createHttpHandler close()', () => {
+  test('is a no-op in stateless mode', async () => {
+    const { schema, root } = makeTodoSchema();
+    const handler = createHttpHandler({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+    });
+    await handler.close();
+  });
+
+  test('ends live sessions', async () => {
+    const { schema, root } = makeTodoSchema();
+    const handler = createHttpHandler({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      sessions: { enableJsonResponse: true },
+    });
+    const hosted = await host(handler);
+    const client = await connect(hosted.url);
+    await client.listTools();
+
+    await handler.close();
+    // The session is gone, so the id the client still holds now 404s.
+    await assert.rejects(() => client.listTools());
+    await client.close().catch(() => {});
+    hosted.close();
+  });
+});

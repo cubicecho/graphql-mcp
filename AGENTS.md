@@ -67,6 +67,7 @@ src/
   server.ts       — createMcpServer / createServerFactory / registerGraphqlTools (+ custom tools)
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
+  sessions.ts     — the bounded session table behind stateful HTTP (SessionStore)
   http.ts         — createHttpHandler for the Streamable HTTP transport
   *.test.ts       — co-located tests; fixtures.test.ts holds the shared "todos" schema
 ```
@@ -147,7 +148,11 @@ src/
 - **Stateless HTTP needs a fresh server per request.** An `McpServer` owns a
   single transport, so `createHttpHandler` mints a new server+transport per
   request (descriptors are built once and reused). Don't share one server across
-  concurrent requests.
+  concurrent requests. Stateful mode (`sessions`) is the deliberate exception:
+  one server per *session* is what makes server-initiated messages possible at
+  all, and the price is state that has to be bounded — hence `SessionStore`'s
+  idle timeout and LRU cap. It sweeps on lookup rather than on a timer, because
+  a timer would need `unref`ing and would add a lifecycle callers must own.
 - **Custom tools** (the `tools` option) add to — or override by name — generated
   tools. `registerTool` throws on duplicate names, so overrides are resolved
   *before* registering.
