@@ -198,6 +198,12 @@ change per commit. Commit messages **drive releases**: `feat:` → minor, `fix:`
 patch, a `BREAKING CHANGE:` footer → major; `chore:`/`docs:`/`test:`/`ci:` don't
 publish.
 
+**Integrate with `merge`, never `rebase`.** When `main` has moved ahead — most
+often because semantic-release pushed a `chore(release):` commit while you were
+working — bring it in with `git merge` (or `git pull --no-rebase`). Rebasing
+rewrites commits that are already published on `main` and that release tags
+point at, so never reach for `git rebase` or `git pull --rebase` here.
+
 ## CI & releases
 
 Two GitHub Actions workflows:
