@@ -14,7 +14,11 @@
  *   later request. That is what makes an open SSE stream — and therefore
  *   server-initiated messages — possible, and each session buffers what it has
  *   sent so a dropped stream resumes rather than losing it (see `eventStore.ts`).
- *   It also pins a client to one process; see {@link SessionOptions} and issue #10.
+ *   It also pins a client to one process: an `McpServer` is a live object, so a
+ *   session cannot be handed to another replica. Behind a load balancer that
+ *   means sticky routing — and optionally a {@link SessionDirectory}, which
+ *   makes a misrouted request say which instance it belonged to instead of
+ *   failing anonymously. See the README's deployment notes.
  *
  * Express is assumed for the MVP, but nothing here imports it: any framework
  * works as long as it hands the handler a Node `IncomingMessage` and a Node
@@ -29,7 +33,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { eventStoreFactory } from './eventStore.ts';
 import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
-import { type Session, type SessionOptions, SessionStore } from './sessions.ts';
+import {
+  headersFor,
+  type Session,
+  type SessionOptions,
+  SessionStore,
+  sessionNotFound,
+} from './sessions.ts';
 
 /** A request, optionally with a parsed JSON body attached (as `express.json()` provides). */
 export type McpHttpRequest = IncomingMessage & { body?: unknown };
@@ -119,10 +129,8 @@ export function createHttpHandler(options: HttpHandlerOptions): McpHttpHandler {
     if (sessionId) {
       const existing = store.take(sessionId);
       if (!existing?.transport) {
-        // 404 specifically: the spec has clients treat it as "your session is
-        // gone, initialize again". A 400 would read as a malformed request and
-        // leave the client retrying an id that will never come back.
-        sendJsonRpcError(res, 404, -32001, 'Session not found');
+        const owner = await store.elsewhere(sessionId);
+        sendJsonRpcError(res, 404, -32001, sessionNotFound(owner), headersFor(owner));
         return;
       }
       await existing.transport.handleRequest(req, res, req.body);
@@ -176,7 +184,8 @@ function sendJsonRpcError(
   status: number,
   code: number,
   message: string,
+  headers: Record<string, string> = {},
 ): void {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
   res.end(JSON.stringify({ jsonrpc: '2.0', error: { code, message }, id: null }));
 }

@@ -11,6 +11,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { createLocalExecutor } from './executor.ts';
 import { createFetchHandler, type McpFetchHandler } from './fetch.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
+import { MemorySessionDirectory, type SessionOptions } from './sessions.ts';
 
 const BASE = new URL('https://worker.test/mcp');
 
@@ -26,7 +27,7 @@ async function connect(handler: McpFetchHandler): Promise<Client> {
 }
 
 /** A handler over the todos fixture, with the executor already wired up. */
-function todoHandler(options: { sessions?: boolean } = {}): McpFetchHandler {
+function todoHandler(options: { sessions?: boolean | SessionOptions } = {}): McpFetchHandler {
   const { schema, root } = makeTodoSchema();
   return createFetchHandler({
     schema,
@@ -166,6 +167,58 @@ describe('createFetchHandler with sessions', () => {
     await client.listTools();
     await handler.close();
     await assert.rejects(() => client.listTools());
+    await client.close().catch(() => {});
+  });
+});
+
+describe('createFetchHandler with a session directory', () => {
+  /** A `tools/list` carrying a session id — the shape a misrouted request has. */
+  function ask(sessionId: string): Request {
+    return new Request('https://example.test/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId,
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    });
+  }
+
+  test('names the instance holding a session that reached the wrong isolate', async () => {
+    const directory = new MemorySessionDirectory();
+    directory.claim('elsewhere', 'do-2');
+    const handler = todoHandler({ sessions: { directory, instanceId: 'do-1' } });
+    const response = await handler(ask('elsewhere'));
+    // 404 either way — an McpServer cannot move — but one that says where to look.
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('mcp-session-owner'), 'do-2');
+    const body = (await response.json()) as { error: { code: number; message: string } };
+    assert.equal(body.error.code, -32001);
+    assert.match(body.error.message, /held by 'do-2'/);
+    await handler.close();
+  });
+
+  test('says only that the session is gone when nobody claims it', async () => {
+    const handler = todoHandler({
+      sessions: { directory: new MemorySessionDirectory(), instanceId: 'do-1' },
+    });
+    const response = await handler(ask('never-existed'));
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('mcp-session-owner'), null);
+    const body = (await response.json()) as { error: { message: string } };
+    assert.equal(body.error.message, 'Session not found');
+    await handler.close();
+  });
+
+  test('claims a live session for its instance and releases it on close', async () => {
+    const directory = new MemorySessionDirectory();
+    const handler = todoHandler({ sessions: { directory, instanceId: 'do-1' } });
+    const client = await connect(handler);
+    await client.listTools();
+    assert.equal(directory.size, 1);
+    await handler.close();
+    assert.equal(directory.size, 0);
     await client.close().catch(() => {});
   });
 });

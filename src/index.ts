@@ -36,7 +36,8 @@
  * - `server` — `createMcpServer` / `createServerFactory` / `registerGraphqlTools` (+ custom tools)
  * - `http` — `createHttpHandler` for the Streamable HTTP transport (Node)
  * - `fetch` — `createFetchHandler` for `Request`/`Response` runtimes
- * - `sessions` — the session table behind stateful HTTP (`SessionStore`)
+ * - `sessions` — the session table behind stateful HTTP (`SessionStore`), and
+ *   `SessionDirectory` for reporting session ownership across instances
  * - `eventStore` — the bounded SSE replay buffer behind session resumability
  * - `pagination` — paging-argument detection for truncation hints
  *
@@ -89,10 +90,18 @@ export {
   createServerFactory,
   registerGraphqlTools,
 } from './server.ts';
-export type { ClosableTransport, Session, SessionOptions } from './sessions.ts';
+export type {
+  ClosableTransport,
+  Session,
+  SessionDirectory,
+  SessionOptions,
+} from './sessions.ts';
 export {
+  DEFAULT_CLAIM_TTL_MS,
   DEFAULT_IDLE_TIMEOUT_MS,
   DEFAULT_MAX_SESSIONS,
+  MemorySessionDirectory,
+  SESSION_OWNER_HEADER,
   SessionStore,
 } from './sessions.ts';
 export type {

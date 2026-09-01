@@ -785,11 +785,10 @@ const handler = createHttpHandler({
 process.on('SIGTERM', () => handler.close());
 ```
 
-The session table is per-process memory, so a stateful deployment behind a load
-balancer needs sticky routing — and on isolate-per-request platforms like
-Cloudflare Workers it can't work at all. Stay stateless there. An unknown or
-expired session id is answered with `404`, which tells a spec-compliant client to
-initialize again.
+An unknown or expired session id is answered with `404`, which tells a
+spec-compliant client to initialize again. The session table is per-process
+memory, which is what makes the deployment shape matter — see
+[Running more than one instance](#running-more-than-one-instance).
 
 ### Resuming a dropped stream
 
@@ -827,6 +826,83 @@ import type { EventStore } from '@cubicecho/graphql-mcp';
 
 sessions: { replay: (): EventStore => new RedisEventStore(redis) };
 ```
+
+### Running more than one instance
+
+A session owns a live `McpServer`: an open connection, a connected transport, and
+registered handlers. That is not a value you can write to Redis and read back
+somewhere else, so a session cannot move between instances. Everything below
+follows from that.
+
+**Stateless (the default).** Nothing is retained between requests, so any
+instance serves any call. Scale it however you like. This is the right answer
+unless you need server-initiated messages.
+
+**Stateful, one process.** Zero config — the local table is the whole truth.
+
+**Stateful, behind a load balancer.** You need sticky routing on
+`Mcp-Session-Id`, because a request that reaches the wrong instance cannot be
+served there. Two ways to arrange it:
+
+- *Encode the instance in the session id* with `generateSessionId`, and have the
+  proxy route on it. No shared state at all.
+- *Share a session directory* — a small record of which instance holds which
+  session id, in Redis or a table — and route on that.
+
+**Stateful, isolate-per-request (Cloudflare Workers).** Sticky routing here means
+a Durable Object per session: route by `Mcp-Session-Id` to the object that owns
+it, and inside that object `createFetchHandler` is an ordinary single-process
+handler. Without that, stay stateless.
+
+#### Session directories
+
+A directory records session *ownership*, never the session. Supplying one does
+not make a session portable; it makes a misrouted request explain itself. Without
+one, a request that lands on the wrong instance gets a bare `404` — the same
+answer as an expired session, which is a miserable thing to debug when a load
+balancer quietly loses its stickiness. With one, the response says which instance
+holds it and repeats it in an `Mcp-Session-Owner` header:
+
+```http
+HTTP/1.1 404 Not Found
+Mcp-Session-Owner: web-2
+
+{"jsonrpc":"2.0","error":{"code":-32001,
+ "message":"Session not found on this instance; it is held by 'web-2'"},"id":null}
+```
+
+It is still a `404`: the client's correct move is to initialize again, and there
+is no session here to forward the request to. What changed is that your proxy —
+or the person reading the logs — can now see where it should have gone.
+
+Three methods, over whatever store you already run:
+
+```ts
+import type { SessionDirectory } from '@cubicecho/graphql-mcp';
+
+const directory: SessionDirectory = {
+  // Called on registration and on every later use, so it doubles as the TTL
+  // refresh. Make it idempotent.
+  claim: (id, owner) => redis.set(`mcp:${id}`, owner, { EX: 600 }),
+  owner: (id) => redis.get(`mcp:${id}`).then((v) => v ?? undefined),
+  release: (id) => redis.del(`mcp:${id}`),
+};
+
+const handler = createHttpHandler({
+  schema,
+  sessions: { directory, instanceId: process.env.HOSTNAME },
+});
+```
+
+`instanceId` defaults to a random UUID, which distinguishes instances but tells
+you nothing — set it to a pod name or hostname if you mean to route on it, and to
+something you're willing to disclose, since a misrouted request is answered with
+it. Give claims a TTL so an instance that dies doesn't leave its sessions
+attributed to it forever; `claim` is re-issued on every request, so a live
+session is always refreshed well before it lapses.
+
+`MemorySessionDirectory` implements the interface in local memory. It is a test
+double and a template — memory is exactly what several instances don't share.
 
 ## Development
 

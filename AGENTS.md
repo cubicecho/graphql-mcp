@@ -72,6 +72,7 @@ src/
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
   sessions.ts     — the bounded session table behind stateful HTTP (SessionStore)
+                    plus SessionDirectory, which reports session ownership across instances
   eventStore.ts   — the bounded SSE replay buffer behind resumability (MemoryEventStore)
   http.ts         — createHttpHandler for Node (IncomingMessage/ServerResponse)
   fetch.ts        — createFetchHandler for Request/Response runtimes
@@ -300,6 +301,18 @@ src/
   (`getStreamIdForEventId` → `undefined`, which the transport answers with a
   400) rather than replayed as the surviving suffix — a client told its resume
   point is gone can start over, one handed a stream with a silent gap cannot.
+- **A session can't move between instances**, so `SessionDirectory` shares session
+  *ownership*, not sessions. An `McpServer` is a live object — a connected
+  transport and registered handlers — which is why the table stays per-process
+  and why the store interface is keyed on identity (`claim`/`owner`/`release`)
+  rather than session objects. It does no routing: a request that reached the
+  wrong instance still gets the spec's 404, but one that names the owner (and
+  repeats it in `Mcp-Session-Owner`) instead of an anonymous one, which is the
+  difference between a diagnosable stickiness bug and an intermittent mystery.
+  `claim` is re-issued on every use so it doubles as a TTL refresh; every path
+  that ends a session releases, and a directory that throws never blocks
+  teardown — a stale claim expires, a leaked session does not. No directory by
+  default, so the single-process case stays zero-config.
   `EventStore` is modelled structurally here rather than imported, so the public
   types hold across the whole peer range and a caller can supply Redis or a
   Durable Object for replay that survives a restart.

@@ -22,12 +22,25 @@
  * long-lived Node worker, and wrong on Cloudflare Workers, where consecutive
  * requests may land in different isolates and a session id would resolve on one
  * and 404 on the next. Stay stateless there unless you have pinned routing.
+ *
+ * Pinned routing on Workers means a Durable Object per session: the caller
+ * routes by `Mcp-Session-Id` to the object that holds it, and *inside* that
+ * object this handler is an ordinary single-process handler. The routing is the
+ * part the platform has to do; a {@link SessionDirectory} only reports it, so
+ * that a request which arrives in the wrong isolate says so. See the README's
+ * deployment notes.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type EventStore, eventStoreFactory } from './eventStore.ts';
 import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
-import { type Session, type SessionOptions, SessionStore } from './sessions.ts';
+import {
+  headersFor,
+  type Session,
+  type SessionOptions,
+  SessionStore,
+  sessionNotFound,
+} from './sessions.ts';
 
 /** A fetch-style MCP handler: give it a `Request`, get a `Response`. */
 export interface McpFetchHandler {
@@ -150,8 +163,8 @@ export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandle
     if (sessionId) {
       const existing = store.take(sessionId);
       if (!existing?.transport) {
-        // 404 tells a spec-compliant client to initialize again; see http.ts.
-        return jsonRpcError(404, -32001, 'Session not found');
+        const owner = await store.elsewhere(sessionId);
+        return jsonRpcError(404, -32001, sessionNotFound(owner), headersFor(owner));
       }
       return existing.transport.handleRequest(request);
     }
@@ -197,9 +210,14 @@ async function connect(server: McpServer, transport: WebTransport): Promise<void
 }
 
 /** A JSON-RPC error as a `Response`, for requests no transport owns yet. */
-function jsonRpcError(status: number, code: number, message: string): Response {
+function jsonRpcError(
+  status: number,
+  code: number,
+  message: string,
+  headers: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code, message }, id: null }), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
   });
 }

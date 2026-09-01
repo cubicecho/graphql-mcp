@@ -14,6 +14,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { createLocalExecutor } from './executor.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
 import { createHttpHandler, type McpHttpHandler, type McpHttpRequest } from './http.ts';
+import { MemorySessionDirectory, type SessionDirectory } from './sessions.ts';
 
 /** Hosts an MCP HTTP handler on an ephemeral port; returns the base URL + closer. */
 async function host(handler: McpHttpHandler): Promise<{ url: URL; close: () => void }> {
@@ -422,6 +423,106 @@ describe('resuming a dropped stream', () => {
       // happened".
       assert.equal(resumed.status, 400);
       resumed.abort();
+    });
+  });
+});
+
+describe('createHttpHandler with a session directory', () => {
+  const { schema, root } = makeTodoSchema();
+  const executor = createLocalExecutor(schema, { rootValue: root });
+
+  /**
+   * Hosts a session-mode handler that shares `directory` with the rest of the
+   * fleet, as `web-1`. Everything runs in one process — the point is not to
+   * simulate a load balancer but to pin down what an instance says about a
+   * session id it does not hold.
+   */
+  async function withInstance(
+    directory: SessionDirectory,
+    body: (url: URL) => Promise<void>,
+  ): Promise<void> {
+    const handler = createHttpHandler({
+      schema,
+      executor,
+      sessions: { directory, instanceId: 'web-1' },
+    });
+    const hosted = await host(handler);
+    try {
+      await body(hosted.url);
+    } finally {
+      await handler.close();
+      hosted.close();
+    }
+  }
+
+  /** A `tools/list` carrying a session id, which is the misrouting a client shows. */
+  function ask(url: URL, sessionId: string): Promise<Response> {
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId,
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    });
+  }
+
+  test('names the instance holding a session that landed on the wrong one', async () => {
+    const directory = new MemorySessionDirectory();
+    directory.claim('elsewhere', 'web-2');
+    await withInstance(directory, async (url) => {
+      const response = await ask(url, 'elsewhere');
+      // Still 404: an McpServer cannot move, so there is nothing to forward to
+      // and the client's correct move is to initialize again. The owner is the
+      // diagnosis, not a redirect.
+      assert.equal(response.status, 404);
+      assert.equal(response.headers.get('mcp-session-owner'), 'web-2');
+      const body = (await response.json()) as { error: { code: number; message: string } };
+      assert.equal(body.error.code, -32001);
+      assert.match(body.error.message, /held by 'web-2'/);
+    });
+  });
+
+  test('says only that the session is gone when the directory has no claim', async () => {
+    await withInstance(new MemorySessionDirectory(), async (url) => {
+      const response = await ask(url, 'never-existed');
+      assert.equal(response.status, 404);
+      assert.equal(response.headers.get('mcp-session-owner'), null);
+      const body = (await response.json()) as { error: { message: string } };
+      assert.equal(body.error.message, 'Session not found');
+    });
+  });
+
+  test('does not blame itself for a session it evicted', async () => {
+    // The claim outlived the session it described. Reporting `web-1` would send
+    // an operator back to the instance the request already reached.
+    const directory = new MemorySessionDirectory();
+    directory.claim('stale', 'web-1');
+    await withInstance(directory, async (url) => {
+      const response = await ask(url, 'stale');
+      assert.equal(response.headers.get('mcp-session-owner'), null);
+      const body = (await response.json()) as { error: { message: string } };
+      assert.equal(body.error.message, 'Session not found');
+      assert.equal(directory.owner('stale'), undefined);
+    });
+  });
+
+  test('a live session is claimed for its instance and released on DELETE', async () => {
+    const directory = new MemorySessionDirectory();
+    await withInstance(directory, async (url) => {
+      const transport = new StreamableHTTPClientTransport(url);
+      const client = new Client({ name: 'directory-test', version: '0.0.0' });
+      await client.connect(transport);
+      const sessionId = transport.sessionId;
+      assert.ok(sessionId, 'initialize should have minted a session id');
+      assert.equal(directory.owner(sessionId), 'web-1');
+
+      // DELETE ends the session, which is the path that has to give the claim
+      // back — otherwise the directory keeps pointing at a session that is gone.
+      await transport.terminateSession();
+      assert.equal(directory.owner(sessionId), undefined);
+      await client.close();
     });
   });
 });
