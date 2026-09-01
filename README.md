@@ -91,6 +91,7 @@ mutation createTodo($input: CreateTodoInput!) {
 |---|---|
 | `createHttpHandler(options)` | Returns an Express/Node `(req, res)` handler serving the tools over the MCP Streamable HTTP transport. A fresh server is created per request. |
 | `createMcpServer(options)` | Returns a single `McpServer` with all tools registered. Use for stdio or one long-lived connection. |
+| `connectServer(server, transport)` | Connects a server to a transport. Use this instead of `server.connect` — see [Connecting your own transport](#connecting-your-own-transport). |
 | `createServerFactory(options)` | Builds the tool descriptors once and returns a `() => McpServer` factory. |
 | `createLocalExecutor(schema, opts?)` | Executor that runs operations in-process via graphql-js (the default). |
 | `createHttpExecutor(endpoint, opts?)` | Executor that forwards operations to a remote GraphQL HTTP endpoint. |
@@ -502,6 +503,26 @@ tools: [
   },
 ];
 ```
+
+## Connecting your own transport
+
+`createHttpHandler` and `createFetchHandler` connect their servers for you. If
+you build the transport yourself — stdio, or one long-lived connection — use
+`connectServer` rather than `server.connect`:
+
+```ts
+import { createMcpServer, connectServer } from '@cubicecho/graphql-mcp';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+
+const server = createMcpServer({ schema });
+await connectServer(server, new StdioServerTransport());
+```
+
+It connects, then makes the server tolerant of a `tools/call` that leaves
+`params.arguments` out. That key is optional in the MCP spec, and a tool whose
+arguments are all optional — or which takes none at all — gives a client nothing
+to put there. Without this, such a call is rejected by input validation before
+the tool runs.
 
 ## Other HTTP servers
 

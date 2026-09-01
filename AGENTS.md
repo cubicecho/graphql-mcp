@@ -65,7 +65,7 @@ src/
   meta.ts         — opt-in schema-exploration tools (buildMetaTools): introspect/search/validate/execute
   result.ts       — GraphqlResult → CallToolResult (toCallToolResult): isError, error condensing, clamping
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
-  server.ts       — createMcpServer / createServerFactory / registerGraphqlTools (+ custom tools)
+  server.ts       — createMcpServer / createServerFactory / connectServer / registerGraphqlTools (+ custom tools)
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
   sessions.ts     — the bounded session table behind stateful HTTP (SessionStore)
@@ -119,6 +119,27 @@ src/
   `{ query, variables, operationName, context }` request and hands it to the
   executor; it never knows whether GraphQL runs in-process or over HTTP. The
   default is `createLocalExecutor(schema)`.
+- **Every input type is built once (`zodSchema.ts`'s `done` memo).** A generated
+  CRUD schema filters through relations — a task by its runs, a run back by its
+  task — and the same handful of filter types is reached by dozens of routes.
+  GraphQL says that by *naming* a type; JSON Schema has to *write it out*, so a
+  per-route copy expands combinatorially. Returning the identical Zod instance is
+  what lets `toJSONSchema` emit a `$ref` instead: on a real seventeen-tool server
+  it took the advertised listing from **18 MB to 456 kB**, with nothing pruned.
+  `pending` is the cycle guard for a type still on the stack (`z.lazy`), `done`
+  is the memo for one already finished — deleting from `pending` is not the same
+  thing, and conflating them is what caused the blow-up.
+- **`connectServer(server, transport)` is how a server should be connected.**
+  `params.arguments` is optional in the MCP schema, and a tool whose arguments
+  are all optional gives a client nothing to put there — but the SDK hands that
+  `undefined` straight to the input schema, which rejects it before the handler
+  runs, and the tool is uncallable. The fix cannot live in the schema: the SDK
+  renders `tools/list` from the same value it validates against, and anything
+  that parses `undefined` stops being recognised as an object schema (the tool
+  is then advertised as taking no arguments at all). So `connectServer` wraps
+  `transport.onmessage` after `connect` and defaults a missing `arguments` to
+  `{}`. `createHttpHandler` and `createFetchHandler` use it; a caller wiring up
+  its own transport (stdio) should too.
 - **Tools pass arguments as GraphQL variables**, never inlined into the query
   string — the executor's variable layer handles coercion/escaping.
 - **Selection sets are auto-generated** (`buildSelectionSet`): all scalar/enum

@@ -13,7 +13,7 @@ import { buildSchema } from 'graphql';
 import { createLocalExecutor } from './executor.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './index.ts';
-import { createMcpServer } from './server.ts';
+import { connectServer, createMcpServer } from './server.ts';
 
 async function connect(server: McpServer): Promise<Client> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -545,5 +545,136 @@ describe('truncated results point at the paging argument', () => {
       .content[0].text;
     assert.match(body, /narrow the query or request fewer fields\]/);
     await client.close();
+  });
+});
+
+describe('a call that omits its arguments', () => {
+  const schema = buildSchema(/* GraphQL */ `
+    type Query {
+      schedule: String
+      tasks(limit: Int): String
+    }
+  `);
+
+  const server = () =>
+    createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' });
+
+  async function connectTolerant(mcp: McpServer): Promise<Client> {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'test-client', version: '0.0.0' });
+    await Promise.all([connectServer(mcp, serverTransport), client.connect(clientTransport)]);
+    return client;
+  }
+
+  // `params.arguments` is optional in the MCP schema, and a field taking no
+  // arguments gives a client nothing to put there — so this is the natural call,
+  // not a malformed one. The SDK hands `undefined` to the input schema, which
+  // rejects it before the handler runs, and the tool becomes uncallable.
+  test('a no-argument tool is callable with no arguments at all', async () => {
+    const client = await connectTolerant(server());
+    const result = parseResult(await client.callTool({ name: 'schedule' }));
+    assert.ok(!result.isError, JSON.stringify(result));
+    assert.deepEqual(result.data, { schedule: null });
+  });
+
+  test('so is a tool whose arguments are all optional', async () => {
+    const client = await connectTolerant(server());
+    const result = parseResult(await client.callTool({ name: 'tasks' }));
+    assert.ok(!result.isError, JSON.stringify(result));
+    assert.deepEqual(result.data, { tasks: null });
+  });
+
+  test('arguments that are sent still reach the operation', async () => {
+    const client = await connectTolerant(server());
+    const result = parseResult(await client.callTool({ name: 'tasks', arguments: { limit: 3 } }));
+    assert.ok(!result.isError, JSON.stringify(result));
+  });
+
+  test('a request that is not a tool call passes through untouched', async () => {
+    const client = await connectTolerant(server());
+    const { tools } = await client.listTools();
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), ['schedule', 'tasks']);
+  });
+});
+
+describe('tool definitions stay small for a schema that filters through relations', () => {
+  // The shape a generated CRUD API has: each table filters by its relations, and
+  // those filter back. Written out at every route rather than shared, one such
+  // `where` rendered at 2.8 MB and a seventeen-tool listing at 18 MB — past what
+  // any model will read, and it arrives before a single call can be made.
+  const schema = buildSchema(/* GraphQL */ `
+    input StringFilter {
+      eq: String
+      ne: String
+      contains: String
+      OR: [StringFilter!]
+    }
+    input TaskFilters {
+      id: StringFilter
+      name: StringFilter
+      prompt: StringFilter
+      runs: RunFilters
+      steps: StepFilters
+      triggers: TriggerFilters
+      OR: [TaskFilters!]
+      NOT: TaskFilters
+    }
+    input RunFilters {
+      id: StringFilter
+      status: StringFilter
+      task: TaskFilters
+      steps: StepFilters
+      triggers: TriggerFilters
+      OR: [RunFilters!]
+    }
+    input StepFilters {
+      id: StringFilter
+      kind: StringFilter
+      run: RunFilters
+      task: TaskFilters
+      triggers: TriggerFilters
+      OR: [StepFilters!]
+    }
+    input TriggerFilters {
+      id: StringFilter
+      kind: StringFilter
+      task: TaskFilters
+      run: RunFilters
+      steps: StepFilters
+      OR: [TriggerFilters!]
+    }
+    type Task {
+      id: String!
+      name: String!
+    }
+    type Query {
+      tasks(where: TaskFilters): [Task!]!
+      runs(where: RunFilters): [Task!]!
+    }
+  `);
+
+  test('the whole listing is something a client can actually read', async () => {
+    const client = await connect(
+      createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' }),
+    );
+    const { tools } = await client.listTools();
+    const size = JSON.stringify(tools).length;
+    // The bound is the order of magnitude, not the byte: four tables render at
+    // ~7.8 kB shared and ~45 kB written out, and the gap widens with every table
+    // a real schema adds.
+    assert.ok(size < 20_000, `tools/list rendered ${size} bytes`);
+  });
+
+  test('and the relation filters are still there to be used', async () => {
+    const client = await connect(
+      createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' }),
+    );
+    const { tools } = await client.listTools();
+    const where = JSON.stringify(
+      (tools.find((tool) => tool.name === 'tasks')?.inputSchema as { properties?: unknown })
+        ?.properties,
+    );
+    assert.ok(where.includes('runs'));
+    assert.ok(where.includes('triggers'));
   });
 });

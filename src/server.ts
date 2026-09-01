@@ -22,6 +22,7 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { GraphQLSchema } from 'graphql';
 import type { ZodRawShape } from 'zod';
@@ -183,6 +184,55 @@ function pickMeta<K extends keyof MetaToolsOptions>(
   key: K,
 ): MetaToolsOptions[K] | undefined {
   return typeof options.metaTools === 'object' ? options.metaTools[key] : undefined;
+}
+
+/**
+ * Connects `server` to `transport`, treating a `tools/call` that omits
+ * `arguments` as one that sent `{}`.
+ *
+ * The MCP schema makes `params.arguments` optional, and a tool taking no
+ * arguments at all — every generated tool for a field with no args — gives a
+ * client nothing to put there. The SDK passes `params.arguments` to the tool's
+ * input schema untouched, so an omitted one arrives as `undefined` and fails
+ * validation before the handler is reached: `Invalid arguments for tool
+ * schedule: expected object, received undefined`. A model that reasonably sent
+ * no arguments then has no way to call the tool at all, and retrying produces
+ * the identical error.
+ *
+ * It has to be fixed on the way in. The schema cannot be made tolerant: the SDK
+ * renders `tools/list` from the same value it validates against, and anything
+ * that parses `undefined` — an optional or a default wrapping the object — stops
+ * being recognised as an object schema, at which point the tool is advertised
+ * with an empty one. So the message is corrected instead, after `connect` has
+ * installed the SDK's own handler and before that handler sees it.
+ *
+ * Use this instead of `server.connect` on a server built here. Both shipped HTTP
+ * handlers do.
+ *
+ * @param server - The MCP server to connect.
+ * @param transport - The transport to connect it to.
+ */
+export async function connectServer(server: McpServer, transport: Transport): Promise<void> {
+  await server.connect(transport);
+  const handler = transport.onmessage;
+  if (!handler) return;
+  transport.onmessage = (message, extra) => handler(withArguments(message), extra);
+}
+
+/**
+ * A `tools/call` with no `arguments`, rewritten to carry an empty object.
+ *
+ * Copied rather than mutated: the caller's message may be shared (a transport is
+ * free to hand the same parsed body to more than one listener), and a request
+ * this rewrites in place would be seen changed by anything reading it after.
+ */
+function withArguments<T>(message: T): T {
+  if (!message || typeof message !== 'object') return message;
+  const request = message as { method?: unknown; params?: Record<string, unknown> };
+  if (request.method !== 'tools/call') return message;
+  if (!request.params || typeof request.params !== 'object') return message;
+  if (request.params.arguments !== undefined) return message;
+  return { ...request, params: { ...request.params, arguments: {} } } as T;
 }
 
 /**

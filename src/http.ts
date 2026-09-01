@@ -26,7 +26,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { type CreateMcpServerOptions, createServerFactory } from './server.ts';
+import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
 import { type Session, type SessionOptions, SessionStore } from './sessions.ts';
 
 /** A request, optionally with a parsed JSON body attached (as `express.json()` provides). */
@@ -105,7 +105,7 @@ export function createHttpHandler(options: HttpHandlerOptions): McpHttpHandler {
         transport.close();
         server.close();
       });
-      await server.connect(transport);
+      await connectServer(server, transport);
       await transport.handleRequest(req, res, req.body);
       return;
     }
@@ -142,7 +142,7 @@ export function createHttpHandler(options: HttpHandlerOptions): McpHttpHandler {
     transport.onclose = () => {
       if (transport.sessionId) void store.drop(transport.sessionId);
     };
-    await server.connect(transport);
+    await connectServer(server, transport);
     await transport.handleRequest(req, res, req.body);
     // A request that never initialized leaves nothing in the table; drop the
     // pair rather than leaking a server per stray request.

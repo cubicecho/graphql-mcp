@@ -209,3 +209,101 @@ describe('unmapped custom scalars', () => {
     assert.throws(() => when.parse('no'));
   });
 });
+
+describe('argsToZodShape shares repeated input types', () => {
+  // Four tables filtering through one another, which is what a generated CRUD
+  // schema looks like: a task filters by its runs, a run filters back by its
+  // task. Every column filter is the same `StringFilter` type, over and over.
+  const crud = buildSchema(/* GraphQL */ `
+    input StringFilter {
+      eq: String
+      ne: String
+      contains: String
+      OR: [StringFilter!]
+      AND: [StringFilter!]
+    }
+    input TaskFilters {
+      id: StringFilter
+      name: StringFilter
+      runs: RunFilters
+      triggers: TriggerFilters
+      OR: [TaskFilters!]
+      NOT: TaskFilters
+    }
+    input RunFilters {
+      id: StringFilter
+      status: StringFilter
+      task: TaskFilters
+      steps: StepFilters
+      OR: [RunFilters!]
+    }
+    input StepFilters {
+      id: StringFilter
+      run: RunFilters
+      task: TaskFilters
+      OR: [StepFilters!]
+    }
+    input TriggerFilters {
+      id: StringFilter
+      task: TaskFilters
+      OR: [TriggerFilters!]
+    }
+    type Query {
+      tasks(where: TaskFilters): String
+    }
+  `);
+
+  const whereShape = () => {
+    const field = (crud.getQueryType() as GraphQLObjectType).getFields().tasks;
+    return argsToZodShape(field.args);
+  };
+
+  test('a type met by several routes is one instance, not a copy per route', () => {
+    const { where } = whereShape();
+    const task = shapeOf(where);
+    // `TaskFilters.id` and `RunFilters.id` are both `StringFilter`. Reached by
+    // different routes they used to be rebuilt into distinct-but-identical
+    // schemas, which the JSON Schema render then had to write out twice.
+    const run = shapeOf(task.runs);
+    assert.equal(unwrap(task.id), unwrap(run.id));
+    // And the same holds for a type reached back through a longer cycle.
+    const step = shapeOf(run.steps);
+    assert.equal(unwrap(step.id), unwrap(task.id));
+    assert.equal(unwrap(step.run), unwrap(task.runs));
+  });
+
+  test('sharing does not flatten the types — each still validates its own fields', () => {
+    const { where } = whereShape();
+    const value = {
+      id: { eq: 'a' },
+      runs: { status: { contains: 'ok' }, task: { name: { eq: 'b' } } },
+    };
+    assert.deepEqual(where.parse(value), value);
+    // `RunFilters` has no `name`, and a shared-by-mistake schema would take it.
+    assert.throws(() => where.parse({ runs: { id: 1 } }));
+    assert.throws(() => where.parse({ id: { eq: 5 } }));
+  });
+});
+
+/**
+ * The schema behind a field's optional/lazy wrappers, so two references to one
+ * input type can be compared by identity.
+ *
+ * Written against the runtime rather than a Zod version: this package's peer
+ * range spans v3 and v4, whose internals differ, but both expose `unwrap()` on
+ * the nullability wrappers and `schema` on a lazy node.
+ */
+function unwrap(schema: unknown): unknown {
+  let current = schema as { unwrap?: () => unknown; schema?: unknown };
+  for (let i = 0; i < 8; i++) {
+    if (typeof current?.unwrap === 'function') current = current.unwrap() as typeof current;
+    else if (current?.schema) current = current.schema as typeof current;
+    else break;
+  }
+  return current;
+}
+
+/** The unwrapped object's field shape. */
+function shapeOf(schema: unknown): Record<string, unknown> {
+  return (unwrap(schema) as { shape: Record<string, unknown> }).shape;
+}
