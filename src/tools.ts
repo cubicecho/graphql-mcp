@@ -113,6 +113,36 @@ export type SelectionDepth =
  */
 export type NameCase = 'snake' | 'preserve';
 
+/**
+ * How a mutation's `destructiveHint` and `idempotentHint` are decided.
+ *
+ * `'uniform'` (the default) marks every mutation destructive and non-idempotent.
+ * Nothing dangerous is under-reported, but the hint's only real consumer is a
+ * client deciding whether to interrupt the operator for confirmation — spent on
+ * every mutation, it is spent on none in particular, and an operator who
+ * confirms `create_task` a dozen times a day has been trained to click through
+ * the dialog that also guards `delete_task`.
+ *
+ * `'byName'` reads the conventional prefixes generated schemas use, so a create
+ * stops claiming to destroy and a delete admits it is idempotent:
+ *
+ * - `create*`, `add*`, `insert*` — additive: `destructiveHint: false`.
+ * - `delete*`, `remove*`, `destroy*` — `idempotentHint: true`; deleting what is
+ *   already gone changes nothing further.
+ * - anything else keeps the conservative default, which is already right for
+ *   `update*`/`set*` (destructive) and is the only safe answer for a name the
+ *   convention says nothing about (`runTask`, `stopTask`).
+ *
+ * A prefix only matches on a word boundary — `createTask`, `create_task`, and
+ * `create` match; `creationFor` does not.
+ *
+ * This is opt-in because it changes what a client confirms on, and no schema
+ * should have that change under it on a minor upgrade. It is a naming
+ * convention, not knowledge: where the convention is broken or absent,
+ * `extensions.mcp.annotations` and `decorate` still have the last word.
+ */
+export type MutationHints = 'uniform' | 'byName';
+
 /** Options controlling which fields become tools and how they're named. */
 export interface BuildToolsOptions {
   /** Wrap `Query` fields as tools. Default `true`. */
@@ -160,6 +190,12 @@ export interface BuildToolsOptions {
    * {@link ZodShapeOptions.nullBranches}.
    */
   nullBranches?: NullBranches;
+  /**
+   * How mutation `destructiveHint`/`idempotentHint` defaults are decided.
+   * Default `'uniform'`; `'byName'` derives them from the conventional
+   * `create`/`delete` prefixes. See {@link MutationHints}.
+   */
+  mutationHints?: MutationHints;
   /**
    * Keep only fields matching one of these patterns (`compileRules` syntax:
    * `'todos'`, `'Query.*'`, `'delete*'`). Omit to keep every field; a present
@@ -245,8 +281,9 @@ export function buildTools(
         ? options.toolName(field, kind)
         : applyNameCase(field.name, options.nameCase);
       const shape = { scalars: options.scalars, nullBranches: options.nullBranches };
+      const hints = options.mutationHints ?? 'uniform';
       const depth = ext?.selectionDepth ?? depthFor(options.selectionDepth, field, kind);
-      let descriptor = toDescriptor(baseName, field, kind, depth, shape);
+      let descriptor = toDescriptor(baseName, field, kind, depth, shape, hints);
       if (ext) descriptor = applyExtensions(descriptor, ext);
       const patch = options.decorate?.(descriptor, field, kind);
       if (patch) {
@@ -258,7 +295,7 @@ export function buildTools(
           patch.selectionDepth !== undefined &&
           patch.selectionDepth !== descriptor.selectionDepth
         ) {
-          descriptor = toDescriptor(baseName, field, kind, patch.selectionDepth, shape);
+          descriptor = toDescriptor(baseName, field, kind, patch.selectionDepth, shape, hints);
           if (ext) descriptor = applyExtensions(descriptor, ext);
         }
         descriptor = applyPatch(descriptor, patch);
@@ -328,6 +365,7 @@ function toDescriptor(
   kind: OperationKind,
   selectionDepth?: number,
   shape: ZodShapeOptions = {},
+  mutationHints: MutationHints = 'uniform',
 ): ToolDescriptor {
   const { query, operationName, argNames, selection } = buildOperation(kind, field, selectionDepth);
   const pageHint = paginationHint(field.args);
@@ -341,7 +379,7 @@ function toDescriptor(
     // an explicit null. An output schema only describes what comes back, where
     // a null is not a thing the caller chooses, so it keeps its null branches.
     outputSchema: buildOutputSchema(field.type, selectionDepth, shape.scalars),
-    annotations: annotationsFor(kind, humanize(field.name)),
+    annotations: annotationsFor(kind, field.name, humanize(field.name), mutationHints),
     query,
     operationName,
     argNames,
@@ -440,14 +478,38 @@ function defaultOf(arg: GraphQLArgument): string | undefined {
   return arg.defaultValue === undefined ? undefined : JSON.stringify(arg.defaultValue);
 }
 
-/** Default MCP annotations: queries are read-only/idempotent, mutations are writes. */
-function annotationsFor(kind: OperationKind, title: string): ToolAnnotations {
+/**
+ * A name prefix that adds a row without touching an existing one, so the
+ * operation is a write but not a destructive one.
+ */
+const ADDITIVE_PREFIX = /^(?:create|add|insert)(?=$|_|[A-Z0-9])/;
+
+/**
+ * A name prefix that removes something. Destructive, and idempotent: the second
+ * call finds nothing left to delete, so it changes nothing further.
+ */
+const REMOVING_PREFIX = /^(?:delete|remove|destroy)(?=$|_|[A-Z0-9])/;
+
+/**
+ * Default MCP annotations: queries are read-only and idempotent, mutations are
+ * writes. Under `mutationHints: 'byName'` a mutation's two write hints are read
+ * off the conventional prefix instead — see {@link MutationHints}. The match is
+ * on the *GraphQL field name*, not the tool name, so `nameCase`, `toolName`, and
+ * `extensions.mcp.name` cannot change what a tool claims about itself.
+ */
+function annotationsFor(
+  kind: OperationKind,
+  fieldName: string,
+  title: string,
+  mutationHints: MutationHints = 'uniform',
+): ToolAnnotations {
   const isQuery = kind === 'query';
+  const byName = !isQuery && mutationHints === 'byName';
   return {
     title,
     readOnlyHint: isQuery,
-    destructiveHint: !isQuery,
-    idempotentHint: isQuery,
+    destructiveHint: !isQuery && !(byName && ADDITIVE_PREFIX.test(fieldName)),
+    idempotentHint: isQuery || (byName && REMOVING_PREFIX.test(fieldName)),
     // Tools reach a GraphQL backend, whose data lives outside this server.
     openWorldHint: true,
   };

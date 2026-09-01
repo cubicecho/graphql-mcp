@@ -81,7 +81,14 @@ export {
   DEFAULT_MAX_SESSIONS,
   SessionStore,
 } from './sessions.ts';
-export type { BuildToolsOptions, McpFieldExtensions, NameCase, ToolDescriptor } from './tools.ts';
+export type {
+  BuildToolsOptions,
+  McpFieldExtensions,
+  MutationHints,
+  NameCase,
+  SelectionDepth,
+  ToolDescriptor,
+} from './tools.ts';
 export { buildTools } from './tools.ts';
 export type {
   GraphqlError,

@@ -109,7 +109,9 @@ Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
 ## How fields become tools
 
 - **Both queries and mutations become tools.** MCP has no query/mutation
-  distinction; queries are annotated `readOnlyHint`, mutations `destructiveHint`.
+  distinction; queries are annotated `readOnlyHint`, mutations `destructiveHint`
+  — see [Write hints](#write-hints), because that mutation default is
+  deliberately blunt.
 - **Names are `snake_case`.** `createTodo` becomes `create_todo`. The MCP spec
   doesn't mandate a convention, but every example in it names tools that way and
   so does most of the ecosystem, so it's what an agent has seen most. The
@@ -426,6 +428,54 @@ rather than a fix — only your schema knows which kind it is.
 **List elements are exempt** under either setting. `[String]` permits a null
 element, and an element can be null but never absent, so dropping the branch
 there would change the type rather than compress it.
+
+## Write hints
+
+Queries are annotated `readOnlyHint: true, idempotentHint: true`, which is
+simply true of them. By default every mutation is annotated
+`destructiveHint: true, idempotentHint: false`, which is **conservative rather
+than derived**: the schema says a field writes, not what it writes, so a create
+is flagged the same as a delete.
+
+That default under-reports nothing, but the hint's only real consumer is a
+client deciding whether to interrupt the operator for confirmation. Spent on
+every mutation, it is spent on none in particular — an operator who confirms
+`create_task` a dozen times a day is being trained to click through the dialog
+that also guards `delete_task`.
+
+`mutationHints: 'byName'` opts into reading the conventional prefixes that
+generated schemas use:
+
+```ts
+createMcpServer({ schema, mutationHints: 'byName' });
+```
+
+| Field name | `destructiveHint` | `idempotentHint` |
+| --- | --- | --- |
+| `create*`, `add*`, `insert*` | `false` | `false` |
+| `delete*`, `remove*`, `destroy*` | `true` | `true` |
+| anything else | `true` | `false` |
+
+A prefix matches only on a word boundary — `createTask`, `create_task`, and
+`create` match; `creationFor` doesn't — and it's read from the **GraphQL field
+name**, so `nameCase`, `toolName`, and `extensions.mcp.name` can't change what a
+tool claims about itself. Everything unmatched keeps the conservative default,
+which is already right for `update*`/`set*` and is the only safe answer for a
+name the convention says nothing about (`runTask`, `stopTask`).
+
+It's opt-in because it changes what clients confirm on, and no existing server
+should have that change under it on a minor upgrade.
+
+Either way this is a naming convention, not knowledge. Where the convention is
+broken or absent, say so directly — per field in the schema, or across the board
+with `decorate`:
+
+```ts
+decorate: (descriptor) =>
+  descriptor.name === 'run_task' ? { annotations: { destructiveHint: false } } : undefined,
+```
+
+Annotations merge rather than replace, so overriding one hint keeps the rest.
 
 ## Selection depth
 

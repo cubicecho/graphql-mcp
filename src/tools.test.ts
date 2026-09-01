@@ -670,3 +670,102 @@ describe('buildTools per-field selection depth', () => {
     assert.equal(patched.title, 'Kept');
   });
 });
+
+describe('mutationHints', () => {
+  const schema = buildSchema(`
+    type Task { id: ID! name: String! }
+    type Query { tasks: [Task!]! }
+    type Mutation {
+      createTask(name: String!): Task!
+      addTag(id: ID!, tag: String!): Task!
+      insert_task(name: String!): Task!
+      deleteTask(id: ID!): Boolean!
+      removeTag(id: ID!, tag: String!): Task!
+      updateTask(id: ID!, name: String!): Task!
+      runTask(id: ID!): Boolean!
+      creationFor(id: ID!): Task!
+      create: Task!
+    }
+  `);
+
+  const hintsOf = (mutationHints?: 'uniform' | 'byName') => {
+    const tools = buildTools(schema, mutationHints ? { mutationHints } : {});
+    return new Map(
+      tools.map((t) => [t.name, [t.annotations.destructiveHint, t.annotations.idempotentHint]]),
+    );
+  };
+
+  test('every mutation is destructive by default', () => {
+    const hints = hintsOf();
+    for (const name of ['create_task', 'delete_task', 'update_task', 'run_task']) {
+      assert.deepEqual(hints.get(name), [true, false], name);
+    }
+  });
+
+  test("'byName' clears destructiveHint on the additive prefixes", () => {
+    const hints = hintsOf('byName');
+    for (const name of ['create_task', 'add_tag', 'insert_task', 'create']) {
+      assert.deepEqual(hints.get(name), [false, false], name);
+    }
+  });
+
+  test("'byName' marks the removing prefixes idempotent", () => {
+    const hints = hintsOf('byName');
+    for (const name of ['delete_task', 'remove_tag']) {
+      assert.deepEqual(hints.get(name), [true, true], name);
+    }
+  });
+
+  test("'byName' leaves an unconventional name at the conservative default", () => {
+    const hints = hintsOf('byName');
+    // `update` is already right without the convention, and nothing in a name
+    // like `runTask` says which side of destructive it falls on.
+    for (const name of ['update_task', 'run_task']) {
+      assert.deepEqual(hints.get(name), [true, false], name);
+    }
+  });
+
+  test('a prefix only matches on a word boundary', () => {
+    assert.deepEqual(hintsOf('byName').get('creation_for'), [true, false]);
+  });
+
+  test("'byName' does not touch queries", () => {
+    const tasks = buildTools(schema, { mutationHints: 'byName' }).find((t) => t.name === 'tasks');
+    assert.equal(tasks?.annotations.readOnlyHint, true);
+    assert.equal(tasks?.annotations.destructiveHint, false);
+    assert.equal(tasks?.annotations.idempotentHint, true);
+  });
+
+  test('the prefix is read from the GraphQL field name, not the tool name', () => {
+    // A renamed tool still describes the operation the field performs.
+    const tools = buildTools(schema, {
+      mutationHints: 'byName',
+      toolName: (field) => (field.name === 'createTask' ? 'task_write' : field.name),
+    });
+    const renamed = tools.find((t) => t.name === 'task_write');
+    assert.equal(renamed?.annotations.destructiveHint, false);
+  });
+
+  test('extensions and decorate still have the last word', () => {
+    const annotated = buildSchema(`
+      type Task { id: ID! }
+      type Query { tasks: [Task!]! }
+      type Mutation { createTask: Task!, deleteTask: Boolean! }
+    `);
+    setMcpExtensions(annotated, 'Mutation', 'createTask', {
+      annotations: { destructiveHint: true },
+    });
+    const tools = new Map(
+      buildTools(annotated, {
+        mutationHints: 'byName',
+        decorate: (d) =>
+          d.name === 'delete_task' ? { annotations: { idempotentHint: false } } : undefined,
+      }).map((t) => [t.name, t]),
+    );
+    assert.equal(tools.get('create_task')?.annotations.destructiveHint, true);
+    assert.equal(tools.get('delete_task')?.annotations.idempotentHint, false);
+    // The rest of the derived annotations survive the override.
+    assert.equal(tools.get('delete_task')?.annotations.destructiveHint, true);
+    assert.equal(tools.get('create_task')?.annotations.title, 'Create Task');
+  });
+});

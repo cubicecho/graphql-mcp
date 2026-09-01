@@ -87,6 +87,16 @@ src/
   name changes: `title`, the description, the operation, and `include`/`exclude`
   patterns all keep the real field name. `nameCase: 'preserve'` opts out;
   `toolName` overrides entirely and is never re-cased.
+- **Mutation write hints are a default, not a derivation** (`annotationsFor`).
+  Queries get `readOnlyHint`/`idempotentHint`, which the schema genuinely knows.
+  Mutations get `destructiveHint: true` uniformly, which it does not — the
+  schema says a field writes, not what it writes. `mutationHints: 'byName'`
+  opts into the conventional prefixes (`create`/`add`/`insert` → additive,
+  `delete`/`remove`/`destroy` → idempotent; everything else keeps the
+  conservative default). Opt-in, because it changes what a client confirms on,
+  and it matches the **GraphQL field name** so a renamed tool can't misdescribe
+  itself. Document the default as conservative wherever annotations come up: a
+  hint spent on every mutation is spent on none.
 - **`selectionDepth` is per field, through the same pipeline as everything else**:
   the option (a number *or* a `(field, kind) => number` callback) → `extensions.mcp.selectionDepth`
   → a `decorate` patch. A patch that changes the depth rebuilds the descriptor
