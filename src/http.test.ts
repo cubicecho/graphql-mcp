@@ -100,6 +100,16 @@ describe('createHttpHandler', () => {
     await client.close();
   });
 
+  // Every argument of `todos` is optional, so a client has nothing to put in
+  // `params.arguments` and the MCP schema lets it leave the key out entirely.
+  test('a call that omits its arguments is answered, not rejected', async () => {
+    const client = await connect(server.url);
+    const result = await client.callTool({ name: 'todos' });
+    assert.equal((result as TextResult).isError, false);
+    assert.ok(JSON.parse((result as TextResult).content[0].text).data.todos.length > 0);
+    await client.close();
+  });
+
   test('derives per-request context from the HTTP request', async () => {
     seenContexts.length = 0;
     const client = await connect(server.url);
@@ -221,6 +231,13 @@ describe('createHttpHandler with sessions', () => {
     // The transport rejects it (400, not initialized) and the handler throws the
     // stray server away rather than leaving it in the table.
     assert.equal(response.status, 400);
+  });
+
+  test('and so does one that omits its arguments', async () => {
+    const client = await connect(hosted.url);
+    const result = await client.callTool({ name: 'todos' });
+    assert.equal((result as TextResult).isError, false);
+    await client.close();
   });
 
   test('a tool call still round-trips inside a session', async () => {

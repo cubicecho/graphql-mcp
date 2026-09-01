@@ -13,7 +13,7 @@ import { buildSchema } from 'graphql';
 import { createLocalExecutor } from './executor.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './index.ts';
-import { createMcpServer } from './server.ts';
+import { connectServer, createMcpServer } from './server.ts';
 
 async function connect(server: McpServer): Promise<Client> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -545,5 +545,54 @@ describe('truncated results point at the paging argument', () => {
       .content[0].text;
     assert.match(body, /narrow the query or request fewer fields\]/);
     await client.close();
+  });
+});
+
+describe('a call that omits its arguments', () => {
+  const schema = buildSchema(/* GraphQL */ `
+    type Query {
+      schedule: String
+      tasks(limit: Int): String
+    }
+  `);
+
+  const server = () =>
+    createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' });
+
+  async function connectTolerant(mcp: McpServer): Promise<Client> {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'test-client', version: '0.0.0' });
+    await Promise.all([connectServer(mcp, serverTransport), client.connect(clientTransport)]);
+    return client;
+  }
+
+  // `params.arguments` is optional in the MCP schema, and a field taking no
+  // arguments gives a client nothing to put there — so this is the natural call,
+  // not a malformed one. The SDK hands `undefined` to the input schema, which
+  // rejects it before the handler runs, and the tool becomes uncallable.
+  test('a no-argument tool is callable with no arguments at all', async () => {
+    const client = await connectTolerant(server());
+    const result = parseResult(await client.callTool({ name: 'schedule' }));
+    assert.ok(!result.isError, JSON.stringify(result));
+    assert.deepEqual(result.data, { schedule: null });
+  });
+
+  test('so is a tool whose arguments are all optional', async () => {
+    const client = await connectTolerant(server());
+    const result = parseResult(await client.callTool({ name: 'tasks' }));
+    assert.ok(!result.isError, JSON.stringify(result));
+    assert.deepEqual(result.data, { tasks: null });
+  });
+
+  test('arguments that are sent still reach the operation', async () => {
+    const client = await connectTolerant(server());
+    const result = parseResult(await client.callTool({ name: 'tasks', arguments: { limit: 3 } }));
+    assert.ok(!result.isError, JSON.stringify(result));
+  });
+
+  test('a request that is not a tool call passes through untouched', async () => {
+    const client = await connectTolerant(server());
+    const { tools } = await client.listTools();
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), ['schedule', 'tasks']);
   });
 });

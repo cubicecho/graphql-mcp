@@ -25,7 +25,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { type CreateMcpServerOptions, createServerFactory } from './server.ts';
+import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
 import { type Session, type SessionOptions, SessionStore } from './sessions.ts';
 
 /** A fetch-style MCP handler: give it a `Request`, get a `Response`. */
@@ -189,7 +189,7 @@ export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandle
  */
 async function connect(server: McpServer, transport: WebTransport): Promise<void> {
   // biome-ignore lint/suspicious/noExplicitAny: bridging the structural WebTransport to the SDK's Transport
-  await server.connect(transport as any);
+  await connectServer(server, transport as any);
 }
 
 /** A JSON-RPC error as a `Response`, for requests no transport owns yet. */

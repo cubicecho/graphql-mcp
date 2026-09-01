@@ -70,6 +70,7 @@ export type {
   ToolHandler,
 } from './server.ts';
 export {
+  connectServer,
   createMcpServer,
   createServerFactory,
   registerGraphqlTools,
