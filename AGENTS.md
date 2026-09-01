@@ -67,6 +67,7 @@ src/
   result.ts       — GraphqlResult → CallToolResult (toCallToolResult): isError, error condensing, clamping
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
   server.ts       — createMcpServer / createServerFactory / connectServer / registerGraphqlTools (+ custom tools)
+  listing.ts      — the tools/list response shared across a factory's servers (shareToolListing)
   zodCompat.ts    — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
@@ -252,6 +253,20 @@ src/
   all, and the price is state that has to be bounded — hence `SessionStore`'s
   idle timeout and LRU cap. It sweeps on lookup rather than on a timer, because
   a timer would need `unref`ing and would add a lifecycle callers must own.
+- **The tool listing is rendered once per factory (`listing.ts`).** The SDK
+  converts each tool's Zod schema to JSON Schema *inside* its `tools/list`
+  handler, not at registration — so a stateless server repeats that conversion on
+  every request, and it is the bulk of the request: on a 50-tool CRUD schema,
+  20-29 ms per listing against 0.3 ms to mint the server. Its handler reads
+  neither the request nor `extra`, and every server a factory mints registers the
+  same tools, so `shareToolListing` renders the first one and reuses it (0.5-0.8
+  ms). It *wraps* the SDK's handler rather than reimplementing it, so the bytes
+  stay the SDK's; if the handler can't be found, nothing is cached and every
+  listing renders as before. Any change to a tool set — `registerTool` on a live
+  server, or `enable`/`disable`/`update`/`remove`, all of which call
+  `sendToolListChanged` — retires the cache permanently, because from then on two
+  servers can disagree about what they expose. `registerGeneratedTool` hoists its
+  `z.object(shape).strict()` for the same reason (a `WeakMap` on the shape).
 - **Two handlers, one behaviour.** `http.ts` (Node) and `fetch.ts`
   (`Request`/`Response`) differ only in how a request reaches the transport;
   session handling, context derivation, and the 404-for-an-unknown-session rule
@@ -341,7 +356,9 @@ All have been reconsidered and settled; reopen them only against new evidence.
   matcher as well as the schema (a closure, so identity-keyed) or serve one
   caller's filtered view to another. Complexity and a stale-result bug surface
   for no measurable gain. If this is ever revisited, the per-request server
-  minting is the number to attack, not the meta tools.
+  minting is the number to attack, not the meta tools — issue #16 did exactly
+  that and found the real cost was the SDK's per-request `tools/list` rendering,
+  now shared by `listing.ts`.
 - **Subscriptions are ignored.** MCP has no streaming-subscription tool shape, so
   there is nothing to project a `Subscription` field *onto* — a tool that can
   only ever return one event misrepresents what the field does. They are dropped

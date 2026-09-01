@@ -28,6 +28,7 @@ import type { GraphQLSchema } from 'graphql';
 import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
+import { shareToolListing, type ToolListingCache } from './listing.ts';
 import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './result.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
@@ -141,6 +142,8 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   // Meta tools default to the same surface the generated tools expose, so the
   // raw-document `execute` path can't reach past it.
+  // Shared by every server this factory mints; see `shareToolListing`.
+  const listing: ToolListingCache = {};
   const metaOptions: MetaToolsOptions | null = options.metaTools
     ? {
         ...(typeof options.metaTools === 'object' ? options.metaTools : {}),
@@ -175,6 +178,7 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
     for (const tool of byName.values()) {
       registerCustomTool(server, tool);
     }
+    shareToolListing(server, listing);
     return server;
   };
 }
@@ -277,7 +281,7 @@ function registerGeneratedTool(
       // agent that misspells an argument would otherwise get a success result
       // with its typo quietly discarded. The descriptor keeps exposing the raw
       // shape, so `decorate` and custom tools are unaffected.
-      inputSchema: z.object(descriptor.inputSchema).strict(),
+      inputSchema: strictInput(descriptor.inputSchema),
       annotations: descriptor.annotations,
     },
     async (args: Record<string, unknown>, extra: unknown) => {
@@ -295,6 +299,28 @@ function registerGeneratedTool(
       return toCallToolResult(result, maxChars, descriptor.pageHint);
     },
   );
+}
+
+/**
+ * The strict object for a descriptor's input shape, built once.
+ *
+ * A descriptor's shape is fixed and its Zod schema is stateless, so the same
+ * object can back every server built from it — worth hoisting because stateless
+ * HTTP re-registers every tool on every request. Keyed on the shape rather than
+ * the descriptor so `decorate`d copies sharing a shape share the schema too.
+ */
+const strictInputs = new WeakMap<ZodShape, ReturnType<typeof buildStrictInput>>();
+
+function buildStrictInput(shape: ZodShape) {
+  return z.object(shape).strict();
+}
+
+function strictInput(shape: ZodShape): ReturnType<typeof buildStrictInput> {
+  const cached = strictInputs.get(shape);
+  if (cached) return cached;
+  const schema = buildStrictInput(shape);
+  strictInputs.set(shape, schema);
+  return schema;
 }
 
 function registerCustomTool(server: McpServer, tool: CustomTool): void {
