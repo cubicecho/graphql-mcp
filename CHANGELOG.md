@@ -1,3 +1,10 @@
+# [2.4.0](https://github.com/cubicecho/graphql-mcp/compare/v2.3.0...v2.4.0) (2026-09-01)
+
+
+### Features
+
+* **sessions:** buffer SSE events so a dropped stream can resume ([7f5f9b2](https://github.com/cubicecho/graphql-mcp/commit/7f5f9b26d387ab86d57f907bb1ce6a6c96d66e7a)), closes [#9](https://github.com/cubicecho/graphql-mcp/issues/9)
+
 # [2.3.0](https://github.com/cubicecho/graphql-mcp/compare/v2.2.1...v2.3.0) (2026-09-01)
 
 
