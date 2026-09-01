@@ -1,3 +1,17 @@
+# [2.0.0](https://github.com/cubicecho/graphql-mcp/compare/v1.0.2...v2.0.0) (2026-09-01)
+
+
+* feat!: make zod a peer dependency spanning v3 and v4 ([3a440c7](https://github.com/cubicecho/graphql-mcp/commit/3a440c7a0629ce97fa5d992403804ba3d3d0d129)), closes [#3](https://github.com/cubicecho/graphql-mcp/issues/3)
+
+
+### BREAKING CHANGES
+
+* zod is now a peer dependency instead of a bundled one.
+Install it alongside this package: `npm install zod`. Any version in
+`^3.25 || ^4.0` works. Consumers who already depend on zod directly — which
+is most, since the `scalars` option takes zod schemas — need no change beyond
+having it in their own package.json.
+
 ## [1.0.2](https://github.com/cubicecho/graphql-mcp/compare/v1.0.1...v1.0.2) (2026-09-01)
 
 
