@@ -128,7 +128,8 @@ Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
   failure an agent has no way to notice or retry.
 - **Return type → selection set.** A selection set is auto-generated: every
   scalar/enum leaf plus nested objects up to `selectionDepth` (default 2), always
-  including `__typename`. Fields that require arguments and cyclic types are skipped.
+  including `__typename`. Fields that require arguments and cyclic types are
+  skipped. The depth is per field — see [Selection depth](#selection-depth).
 - **Descriptions come from the SDL** — the field docstring, its signature, and a
   per-argument list carrying each argument's default (as the GraphQL literal
   you'd write) and any argument-level deprecation. Each description also ends
@@ -425,6 +426,38 @@ rather than a fix — only your schema knows which kind it is.
 **List elements are exempt** under either setting. `[String]` permits a null
 element, and an element can be null but never absent, so dropping the branch
 there would change the type rather than compress it.
+
+## Selection depth
+
+`selectionDepth` decides how far a generated selection set descends into nested
+objects. The default is 2, and one number for the whole schema is usually wrong
+in both directions: the field returning a flat row wants 1, and the one whose
+answer is only useful two objects down wants 3.
+
+Pass a callback to decide per field:
+
+```ts
+createMcpServer({
+  schema,
+  selectionDepth: (field, kind) => (kind === 'mutation' ? 1 : field.name === 'tasks' ? 3 : 2),
+});
+```
+
+A number still works and applies to every field. Per field, `extensions.mcp.selectionDepth`
+beats the option, and a `decorate` patch beats both:
+
+```ts
+decorate: (descriptor) => (descriptor.name === 'tasks' ? { selectionDepth: 3 } : undefined),
+```
+
+A patched depth rebuilds the operation, the description, and the `outputSchema`
+around the new selection, so a descriptor never describes a selection it won't
+return. Setting `query` in the same patch still wins over the rebuilt one.
+
+Depth is not free in both directions: each level multiplies the fields the
+server resolves and the tokens the agent reads, while a level too few means the
+agent gets an object it can't see into and has no second tool to ask with.
+`descriptor.selectionDepth` reports what each tool was built at.
 
 ## Decorating tools for agents
 

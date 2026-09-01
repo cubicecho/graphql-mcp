@@ -559,3 +559,114 @@ describe('buildTools pagination hints', () => {
     assert.match(feed.pageHint ?? '', /`limit`/);
   });
 });
+
+describe('buildTools per-field selection depth', () => {
+  // A generated schema has nowhere to hang `extensions.mcp.selectionDepth`, so
+  // one expensive field would otherwise force every other tool shallow.
+  const sdl = `
+    type Run { id: ID! output: String! task: Task! }
+    type Trigger { id: ID! cron: String! task: Task! }
+    type Task { id: ID! name: String! runs: [Run!]! triggers: [Trigger!]! }
+    type Query { tasks: [Task!]! triggers: [Trigger!]! }
+  `;
+  const schema = buildSchema(sdl);
+
+  const byName = (tools: ReturnType<typeof buildTools>) => new Map(tools.map((t) => [t.name, t]));
+
+  test('a descriptor records the depth it was built at', () => {
+    assert.equal(buildTools(schema)[0].selectionDepth, 2);
+    assert.equal(buildTools(schema, { selectionDepth: 1 })[0].selectionDepth, 1);
+  });
+
+  test('a callback sets the depth per field', () => {
+    const tools = byName(
+      buildTools(schema, { selectionDepth: (field) => (field.name === 'tasks' ? 1 : 2) }),
+    );
+
+    const tasks = tools.get('tasks');
+    const triggers = tools.get('triggers');
+    assert.equal(tasks?.selectionDepth, 1);
+    assert.equal(triggers?.selectionDepth, 2);
+    // The shallow one stops at its own leaves; the deep one expands a level.
+    assert.doesNotMatch(tasks?.query ?? '', /runs \{/);
+    assert.match(triggers?.query ?? '', /task \{/);
+  });
+
+  test('the callback sees the field and its kind', () => {
+    const seen: Array<[string, string]> = [];
+    buildTools(schema, {
+      selectionDepth: (field, kind) => {
+        seen.push([field.name, kind]);
+        return 1;
+      },
+    });
+    assert.deepEqual(seen.sort(), [
+      ['tasks', 'query'],
+      ['triggers', 'query'],
+    ]);
+  });
+
+  test('everything derived from the selection moves with it', () => {
+    const shallow = byName(buildTools(schema, { selectionDepth: 1 })).get('tasks');
+    const deep = byName(buildTools(schema, { selectionDepth: 2 })).get('tasks');
+    const row = { id: '1', name: 'a', __typename: 'Task' };
+
+    // The description shows the real selection, so an agent doesn't plan around
+    // fields it won't receive...
+    assert.doesNotMatch(shallow?.description ?? '', /runs/);
+    assert.match(deep?.description ?? '', /runs/);
+    // ...and the output schema describes the same rows the query asks for.
+    assert.equal(shallow?.outputSchema.safeParse([row]).success, true);
+    assert.equal(deep?.outputSchema.safeParse([row]).success, false);
+  });
+
+  test('extensions.mcp.selectionDepth still beats the option', () => {
+    // A fresh schema: setMcpExtensions annotates the field in place.
+    const annotated = buildSchema(sdl);
+    setMcpExtensions(annotated, 'Query', 'tasks', { selectionDepth: 2 });
+    const tools = byName(buildTools(annotated, { selectionDepth: 1 }));
+    assert.equal(tools.get('tasks')?.selectionDepth, 2);
+    assert.equal(tools.get('triggers')?.selectionDepth, 1);
+  });
+
+  test('decorate can set the depth, and the query is rebuilt for it', () => {
+    const tools = byName(
+      buildTools(schema, {
+        selectionDepth: 1,
+        decorate: (d) => (d.name === 'triggers' ? { selectionDepth: 2 } : undefined),
+      }),
+    );
+
+    const triggers = tools.get('triggers');
+    assert.equal(triggers?.selectionDepth, 2);
+    assert.match(triggers?.query ?? '', /task \{/);
+    assert.match(triggers?.description ?? '', /task \{/);
+    assert.equal(
+      triggers?.outputSchema.safeParse([{ id: '1', cron: '*', __typename: 'Trigger' }]).success,
+      false,
+    );
+    // The undecorated neighbour is untouched.
+    assert.equal(tools.get('tasks')?.selectionDepth, 1);
+    assert.doesNotMatch(tools.get('tasks')?.query ?? '', /runs \{/);
+  });
+
+  test('a query in the same patch still wins over the rebuild', () => {
+    const [tool] = buildTools(schema, {
+      include: ['tasks'],
+      selectionDepth: 1,
+      decorate: () => ({ selectionDepth: 2, query: 'query tasks { tasks { id } }' }),
+    });
+    assert.equal(tool.query, 'query tasks { tasks { id } }');
+    assert.equal(tool.selectionDepth, 2);
+  });
+
+  test('a decorate patch that repeats the current depth rebuilds nothing', () => {
+    const plain = buildTools(schema, { selectionDepth: 1 })[0];
+    const patched = buildTools(schema, {
+      selectionDepth: 1,
+      decorate: () => ({ selectionDepth: 1, title: 'Kept' }),
+    })[0];
+    assert.equal(patched.query, plain.query);
+    assert.equal(patched.title, 'Kept');
+  });
+});

@@ -28,6 +28,16 @@ import {
 } from 'graphql';
 
 /**
+ * How many object levels a selection descends when nothing says otherwise.
+ *
+ * Lives here because three things have to agree on it — the selection set, the
+ * operation built around it, and the output schema describing what comes back —
+ * and a descriptor now reports the depth it was built at, which would be a lie
+ * if any of them defaulted differently.
+ */
+export const DEFAULT_SELECTION_DEPTH = 2;
+
+/**
  * Builds a selection set string (e.g. `{ id name author { id __typename } }`)
  * for a field's return `type`. Returns `''` when the type is a scalar/enum leaf
  * (such a field takes no selection set).
@@ -37,7 +47,10 @@ import {
  *   the return type only; `2` (default) also expands one level of nested objects.
  * @returns The selection set string, or `''` for a leaf return type.
  */
-export function buildSelectionSet(type: GraphQLOutputType, maxDepth = 2): string {
+export function buildSelectionSet(
+  type: GraphQLOutputType,
+  maxDepth = DEFAULT_SELECTION_DEPTH,
+): string {
   return selectionFor(getNamedType(type), maxDepth, new Set());
 }
 

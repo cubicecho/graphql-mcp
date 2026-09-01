@@ -13,7 +13,7 @@
  */
 
 import type { GraphQLField } from 'graphql';
-import { buildSelectionSet } from './selection.ts';
+import { buildSelectionSet, DEFAULT_SELECTION_DEPTH } from './selection.ts';
 import type { OperationKind } from './types.ts';
 
 /** A built operation: the document plus the metadata needed to invoke it. */
@@ -44,7 +44,7 @@ export function buildOperation(
   kind: OperationKind,
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
   field: GraphQLField<any, any>,
-  selectionDepth = 2,
+  selectionDepth = DEFAULT_SELECTION_DEPTH,
 ): BuiltOperation {
   const variableDefs = field.args.map((arg) => `$${arg.name}: ${arg.type.toString()}`);
   const argPassings = field.args.map((arg) => `${arg.name}: $${arg.name}`);

@@ -15,6 +15,7 @@ import { buildOperation } from './operation.ts';
 import { buildOutputSchema } from './outputSchema.ts';
 import { paginationHint } from './pagination.ts';
 import { compileRules } from './rules.ts';
+import { DEFAULT_SELECTION_DEPTH } from './selection.ts';
 import type { OperationKind, ToolAnnotations } from './types.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import {
@@ -51,6 +52,18 @@ export interface ToolDescriptor {
   /** The field's argument names (used to pluck variables from validated input). */
   argNames: string[];
   /**
+   * The selection depth `query` and {@link ToolDescriptor.outputSchema} were
+   * built at. Always set by {@link buildTools}; optional so a hand-built
+   * descriptor need not carry one.
+   *
+   * Settable from `decorate`, which rebuilds the operation, the description, and
+   * the output schema at the new depth — the three would otherwise disagree
+   * about what the tool returns. Prefer a `selectionDepth` callback in the
+   * options when the depth is a function of the field, which is the common case;
+   * that decides the depth before anything is built instead of after.
+   */
+  selectionDepth?: number;
+  /**
    * Advice naming the field's pagination argument, appended to a result's
    * truncation note. Absent when the field takes no recognised paging argument.
    */
@@ -79,6 +92,21 @@ export interface McpFieldExtensions {
 }
 
 /**
+ * Selection depth for a schema's tools: one number for every field, or a
+ * callback deciding per field.
+ *
+ * The callback exists because depth is a per-field trade-off that a generated
+ * schema gives you nowhere to record. A field returning a large collection of
+ * rich objects wants depth 1; its neighbours are cheap at 2 and far more useful
+ * there. With a single number the worst field sets the depth and every other
+ * tool pays for it.
+ */
+export type SelectionDepth =
+  | number
+  // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to depth
+  | ((field: GraphQLField<any, any>, kind: OperationKind) => number);
+
+/**
  * How a GraphQL field name is cased when projected into a tool name.
  * `'snake'` (the default) matches the convention MCP servers use; `'preserve'`
  * keeps the field name exactly as the schema spells it.
@@ -104,8 +132,14 @@ export interface BuildToolsOptions {
    * Selection-set depth for return types (see `buildSelectionSet`). Default `2`.
    * Also drives `outputSchema`, so the descriptor's schema always matches what
    * the generated operation actually selects.
+   *
+   * A callback sets it per field — `(field, kind) => field.name === 'runs' ? 1 : 2`
+   * — which is how a schema you don't hand-write (and so can't annotate with
+   * `extensions.mcp.selectionDepth`) gives its one expensive field a shallower
+   * selection without flattening every other tool to match. See
+   * {@link SelectionDepth}.
    */
-  selectionDepth?: number;
+  selectionDepth?: SelectionDepth;
   /**
    * Zod schemas for GraphQL scalars, keyed by scalar name (or a resolver
    * function). Consulted before the built-in mapping, so custom scalars stop
@@ -210,16 +244,25 @@ export function buildTools(
       const baseName = options.toolName
         ? options.toolName(field, kind)
         : applyNameCase(field.name, options.nameCase);
-      let descriptor = toDescriptor(
-        baseName,
-        field,
-        kind,
-        ext?.selectionDepth ?? options.selectionDepth,
-        { scalars: options.scalars, nullBranches: options.nullBranches },
-      );
+      const shape = { scalars: options.scalars, nullBranches: options.nullBranches };
+      const depth = ext?.selectionDepth ?? depthFor(options.selectionDepth, field, kind);
+      let descriptor = toDescriptor(baseName, field, kind, depth, shape);
       if (ext) descriptor = applyExtensions(descriptor, ext);
       const patch = options.decorate?.(descriptor, field, kind);
-      if (patch) descriptor = applyPatch(descriptor, patch);
+      if (patch) {
+        // A patched depth changes what the operation selects, so everything
+        // derived from the selection is rebuilt rather than left describing the
+        // old one. The patch is then applied over the rebuilt descriptor, so an
+        // explicit `query` or `description` alongside it still wins.
+        if (
+          patch.selectionDepth !== undefined &&
+          patch.selectionDepth !== descriptor.selectionDepth
+        ) {
+          descriptor = toDescriptor(baseName, field, kind, patch.selectionDepth, shape);
+          if (ext) descriptor = applyExtensions(descriptor, ext);
+        }
+        descriptor = applyPatch(descriptor, patch);
+      }
 
       if (seen.has(descriptor.name)) {
         throw new Error(
@@ -302,8 +345,19 @@ function toDescriptor(
     query,
     operationName,
     argNames,
+    selectionDepth: selectionDepth ?? DEFAULT_SELECTION_DEPTH,
     ...(pageHint ? { pageHint } : {}),
   };
+}
+
+/** The depth for one field: a callback is asked, a number is taken as-is. */
+function depthFor(
+  selectionDepth: SelectionDepth | undefined,
+  // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to depth
+  field: GraphQLField<any, any>,
+  kind: OperationKind,
+): number | undefined {
+  return typeof selectionDepth === 'function' ? selectionDepth(field, kind) : selectionDepth;
 }
 
 /** Composes a tool description from the field's SDL: docstring, signature, args, and result. */

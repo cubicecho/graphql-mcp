@@ -87,6 +87,14 @@ src/
   name changes: `title`, the description, the operation, and `include`/`exclude`
   patterns all keep the real field name. `nameCase: 'preserve'` opts out;
   `toolName` overrides entirely and is never re-cased.
+- **`selectionDepth` is per field, through the same pipeline as everything else**:
+  the option (a number *or* a `(field, kind) => number` callback) → `extensions.mcp.selectionDepth`
+  → a `decorate` patch. A patch that changes the depth rebuilds the descriptor
+  from that depth — query, description, and `outputSchema` together — and the
+  rest of the patch is then applied over the rebuild, so an explicit `query`
+  alongside it still wins. `ToolDescriptor.selectionDepth` records the depth the
+  descriptor was actually built at; it is optional so hand-built descriptors and
+  `registerGraphqlTools` callers stay valid.
 - **Per-field pipeline in `buildTools`** (later stages win): `exclude` rules →
   `include` rules → `filter` callback → `extensions.mcp.hidden` → SDL-derived
   defaults → `extensions.mcp` metadata → `decorate` callback → duplicate-name
@@ -206,8 +214,10 @@ src/
   string — the executor's variable layer handles coercion/escaping.
 - **Selection sets are auto-generated** (`buildSelectionSet`): all scalar/enum
   leaves at each level, descending into nested objects up to `selectionDepth`
-  (default 2), always including `__typename`. Fields requiring arguments and
-  cyclic types are skipped. Because the agent can't choose the selection, each
+  (default `DEFAULT_SELECTION_DEPTH`, exported from `selection.ts` so the depth a
+  descriptor reports and the depth it was built at cannot drift), always
+  including `__typename`. Fields requiring arguments and cyclic types are
+  skipped. Because the agent can't choose the selection, each
   generated tool's description ends with the exact selection it will get back —
   otherwise the agent assumes the full return type and plans around fields that
   never arrive.

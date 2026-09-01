@@ -32,6 +32,7 @@ import {
   isUnionType,
 } from 'graphql';
 import { z } from 'zod';
+import { DEFAULT_SELECTION_DEPTH } from './selection.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import { builtinScalar, type ScalarMapping, type ScalarResolver, toResolver } from './zodSchema.ts';
 
@@ -49,7 +50,7 @@ import { builtinScalar, type ScalarMapping, type ScalarResolver, toResolver } fr
  */
 export function buildOutputSchema(
   type: GraphQLOutputType,
-  maxDepth = 2,
+  maxDepth = DEFAULT_SELECTION_DEPTH,
   scalars?: ScalarMapping,
 ): AnyZodType {
   const scalar = toResolver(scalars);
