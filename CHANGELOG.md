@@ -1,3 +1,10 @@
+# [2.2.0](https://github.com/cubicecho/graphql-mcp/compare/v2.1.0...v2.2.0) (2026-09-01)
+
+
+### Features
+
+* advertise argument defaults in the JSON Schema without applying them ([5b7f87c](https://github.com/cubicecho/graphql-mcp/commit/5b7f87c74c9a86bee22644ee4a8db8ded3bafe34)), closes [#13](https://github.com/cubicecho/graphql-mcp/issues/13)
+
 # [2.1.0](https://github.com/cubicecho/graphql-mcp/compare/v2.0.2...v2.1.0) (2026-09-01)
 
 
