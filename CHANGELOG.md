@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/cubicecho/graphql-mcp/compare/v2.0.2...v2.1.0) (2026-09-01)
+
+
+### Features
+
+* add nullBranches to drop redundant null branches from input schemas ([4daab91](https://github.com/cubicecho/graphql-mcp/commit/4daab91a4c0eda20ac47f1a54e3ef308d00519e8)), closes [#8](https://github.com/cubicecho/graphql-mcp/issues/8)
+
 ## [2.0.2](https://github.com/cubicecho/graphql-mcp/compare/v2.0.1...v2.0.2) (2026-09-01)
 
 
