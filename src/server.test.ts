@@ -848,6 +848,8 @@ describe('the tool listing is rendered once per factory', () => {
   // `tools/list` handler, so a stateless server pays for it on every request.
   // See `shareToolListing`.
   const COLUMNS = Array.from({ length: 12 }, (_, i) => `col${i}`);
+  /** Enough listings that per-call scheduling noise averages out. */
+  const LISTINGS = 25;
   const TABLES = ['users', 'posts', 'orders', 'teams', 'invoices', 'products'];
 
   function filterHeavySchema(): GraphQLSchema {
@@ -901,11 +903,17 @@ describe('the tool listing is rendered once per factory', () => {
     // behaviour to compare against: the SDK rendering every response.
     uncached().sendToolListChanged();
 
-    const withCache = await listMany(cached, 10);
-    const withoutCache = await listMany(uncached, 10);
+    const withCache = await listMany(cached, LISTINGS);
+    const withoutCache = await listMany(uncached, LISTINGS);
 
+    // Deliberately loose. Both runs pay the same in-memory round trip per
+    // listing, and that floor caps the ratio at whatever the render costs
+    // relative to it — around 20x on zod 4, but only ~4x on zod 3, whose
+    // conversion is far cheaper. A tighter bound would be asserting the peer's
+    // performance rather than this package's behaviour. Without the cache the
+    // ratio is 1, so the claim still fails loudly if the sharing goes away.
     assert.ok(
-      withCache * 4 < withoutCache,
+      withCache * 2 < withoutCache,
       `expected the cached listings to be far cheaper, got ${withCache.toFixed(1)}ms vs ${withoutCache.toFixed(1)}ms`,
     );
   });
