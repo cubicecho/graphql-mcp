@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { buildSchema, type GraphQLObjectType } from 'graphql';
 import { z } from 'zod';
 import { argsToZodShape, type ZodShapeOptions } from './zodSchema.ts';
@@ -298,6 +299,95 @@ describe('argsToZodShape shares repeated input types', () => {
     // `RunFilters` has no `name`, and a shared-by-mistake schema would take it.
     assert.throws(() => where.parse({ runs: { id: 1 } }));
     assert.throws(() => where.parse({ id: { eq: 5 } }));
+  });
+});
+
+describe('nullBranches', () => {
+  const listSchema = buildSchema(/* GraphQL */ `
+    input Where { eq: String }
+    type Query {
+      rows(where: Where, tags: [String], ids: [String!]): String
+    }
+  `);
+  const rowsArgs = (options?: ZodShapeOptions) =>
+    argsToZodShape((listSchema.getQueryType() as GraphQLObjectType).getFields().rows.args, options);
+
+  const render = (shape: Record<string, unknown>) =>
+    JSON.stringify(toJsonSchemaCompat(z.object(shape as Parameters<typeof z.object>[0])));
+
+  test('by default a nullable argument still accepts an explicit null', () => {
+    // The default has to keep working: passing `null` to clear a field is a
+    // real GraphQL idiom, and `'never'` trades it away deliberately.
+    const args = searchArgs();
+    assert.equal(z.object(args).safeParse({ term: 't', limit: null }).success, true);
+  });
+
+  test("'never' drops the null branch and rejects an explicit null", () => {
+    const args = searchArgs({ nullBranches: 'never' });
+    const parsed = z.object(args);
+    // Absent is still fine — `required` is what carries that, which is the
+    // whole argument for the branch being redundant.
+    assert.equal(parsed.safeParse({ term: 't' }).success, true);
+    assert.equal(parsed.safeParse({ term: 't', limit: null }).success, false);
+  });
+
+  test("'never' leaves no null branch in a schema with no nullable elements", () => {
+    // `search` has `[String!]`, so every nullable position here is a property
+    // and every one of them should lose its branch.
+    assert.match(render(searchArgs()), /"null"/);
+    assert.doesNotMatch(render(searchArgs({ nullBranches: 'never' })), /"null"/);
+  });
+
+  test('a nullable list element keeps its null branch under either setting', () => {
+    // `[String]` permits a null *element*, and an element cannot be absent —
+    // there is no hole in a JSON array — so dropping the branch there would
+    // change the type rather than compress it.
+    for (const nullBranches of ['always', 'never'] as const) {
+      const args = rowsArgs({ nullBranches });
+      assert.equal(
+        z.object(args).safeParse({ tags: ['a', null] }).success,
+        true,
+        `nullBranches: '${nullBranches}' rejected a null element`,
+      );
+      assert.equal(z.object(args).safeParse({ ids: ['a', null] }).success, false);
+    }
+  });
+
+  test("'never' removes the `$ref` sitting under a null wrapper", () => {
+    // This is the shape with no legal draft-07 rendering: siblings of `$ref`
+    // are ignored and strict validators reject them, so a consumer can neither
+    // keep the combinator nor collapse it.
+    const shared = buildSchema(/* GraphQL */ `
+      input Filter { eq: String }
+      type Query {
+        rows(a: Filter, b: Filter, c: Filter): String
+      }
+    `);
+    const argsOf = (options?: ZodShapeOptions) =>
+      argsToZodShape((shared.getQueryType() as GraphQLObjectType).getFields().rows.args, options);
+
+    const refUnderNull = (rendered: string) =>
+      (rendered.match(/\{"anyOf":\[\{"\$ref":"[^"]+"\},\{"type":"null"\}\]\}/g) ?? []).length;
+
+    assert.ok(refUnderNull(render(argsOf())) > 0, 'expected the default to produce the shape');
+    assert.equal(refUnderNull(render(argsOf({ nullBranches: 'never' }))), 0);
+  });
+
+  test("'never' materially shrinks a filter-heavy schema", () => {
+    // Optionality is stated twice today and the second statement is the
+    // expensive one — on a filter-per-column schema it is most of the nodes.
+    const cols = ['id', 'name', 'email', 'status', 'createdAt', 'updatedAt'];
+    const wide = buildSchema(/* GraphQL */ `
+      input StringFilter { eq: String ne: String lt: String gt: String like: String }
+      input Where { ${cols.map((c) => `${c}: StringFilter`).join(' ')} }
+      type Query { rows(where: Where): String }
+    `);
+    const argsOf = (options?: ZodShapeOptions) =>
+      argsToZodShape((wide.getQueryType() as GraphQLObjectType).getFields().rows.args, options);
+
+    const before = render(argsOf()).length;
+    const after = render(argsOf({ nullBranches: 'never' })).length;
+    assert.ok(after < before * 0.85, `expected a real cut, got ${before} → ${after}`);
   });
 });
 

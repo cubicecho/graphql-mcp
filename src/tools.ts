@@ -17,7 +17,12 @@ import { paginationHint } from './pagination.ts';
 import { compileRules } from './rules.ts';
 import type { OperationKind, ToolAnnotations } from './types.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
-import { argsToZodShape, type ScalarMapping } from './zodSchema.ts';
+import {
+  argsToZodShape,
+  type NullBranches,
+  type ScalarMapping,
+  type ZodShapeOptions,
+} from './zodSchema.ts';
 
 /** A schema-derived MCP tool, prior to being bound to an executor/server. */
 export interface ToolDescriptor {
@@ -110,6 +115,18 @@ export interface BuildToolsOptions {
    */
   scalars?: ScalarMapping;
   /**
+   * Whether a nullable argument advertises an explicit `null` branch alongside
+   * being absent from `required`. Default `'always'`.
+   *
+   * `'never'` drops the branch, which roughly halves the node count of a
+   * filter-heavy input schema and removes the one shape that has no legal
+   * draft-07 rendering downstream (`anyOf: [{$ref}, {type: 'null'}]`). The cost
+   * is that an explicit `null` becomes a validation error, so a mutation whose
+   * schema uses `null` to *clear* a field can no longer express that. See
+   * {@link ZodShapeOptions.nullBranches}.
+   */
+  nullBranches?: NullBranches;
+  /**
    * Keep only fields matching one of these patterns (`compileRules` syntax:
    * `'todos'`, `'Query.*'`, `'delete*'`). Omit to keep every field; a present
    * but empty array matches nothing and so exposes no tools.
@@ -198,7 +215,7 @@ export function buildTools(
         field,
         kind,
         ext?.selectionDepth ?? options.selectionDepth,
-        options.scalars,
+        { scalars: options.scalars, nullBranches: options.nullBranches },
       );
       if (ext) descriptor = applyExtensions(descriptor, ext);
       const patch = options.decorate?.(descriptor, field, kind);
@@ -267,7 +284,7 @@ function toDescriptor(
   field: GraphQLField<any, any>,
   kind: OperationKind,
   selectionDepth?: number,
-  scalars?: ScalarMapping,
+  shape: ZodShapeOptions = {},
 ): ToolDescriptor {
   const { query, operationName, argNames, selection } = buildOperation(kind, field, selectionDepth);
   const pageHint = paginationHint(field.args);
@@ -276,8 +293,11 @@ function toDescriptor(
     kind,
     title: humanize(field.name),
     description: buildDescription(field, kind, selection),
-    inputSchema: argsToZodShape(field.args, { scalars }),
-    outputSchema: buildOutputSchema(field.type, selectionDepth, scalars),
+    inputSchema: argsToZodShape(field.args, shape),
+    // `nullBranches` is an *input* concern: it trades away the ability to send
+    // an explicit null. An output schema only describes what comes back, where
+    // a null is not a thing the caller chooses, so it keeps its null branches.
+    outputSchema: buildOutputSchema(field.type, selectionDepth, shape.scalars),
     annotations: annotationsFor(kind, humanize(field.name)),
     query,
     operationName,

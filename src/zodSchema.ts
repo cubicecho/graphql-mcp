@@ -5,8 +5,10 @@
  * control over nullability, descriptions, and custom-scalar fallbacks.
  *
  * Mapping rules:
- * - `NonNull` → required (no `.nullish()`); a nullable arg/field becomes `.nullish()`
- * - `List` → `z.array(element)`
+ * - `NonNull` → required (no `.nullish()`); a nullable arg/field becomes `.nullish()`,
+ *   or plain `.optional()` under `nullBranches: 'never'` (see {@link ZodShapeOptions})
+ * - `List` → `z.array(element)`; a nullable *element* is always `.nullable()`,
+ *   since an element can be null but never absent
  * - scalars → the `scalars` option first, then the built-ins (`Int`/`Float` ⇒ number,
  *   `String`/`ID` ⇒ string, `Boolean` ⇒ boolean), then `z.any()` carrying the
  *   scalar's own SDL description (see {@link builtinScalar})
@@ -47,6 +49,23 @@ export type ScalarResolver = (scalar: GraphQLScalarType) => AnyZodType | undefin
 /** A scalar mapping: either a name→schema record or a resolver function. */
 export type ScalarMapping = ScalarMap | ScalarResolver;
 
+/**
+ * How a nullable *input position* is rendered — an argument, or a field of an
+ * input object.
+ *
+ * - `'always'` (default) — a nullable position accepts an explicit `null` as
+ *   well as being absent, so it renders an explicit null branch
+ *   (`anyOf: [T, {type: 'null'}]`, or `type: [X, 'null']` for a scalar) on top
+ *   of being left out of `required`.
+ * - `'never'` — a nullable position is merely optional. `required` already says
+ *   it may be absent, so the shape is not lost; what *is* lost is the ability to
+ *   send an explicit `null`.
+ *
+ * The choice is a real trade, which is why it is an option rather than a fix.
+ * See {@link ZodShapeOptions.nullBranches}.
+ */
+export type NullBranches = 'always' | 'never';
+
 /** Options shared by the arg→Zod conversion. */
 export interface ZodShapeOptions {
   /**
@@ -55,6 +74,29 @@ export interface ZodShapeOptions {
    * *base* (non-null) schema; list/nullability wrapping is applied around it.
    */
   scalars?: ScalarMapping;
+  /**
+   * Whether a nullable input position advertises an explicit `null` branch.
+   * Default `'always'`, which is what GraphQL actually permits.
+   *
+   * `'never'` exists because the branch is expensive and, in one shape, not
+   * portable. It roughly doubles the node count of a filter-heavy schema —
+   * optionality is stated twice, and the second statement is the costly one —
+   * and when the surviving branch is a `$ref` there is *no* legal draft-07
+   * rendering of "nullable" for a downstream consumer to collapse it to:
+   * siblings of `$ref` are ignored there and strict validators reject them, so
+   * a consumer either keeps a combinator its backend refuses or emits an
+   * illegal node.
+   *
+   * It is not free. `'never'` makes an explicit `null` a *validation error*,
+   * which breaks the common mutation idiom of passing `null` to clear a field
+   * (`updateUser(bio: null)`) — absent and null are the same thing to many
+   * GraphQL servers, but not to all of them, and only the schema's author knows
+   * which kind theirs is. That is why the default keeps the branch.
+   *
+   * List *elements* are unaffected either way: an element cannot be absent, so
+   * a nullable element always renders its null branch.
+   */
+  nullBranches?: NullBranches;
 }
 
 const SCALAR_BUILDERS: Record<string, () => AnyZodType> = {
@@ -86,7 +128,7 @@ export function builtinScalar(type: GraphQLScalarType): AnyZodType {
     .describe(hint ? `Custom scalar ${type.name} — ${hint}` : `Custom scalar ${type.name}`);
 }
 
-/** Recursion state: the input-object cycle guard, the memo, and the scalar mapper. */
+/** Recursion state: the input-object cycle guard, the memo, and the render options. */
 interface Ctx {
   /**
    * Input objects whose shape is still being built, keyed by type name. A
@@ -110,6 +152,7 @@ interface Ctx {
    */
   done: Map<string, AnyZodType>;
   scalar: ScalarResolver;
+  nullBranches: NullBranches;
 }
 
 /** Normalizes either mapping form into a single lookup function. */
@@ -119,18 +162,36 @@ export function toResolver(mapping: ScalarMapping | undefined): ScalarResolver {
   return (scalar) => mapping[scalar.name];
 }
 
-/** Applies an element/field type's nullability: required for `NonNull`, else `.nullish()`. */
-function fieldToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
+/**
+ * Applies a type's nullability. `NonNull` is required either way; a nullable
+ * type depends on where it sits.
+ *
+ * A **property** (an argument, or a field of an input object) can be left out,
+ * so `required` already carries "may be absent" and the null branch adds only
+ * "may be explicitly null" — which {@link ZodShapeOptions.nullBranches} can
+ * turn off.
+ *
+ * An **element** of a list cannot be absent — there is no such thing as a hole
+ * in a JSON array — so `.nullable()` is the only way to say `[String]` permits
+ * nulls, and dropping it there would change the type rather than compress it.
+ */
+function fieldToZod(
+  type: GraphQLInputType,
+  ctx: Ctx,
+  position: 'property' | 'element',
+): AnyZodType {
   if (isNonNullType(type)) {
     return baseToZod(type.ofType, ctx);
   }
-  return baseToZod(type, ctx).nullish();
+  const base = baseToZod(type, ctx);
+  if (position === 'element') return base.nullable();
+  return ctx.nullBranches === 'never' ? base.optional() : base.nullish();
 }
 
 /** Builds the Zod type for a (already nullability-stripped) list/named GraphQL type. */
 function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
   if (isListType(type)) {
-    return z.array(fieldToZod(type.ofType, ctx));
+    return z.array(fieldToZod(type.ofType, ctx, 'element'));
   }
   if (isScalarType(type)) {
     // User mapping wins over the built-ins so `ID`/`String` can be retyped.
@@ -161,7 +222,7 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
     );
     const shape: ZodShape = {};
     for (const [name, field] of Object.entries(type.getFields())) {
-      shape[name] = describe(fieldToZod(field.type, ctx), field.description);
+      shape[name] = describe(fieldToZod(field.type, ctx, 'property'), field.description);
     }
     ctx.pending.delete(type.name);
     // `.strict()`, not the default `strip`: the JSON Schema the SDK renders from
@@ -203,11 +264,17 @@ export function argsToZodShape(
   options: ZodShapeOptions = {},
 ): ZodShape {
   // Both maps live for this call only: the memo is keyed by type name alone, and
-  // a different `scalars` mapping would give the same name a different schema.
-  const ctx: Ctx = { pending: new Map(), done: new Map(), scalar: toResolver(options.scalars) };
+  // a different `scalars` mapping or `nullBranches` setting would give the same
+  // name a different schema.
+  const ctx: Ctx = {
+    pending: new Map(),
+    done: new Map(),
+    scalar: toResolver(options.scalars),
+    nullBranches: options.nullBranches ?? 'always',
+  };
   const shape: ZodShape = {};
   for (const arg of args) {
-    shape[arg.name] = describe(fieldToZod(arg.type, ctx), arg.description);
+    shape[arg.name] = describe(fieldToZod(arg.type, ctx, 'property'), arg.description);
   }
   return shape;
 }

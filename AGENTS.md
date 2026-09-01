@@ -154,6 +154,23 @@ src/
   of that rendered at 275 kB on v4 against v3's 149 kB; named, it is 106 kB.
   `server.test.ts` guards the invariant — a shared type appears exactly once —
   rather than a byte count, since where the copy lives differs by major.
+- **A nullable input position states its optionality twice, and the default
+  keeps it that way (`nullBranches` in `zodSchema.ts`).** A nullable argument is
+  left out of `required` *and* given an explicit null branch (`anyOf: [T, {type:
+  'null'}]`, or `type: [X, 'null']` for a scalar). The second statement is the
+  expensive one: on a filter-per-column schema those branches are roughly 40% of
+  the schema nodes and 20% of the listing, and one of them — `anyOf: [{$ref},
+  {type: 'null'}]` — has *no* legal draft-07 rendering, since siblings of `$ref`
+  are ignored there and strict validators reject them, so a consumer can neither
+  keep the combinator (backends that compile tools into a grammar refuse it) nor
+  collapse it (the result is an illegal node). Naming input types made `$ref` the
+  common case, so that shape went from a corner to the default.
+  `nullBranches: 'never'` drops the branch in *property* positions only. The
+  default stays `'always'` because the trade is real and only the schema's author
+  can make it: `'never'` turns an explicit `null` into a validation error, which
+  breaks the mutation idiom of passing `null` to clear a field. **List elements
+  are exempt under either setting** — an element can be null but never absent, so
+  there `.nullable()` is the type, not a redundant restatement of it.
 - **`connectServer(server, transport)` is how a server should be connected.**
   `params.arguments` is optional in the MCP schema, and a tool whose arguments
   are all optional gives a client nothing to put there — but the SDK hands that

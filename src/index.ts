@@ -93,5 +93,11 @@ export type {
 } from './types.ts';
 export { VERSION } from './version.ts';
 export type { AnyZodType, ZodShape } from './zodCompat.ts';
-export type { ScalarMap, ScalarMapping, ScalarResolver, ZodShapeOptions } from './zodSchema.ts';
+export type {
+  NullBranches,
+  ScalarMap,
+  ScalarMapping,
+  ScalarResolver,
+  ZodShapeOptions,
+} from './zodSchema.ts';
 export { argsToZodShape } from './zodSchema.ts';

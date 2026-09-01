@@ -336,6 +336,42 @@ createHttpHandler({
 Tool arguments cross the wire as JSON, so keep the mapped types
 JSON-representable — `z.string().datetime()` rather than `z.date()`.
 
+## Trimming null branches
+
+A nullable GraphQL argument is advertised two ways at once: it is absent from
+`required`, *and* it carries an explicit null branch — `anyOf: [T, {"type":
+"null"}]` for an input object, `type: [X, "null"]` for a scalar. The second is
+what costs. On a schema with a filter type per column those branches are around
+40% of the schema nodes and 20% of the whole advertised listing.
+
+There is also one shape with no legal rendering downstream:
+
+```json
+{ "anyOf": [{ "$ref": "#/definitions/StringFilter" }, { "type": "null" }] }
+```
+
+Draft-07 has no way to say "nullable" next to a `$ref` — siblings of `$ref` are
+ignored and strict validators reject them. A consumer either keeps the
+combinator, which backends that compile every tool into one grammar refuse, or
+collapses it into an illegal node.
+
+`nullBranches: 'never'` drops the branch:
+
+```ts
+createMcpServer({ schema, nullBranches: 'never' });
+```
+
+The argument's *shape* is not lost — `required` already says it may be absent.
+What is lost is the ability to send an explicit `null`, which becomes a
+validation error. For most GraphQL servers absent and null are the same thing,
+but not all: a mutation that clears a field with `updateUser(bio: null)` needs
+the branch. That is why the default is `'always'`, and why this is an option
+rather than a fix — only your schema knows which kind it is.
+
+**List elements are exempt** under either setting. `[String]` permits a null
+element, and an element can be null but never absent, so dropping the branch
+there would change the type rather than compress it.
+
 ## Decorating tools for agents
 
 Descriptions come from your SDL, but agents often need more: workflow hints,

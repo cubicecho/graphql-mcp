@@ -798,5 +798,38 @@ ${columns.map((column) => `      ${column}: StringFilter`).join('\n')}
     // that expanded per column took the same document to 3.4 kB, and the gap
     // multiplies with every column and table a real schema adds.
     assert.ok(advertised.length < 2_000, `one filter argument rendered ${advertised.length} bytes`);
+    await client.close();
+  });
+
+  test("nullBranches: 'never' cuts the listing further, end to end", async () => {
+    // Sharing the type was the first half; not stating optionality twice is the
+    // second. On a filter-per-column schema the null branches are most of what
+    // is left, and one of them — `anyOf: [{$ref}, {type: null}]` — has no legal
+    // draft-07 rendering at all, so a downstream consumer can neither keep it
+    // nor collapse it.
+    const listing = async (options: Partial<Parameters<typeof createMcpServer>[0]>) => {
+      const client = await connect(
+        createMcpServer({
+          schema,
+          executor: createLocalExecutor(schema),
+          name: 't',
+          version: '0',
+          ...options,
+        }),
+      );
+      const { tools } = await client.listTools();
+      const advertised = JSON.stringify(tools[0]?.inputSchema);
+      await client.close();
+      return advertised;
+    };
+
+    const withBranches = await listing({});
+    const without = await listing({ nullBranches: 'never' });
+    assert.match(withBranches, /"null"/);
+    assert.doesNotMatch(without, /"null"/);
+    assert.ok(
+      without.length < withBranches.length * 0.85,
+      `expected a real cut, got ${withBranches.length} → ${without.length}`,
+    );
   });
 });
