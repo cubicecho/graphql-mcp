@@ -1,3 +1,10 @@
+## [2.0.2](https://github.com/cubicecho/graphql-mcp/compare/v2.0.1...v2.0.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* clamp oversized results structurally so the body stays parseable JSON ([5c9ec27](https://github.com/cubicecho/graphql-mcp/commit/5c9ec279b0afa8e9b4db4d6c1da2801bbd0f21ad)), closes [#6](https://github.com/cubicecho/graphql-mcp/issues/6) [#7](https://github.com/cubicecho/graphql-mcp/issues/7)
+
 ## [2.0.1](https://github.com/cubicecho/graphql-mcp/compare/v2.0.0...v2.0.1) (2026-09-01)
 
 
