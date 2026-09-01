@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/cubicecho/graphql-mcp/compare/v1.0.1...v1.0.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* reject unknown input fields instead of silently dropping them ([015bb2b](https://github.com/cubicecho/graphql-mcp/commit/015bb2bc91146097d503c1d115bf50946c926af9)), closes [#2](https://github.com/cubicecho/graphql-mcp/issues/2)
+
 ## [1.0.1](https://github.com/cubicecho/graphql-mcp/compare/v1.0.0...v1.0.1) (2026-09-01)
 
 
