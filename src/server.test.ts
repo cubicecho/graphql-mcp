@@ -10,6 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { buildSchema, type GraphQLSchema } from 'graphql';
+import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './index.ts';
@@ -83,6 +84,8 @@ describe('createMcpServer', () => {
     })) as TextResult;
     assert.equal(nested.isError, true);
     assert.match(nested.content[0].text, /descriptoin/);
+    // ...and says so in the envelope every other outcome uses.
+    assert.equal((parseResult(nested).errors as Array<unknown>).length, 1);
 
     const topLevel = (await client.callTool({
       name: 'todo',
@@ -90,6 +93,7 @@ describe('createMcpServer', () => {
     })) as TextResult;
     assert.equal(topLevel.isError, true);
     assert.match(topLevel.content[0].text, /nope/);
+    assert.equal((parseResult(topLevel).errors as Array<unknown>).length, 1);
 
     // Neither call reached GraphQL, and neither wrote anything.
     assert.deepEqual(seen, []);
@@ -927,5 +931,145 @@ describe('the tool listing is rendered once per factory', () => {
     assert.ok(!(await sibling.listTools()).tools.some((t) => t.name === 'late'));
     await client.close();
     await sibling.close();
+  });
+});
+
+describe('a rejected argument reads like every other failure', () => {
+  // The SDK validates `arguments` before the handler runs and reports a failure
+  // as bare text, which is the one tool body that would not parse. See
+  // `guardToolArguments`.
+  const schema = buildSchema(`
+    enum Priority { LOW HIGH }
+    input Step { name: String! order: Int! }
+    input TaskInput { title: String! priority: Priority steps: [Step!] }
+    type Task { id: ID! title: String! }
+    type Query { tasks(limit: Int, filter: TaskInput): [Task!]! }
+  `);
+
+  interface InputError {
+    message: string;
+    extensions?: { code?: string };
+  }
+
+  async function callTasks(args: Record<string, unknown>): Promise<{
+    isError?: boolean;
+    text: string;
+    errors: InputError[];
+  }> {
+    const server = createMcpServer({ schema, executor: async () => ({ data: { tasks: [] } }) });
+    const client = await connect(server);
+    const result = (await client.callTool({ name: 'tasks', arguments: args })) as TextResult;
+    await client.close();
+    const text = result.content[0].text;
+    return {
+      isError: result.isError,
+      text,
+      errors: (JSON.parse(text).errors ?? []) as InputError[],
+    };
+  }
+
+  const malformed: Array<[string, Record<string, unknown>]> = [
+    ['a wrong scalar type', { limit: 'ten' }],
+    ['an unknown key', { limit: 1, order: 'asc' }],
+    ['a bad enum member', { filter: { title: 't', priority: 'URGENT' } }],
+    ['a missing required subfield', { filter: { title: 't', steps: [{ name: 'a' }] } }],
+  ];
+
+  for (const [label, args] of malformed) {
+    test(`${label} comes back as parseable JSON`, async () => {
+      const { isError, errors } = await callTasks(args);
+      assert.equal(isError, true);
+      assert.ok(errors.length >= 1);
+      for (const error of errors) {
+        assert.equal(error.extensions?.code, 'BAD_INPUT');
+        assert.equal(typeof error.message, 'string');
+      }
+    });
+  }
+
+  test('the error names the argument, however deep it is', async () => {
+    const { errors } = await callTasks({ filter: { title: 't', steps: [{ name: 'a' }] } });
+    assert.match(errors[0].message, /filter\.steps\[0\]\.order/);
+  });
+
+  test('every problem is reported, not just the first', async () => {
+    // The SDK's message carries one issue; an agent correcting one argument at a
+    // time needs a round trip per mistake.
+    const { errors } = await callTasks({ limit: 'ten', filter: { priority: 'URGENT' } });
+    assert.ok(errors.length >= 2, `expected several errors, got ${errors.length}`);
+    assert.ok(errors.some((error) => /limit/.test(error.message)));
+    assert.ok(errors.some((error) => /priority/.test(error.message)));
+  });
+
+  test('a well-formed call is untouched', async () => {
+    const seen: unknown[] = [];
+    const server = createMcpServer({
+      schema,
+      executor: async (request) => {
+        seen.push(request.variables);
+        return { data: { tasks: [{ id: '1', title: 'ok' }] } };
+      },
+    });
+    const client = await connect(server);
+
+    const result = await client.callTool({
+      name: 'tasks',
+      arguments: {
+        limit: 2,
+        filter: { title: 't', priority: 'LOW', steps: [{ name: 'a', order: 1 }] },
+      },
+    });
+    assert.equal(parseResult(result).isError, false);
+    assert.deepEqual(seen, [
+      { limit: 2, filter: { title: 't', priority: 'LOW', steps: [{ name: 'a', order: 1 }] } },
+    ]);
+    await client.close();
+  });
+
+  test('a custom tool is checked the same way, and a no-argument one still runs', async () => {
+    const server = createMcpServer({
+      schema,
+      executor: async () => ({ data: { tasks: [] } }),
+      tools: [
+        {
+          name: 'ping',
+          description: 'no arguments at all',
+          handler: () => ({ content: [{ type: 'text' as const, text: 'pong' }] }),
+        },
+        {
+          name: 'echo',
+          description: 'takes a count',
+          inputSchema: { count: z.number() },
+          handler: (args) => ({ content: [{ type: 'text' as const, text: String(args.count) }] }),
+        },
+      ],
+    });
+    const client = await connect(server);
+
+    const pong = (await client.callTool({ name: 'ping', arguments: {} })) as TextResult;
+    assert.equal(pong.content[0].text, 'pong');
+
+    const bad = (await client.callTool({
+      name: 'echo',
+      arguments: { count: 'two' },
+    })) as TextResult;
+    assert.equal(bad.isError, true);
+    assert.equal(
+      (JSON.parse(bad.content[0].text).errors as InputError[])[0].extensions?.code,
+      'BAD_INPUT',
+    );
+    await client.close();
+  });
+
+  test('an unknown tool is still the SDK’s answer to give', async () => {
+    // Nothing to validate against, and the SDK's message is already the right
+    // one — the guard only replaces the body it can improve.
+    const server = createMcpServer({ schema, executor: async () => ({ data: { tasks: [] } }) });
+    const client = await connect(server);
+
+    const result = (await client.callTool({ name: 'no_such_tool', arguments: {} })) as TextResult;
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /no_such_tool/);
+    await client.close();
   });
 });

@@ -67,7 +67,7 @@ src/
   result.ts       — GraphqlResult → CallToolResult (toCallToolResult): isError, error condensing, clamping
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
   server.ts       — createMcpServer / createServerFactory / connectServer / registerGraphqlTools (+ custom tools)
-  listing.ts      — the tools/list response shared across a factory's servers (shareToolListing)
+  handlers.ts     — the SDK request handlers this package wraps (shareToolListing, guardToolArguments)
   zodCompat.ts    — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
@@ -253,7 +253,7 @@ src/
   all, and the price is state that has to be bounded — hence `SessionStore`'s
   idle timeout and LRU cap. It sweeps on lookup rather than on a timer, because
   a timer would need `unref`ing and would add a lifecycle callers must own.
-- **The tool listing is rendered once per factory (`listing.ts`).** The SDK
+- **The tool listing is rendered once per factory (`handlers.ts`).** The SDK
   converts each tool's Zod schema to JSON Schema *inside* its `tools/list`
   handler, not at registration — so a stateless server repeats that conversion on
   every request, and it is the bulk of the request: on a 50-tool CRUD schema,
@@ -358,7 +358,7 @@ All have been reconsidered and settled; reopen them only against new evidence.
   for no measurable gain. If this is ever revisited, the per-request server
   minting is the number to attack, not the meta tools — issue #16 did exactly
   that and found the real cost was the SDK's per-request `tools/list` rendering,
-  now shared by `listing.ts`.
+  now shared by `handlers.ts`.
 - **Subscriptions are ignored.** MCP has no streaming-subscription tool shape, so
   there is nothing to project a `Subscription` field *onto* — a tool that can
   only ever return one event misrepresents what the field does. They are dropped

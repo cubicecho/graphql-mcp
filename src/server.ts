@@ -28,13 +28,18 @@ import type { GraphQLSchema } from 'graphql';
 import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
-import { shareToolListing, type ToolListingCache } from './listing.ts';
+import {
+  guardToolArguments,
+  shareToolListing,
+  type ToolListingCache,
+  type ToolValidators,
+} from './handlers.ts';
 import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './result.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
 import type { GraphqlExecutor, ToolAnnotations } from './types.ts';
 import { VERSION } from './version.ts';
-import type { ZodShape } from './zodCompat.ts';
+import type { AnyZodType, ZodShape } from './zodCompat.ts';
 
 /** The handler signature for a custom tool: validated args plus the MCP `extra`. */
 export type ToolHandler = (
@@ -171,14 +176,24 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
     const byName = new Map<string, CustomTool>();
     for (const tool of [...metaTools, ...customTools]) byName.set(tool.name, tool);
 
+    // The schema each tool's arguments are checked against, collected as they
+    // are registered — the same objects the SDK will validate with.
+    const validators = new Map<string, AnyZodType>();
+
     for (const descriptor of descriptors) {
       if (byName.has(descriptor.name)) continue;
-      registerGeneratedTool(server, descriptor, executor, context, maxChars);
+      const input = strictInput(descriptor.inputSchema);
+      validators.set(descriptor.name, input);
+      registerGeneratedTool(server, descriptor, input, executor, context, maxChars);
     }
     for (const tool of byName.values()) {
       registerCustomTool(server, tool);
+      // Non-strict, because that is how the SDK wraps a raw shape: the check
+      // here must not reject what the SDK would have accepted.
+      if (tool.inputSchema) validators.set(tool.name, z.object(tool.inputSchema));
     }
     shareToolListing(server, listing);
+    guardToolArguments(server, validators satisfies ToolValidators, maxChars);
     return server;
   };
 }
@@ -259,13 +274,21 @@ export function registerGraphqlTools(
   maxChars = DEFAULT_MAX_CHARS,
 ): void {
   for (const descriptor of descriptors) {
-    registerGeneratedTool(server, descriptor, executor, context, maxChars);
+    registerGeneratedTool(
+      server,
+      descriptor,
+      strictInput(descriptor.inputSchema),
+      executor,
+      context,
+      maxChars,
+    );
   }
 }
 
 function registerGeneratedTool(
   server: McpServer,
   descriptor: ToolDescriptor,
+  input: ReturnType<typeof buildStrictInput>,
   executor: GraphqlExecutor,
   context: unknown | ContextFactory,
   maxChars: number,
@@ -275,13 +298,7 @@ function registerGeneratedTool(
     {
       title: descriptor.title,
       description: descriptor.description,
-      // A strict object rather than the raw shape. Handed a shape, the SDK wraps
-      // it in a plain `z.object`, which strips unknown keys — while the listing
-      // it renders from that same schema says `additionalProperties: false`. An
-      // agent that misspells an argument would otherwise get a success result
-      // with its typo quietly discarded. The descriptor keeps exposing the raw
-      // shape, so `decorate` and custom tools are unaffected.
-      inputSchema: strictInput(descriptor.inputSchema),
+      inputSchema: input,
       annotations: descriptor.annotations,
     },
     async (args: Record<string, unknown>, extra: unknown) => {
@@ -302,12 +319,21 @@ function registerGeneratedTool(
 }
 
 /**
- * The strict object for a descriptor's input shape, built once.
+ * The schema a generated tool's arguments are registered and checked against:
+ * a *strict* object over the descriptor's shape, built once.
  *
- * A descriptor's shape is fixed and its Zod schema is stateless, so the same
- * object can back every server built from it — worth hoisting because stateless
- * HTTP re-registers every tool on every request. Keyed on the shape rather than
- * the descriptor so `decorate`d copies sharing a shape share the schema too.
+ * Strict rather than the raw shape, because handed a shape the SDK wraps it in a
+ * plain `z.object`, which strips unknown keys — while the listing it renders
+ * from that same schema says `additionalProperties: false`. An agent that
+ * misspells an argument would otherwise get a success result with its typo
+ * quietly discarded. The descriptor keeps exposing the raw shape, so `decorate`
+ * and custom tools are unaffected.
+ *
+ * Built once because a descriptor's shape is fixed and a Zod schema is
+ * stateless, so one object can back every server built from it — worth hoisting
+ * because stateless HTTP re-registers every tool on every request. Keyed on the
+ * shape rather than the descriptor, so `decorate`d copies sharing a shape share
+ * the schema too.
  */
 const strictInputs = new WeakMap<ZodShape, ReturnType<typeof buildStrictInput>>();
 

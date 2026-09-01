@@ -207,6 +207,26 @@ That holds when the executor *throws*, too — a refused connection or a broken
 custom executor comes back as `{ "errors": [{ "message": "…" }] }` with
 `isError` set, never as a bare string a client can't parse.
 
+- **A malformed call answers in the same envelope**, which matters because it's
+  the failure an agent hits most: a wrong scalar, a misspelled key, a bad enum
+  member. Each Zod issue becomes one error naming the argument it's about, so a
+  call with two mistakes is told about both:
+
+```json
+{
+  "errors": [
+    {
+      "message": "Invalid input: expected number, received string at `limit`",
+      "extensions": { "code": "BAD_INPUT" }
+    },
+    {
+      "message": "Invalid option: expected one of \"LOW\"|\"HIGH\" at `filter.priority`",
+      "extensions": { "code": "BAD_INPUT" }
+    }
+  ]
+}
+```
+
 ## Choosing where GraphQL runs
 
 The single seam is the **executor**. The default runs in-process against the

@@ -35,7 +35,10 @@
  * A {@link toCallToolResult} body is always parseable JSON — which is also why
  * {@link runExecutor} exists: an executor that *throws* would otherwise reach
  * the SDK, which reports the bare message as text and breaks that promise on
- * exactly the failure a client most needs to handle. ({@link text} bodies are
+ * exactly the failure a client most needs to handle. `guardToolArguments`
+ * (`handlers.ts`) closes the other way in: the SDK rejects a call whose
+ * `arguments` don't match the registered schema *before* any of this runs, and
+ * reports that the same bare way. ({@link text} bodies are
  * prose — SDL printouts and search hits — and {@link clamp} slices those by
  * character, which is right for prose and only for prose.)
  */
