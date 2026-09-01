@@ -383,11 +383,17 @@ describe('meta tool context and truncation', () => {
     assert.ok(out.startsWith('type Query {'));
   });
 
-  test('maxChars truncates an execute result too', async () => {
+  test('maxChars clamps an execute result too, without breaking the JSON', async () => {
     const result = await call(makeTools({ maxChars: 30 }), 'graphql_execute', {
       query: '{ todos { id description } }',
     });
-    assert.match(body(result), /\[truncated \d+ of \d+ characters/);
+    // An execute body is JSON, so it is clamped structurally rather than sliced:
+    // a 30-char budget leaves no room for rows, and saying so costs more than
+    // the budget. Validity wins over the budget — a body a client cannot parse
+    // is worth nothing, however small.
+    const payload = JSON.parse(body(result)) as { data?: unknown; truncated?: { advice: string } };
+    assert.equal(payload.data, undefined);
+    assert.match(payload.truncated?.advice ?? '', /narrow the query/);
   });
 });
 

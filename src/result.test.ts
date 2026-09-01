@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { clamp, DEFAULT_MAX_CHARS, runExecutor, text, toCallToolResult } from './result.ts';
+import {
+  clamp,
+  DEFAULT_MAX_CHARS,
+  runExecutor,
+  type TruncationRecord,
+  text,
+  toCallToolResult,
+} from './result.ts';
 
 /** The tool's text body — `content[0]` is always a text block here. */
 function bodyOf(result: CallToolResult): string {
@@ -122,18 +129,108 @@ describe('toCallToolResult error condensing', () => {
 });
 
 describe('toCallToolResult size clamping', () => {
-  test('a large result is truncated with a note saying how much was cut', () => {
+  test('a large result drops rows and says how many, and still parses', () => {
     const rows = Array.from({ length: 500 }, (_, i) => ({ id: `row-${i}`, blob: 'x'.repeat(100) }));
     const result = toCallToolResult({ data: { rows } }, 2_000);
     const body = bodyOf(result);
-    assert.ok(body.length < 2_300, `expected a clamped body, got ${body.length} chars`);
-    assert.match(body, /\[truncated \d+ of \d+ characters/);
+    assert.ok(body.length <= 2_000, `expected a body inside the budget, got ${body.length}`);
+    // The point of the whole exercise: a client can still parse it. Slicing the
+    // serialization cut mid-token, so the body a `JSON.parse` client got back
+    // was a `SyntaxError` rather than either the rows or the advice.
+    const payload = payloadOf(result) as { data: { rows: unknown[] }; truncated: TruncationRecord };
+    assert.ok(payload.data.rows.length > 0, 'kept no rows at all');
+    assert.ok(payload.data.rows.length < 500, 'dropped nothing');
+    // Counted, not just flagged: an agent needs the scale to judge whether to
+    // page or to narrow, and every row it did get is a whole row.
+    assert.equal(payload.truncated.droppedItems, 500 - payload.data.rows.length);
+    assert.equal(payload.truncated.totalItems, 500);
+    assert.deepEqual(payload.data.rows[0], { id: 'row-0', blob: 'x'.repeat(100) });
     assert.equal(result.isError, false);
+  });
+
+  test('rows are dropped evenly, so the result keeps its shape', () => {
+    // Draining the biggest collection first would leave one field full and the
+    // other empty, which reads as though the second returned nothing.
+    const some = (prefix: string) =>
+      Array.from({ length: 200 }, (_, i) => ({ id: `${prefix}-${i}` }));
+    const result = toCallToolResult({ data: { tasks: some('task'), runs: some('run') } }, 2_000);
+    const data = (payloadOf(result) as { data: { tasks: unknown[]; runs: unknown[] } }).data;
+    assert.ok(data.tasks.length > 0 && data.runs.length > 0);
+    assert.equal(data.tasks.length, data.runs.length);
+  });
+
+  test('a payload with nothing to drop omits data rather than cutting the JSON', () => {
+    // One enormous scalar: no rows to shed, so the honest answer is to say so.
+    const result = toCallToolResult({ data: { blob: 'x'.repeat(5_000) } }, 500);
+    const payload = payloadOf(result) as { data?: unknown; truncated: TruncationRecord };
+    assert.equal(payload.data, undefined);
+    assert.equal(payload.truncated.dataOmitted, true);
+    assert.match(payload.truncated.advice, /narrow the query/);
   });
 
   test('a result within budget is left untouched and stays parseable', () => {
     const result = toCallToolResult({ data: { a: 1 } }, DEFAULT_MAX_CHARS);
     assert.deepEqual(payloadOf(result).data, { a: 1 });
+    assert.equal((payloadOf(result) as { truncated?: unknown }).truncated, undefined);
+  });
+});
+
+describe('a clamped result keeps its diagnostics', () => {
+  const rows = () =>
+    Array.from({ length: 400 }, (_, i) => ({ id: `row-${i}`, blob: 'y'.repeat(80) }));
+
+  test('errors survive a clamp, and so does the failure flag', () => {
+    // `errors` serializes after `data`, so a clamp that sliced the string threw
+    // away the whole reason the call failed and left `isError` pointing at a
+    // body that no longer said anything about it.
+    const result = toCallToolResult(
+      { data: null, errors: [{ message: 'permission denied', extensions: { code: 'FORBIDDEN' } }] },
+      2_000,
+    );
+    const payload = payloadOf(result) as { errors: Array<Record<string, unknown>> };
+    assert.equal(result.isError, true);
+    assert.equal(payload.errors[0].message, 'permission denied');
+    assert.deepEqual(payload.errors[0].extensions, { code: 'FORBIDDEN' });
+  });
+
+  test('a partial result keeps both its note and its errors after clamping', () => {
+    const result = toCallToolResult(
+      { data: { rows: rows() }, errors: [{ message: 'owner resolver failed', path: ['rows', 3] }] },
+      2_000,
+    );
+    const payload = payloadOf(result) as {
+      data: { rows: unknown[] };
+      errors: unknown[];
+      note: string;
+      truncated: TruncationRecord;
+    };
+    // Partial success: rows came back, so this is not a failure — but the agent
+    // has to be told the nulls it sees are failures and not absent data.
+    assert.equal(result.isError, false);
+    assert.match(payload.note, /Partial result/);
+    assert.equal(payload.errors.length, 1);
+    assert.ok(payload.data.rows.length > 0);
+    assert.equal(payload.truncated.totalItems, 400);
+  });
+
+  test('every clamped body parses, across a range of budgets', () => {
+    // The bisection lands on a different row count at each budget; none of them
+    // may produce a body a client cannot read.
+    for (const budget of [80, 200, 500, 1_000, 5_000, 20_000]) {
+      const result = toCallToolResult({ data: { rows: rows() } }, budget);
+      assert.doesNotThrow(
+        () => JSON.parse(bodyOf(result)),
+        `budget ${budget} produced unparseable JSON`,
+      );
+    }
+  });
+
+  test('a clamp rewrites objects but leaves non-plain values alone', () => {
+    // A `Date` (or any class instance) walked field-by-field would come back as
+    // `{}` instead of its serialized form.
+    const when = new Date('2020-01-01T00:00:00.000Z');
+    const result = toCallToolResult({ data: { when, rows: rows() } }, 2_000);
+    assert.equal((payloadOf(result) as { data: { when: string } }).data.when, when.toISOString());
   });
 });
 
@@ -227,7 +324,7 @@ describe('truncation hints', () => {
     assert.equal(clamp('short', 100, 'ignored'), 'short');
   });
 
-  test('toCallToolResult passes the hint through to the truncation note', () => {
+  test('toCallToolResult passes the hint through to the truncation record', () => {
     const rows = Array.from({ length: 200 }, (_, i) => ({ id: `row-${i}` }));
     const result = toCallToolResult({ data: { rows } }, 200, 'This field paginates: pass `first`.');
     assert.match(bodyOf(result), /This field paginates: pass `first`\./);

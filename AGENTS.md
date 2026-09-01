@@ -187,9 +187,18 @@ src/
   a failure flag, so an agent doesn't discard rows it could have used); errors
   are condensed to `message`/`path`/`extensions`, dropping `locations` because
   they index into a query string the agent never wrote and cannot see; and the
-  JSON is clamped to `maxChars` (default 50k) with a note saying how much was
-  cut — naming the field's paging argument when it has one, because a bare
-  "truncated" leaves an agent with no move but to re-run the identical call.
+  JSON is clamped to `maxChars` (default 50k) **structurally** — whole array
+  elements are dropped, evenly across every collection, and the envelope is
+  re-serialized, so the body is always parseable JSON. Slicing the serialized
+  string instead cut mid-token, so a client got a `SyntaxError` in place of its
+  rows, and took `errors` and the partial-result `note` with it, because they
+  serialize after `data` — the clamp destroyed exactly the diagnostics the
+  failure existed to deliver. A `truncated` record carries the counts and the
+  advice, naming the field's paging argument when it has one, because a bare
+  "this was cut" leaves an agent with no move but to re-run the identical call.
+  Validity outranks the budget: when nothing can be dropped, `data` is omitted
+  with `dataOmitted: true` rather than returned half-written, and the record
+  itself may exceed a very small `maxChars`.
   Don't format a result anywhere else. Every executor call goes through
   `runExecutor`, which turns a *thrown* executor error into an `{ errors }`
   result — an uncaught throw reaches the SDK, which emits the bare message as

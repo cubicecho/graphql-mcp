@@ -166,26 +166,42 @@ Every tool — generated or meta — returns JSON text you can parse directly:
 - **Errors are condensed** to `message`, `path`, and `extensions` (where app
   codes like `UNAUTHENTICATED` live). `locations` are dropped: they're line and
   column offsets into a query string the agent never wrote and can't see.
-- **Results are clamped** to `maxChars` (default `50_000`) with a note saying how
-  much was cut, so one large collection can't flood the agent's context:
+- **Results are clamped** to `maxChars` (default `50_000`), so one large
+  collection can't flood the agent's context:
 
 ```ts
 createMcpServer({ schema, maxChars: 20_000 });
 ```
 
-- **A truncated result names the argument to page with**, when the field has one.
-  "This was cut" on its own leaves an agent with no move but to re-run the
-  identical call, so the note goes further:
+  The clamp is *structural*: whole array elements are dropped, evenly across
+  every collection in the payload, and the body stays parseable JSON. Cutting
+  the serialized text instead would leave the client a `SyntaxError` where its
+  rows used to be — and would take `errors` and `note` with it, since they
+  serialize last. `errors`, the partial-result `note`, and a `truncated` record
+  are always kept.
 
-```text
-[truncated 41203 of 91203 characters — narrow the query or request fewer fields.
-This field paginates: pass `first` to cap the page size, then `after` to
-continue from where this page ended.]
+- **A clamped result says what went missing, and names the argument to page
+  with** when the field has one. "This was cut" on its own leaves an agent with
+  no move but to re-run the identical call:
+
+```json
+{
+  "data": { "todos": [{ "id": "1" }] },
+  "truncated": {
+    "droppedItems": 419,
+    "totalItems": 420,
+    "advice": "narrow the query or request fewer fields. This field paginates: pass `first` to cap the page size, then `after` to continue from where this page ended."
+  }
+}
 ```
 
   The arguments are read off the schema, matching the conventions in wide use
   (`first`/`after`, `limit`/`offset`, `take`/`skip`, `page`/`pageSize`). A field
-  with none keeps the plain note.
+  with none keeps the plain advice.
+
+  When nothing can be dropped — one enormous scalar, say — `data` is left out
+  entirely and `truncated.dataOmitted` says so, rather than handing back a value
+  silently cut in half that an agent might act on.
 
 That holds when the executor *throws*, too — a refused connection or a broken
 custom executor comes back as `{ "errors": [{ "message": "…" }] }` with

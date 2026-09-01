@@ -240,7 +240,13 @@ describe('createMcpServer', () => {
     const client = await connect(server);
     const result = await client.callTool({ name: 'todos', arguments: {} });
     const body = (result as TextResult).content[0].text;
-    assert.match(body, /\[truncated \d+ of \d+ characters/);
+    // Parseable first, small second: the budget is a target the clamp works
+    // down to by dropping whole rows, and the floor is the record explaining
+    // what went missing — a body no client can parse is worth nothing, however
+    // small it is.
+    const payload = JSON.parse(body) as { truncated?: { totalItems: number } };
+    assert.ok(payload.truncated, 'expected the body to report that it was cut');
+    assert.ok(body.length < 200, `expected a clamped body, got ${body.length} chars`);
     await client.close();
   });
 
@@ -556,8 +562,9 @@ describe('truncated results point at the paging argument', () => {
       .text;
     // Without this, an agent told only "truncated" can do nothing but re-run
     // the identical call and get the identical oversized page.
-    assert.match(body, /\[truncated \d+ of \d+ characters/);
-    assert.match(body, /pass `first` to cap the page size, then `after`/);
+    const { truncated } = JSON.parse(body) as { truncated: { totalItems: number; advice: string } };
+    assert.equal(truncated.totalItems, 200);
+    assert.match(truncated.advice, /pass `first` to cap the page size, then `after`/);
     await client.close();
   });
 
@@ -573,7 +580,7 @@ describe('truncated results point at the paging argument', () => {
     await client.close();
   });
 
-  test('a field with no paging arguments keeps the plain note', async () => {
+  test('a field with no paging arguments keeps the plain advice', async () => {
     const { schema: todoSchema, root: todoRoot } = makeTodoSchema();
     const server = createMcpServer({
       schema: todoSchema,
@@ -583,7 +590,8 @@ describe('truncated results point at the paging argument', () => {
     const client = await connect(server);
     const body = ((await client.callTool({ name: 'todos', arguments: {} })) as TextResult)
       .content[0].text;
-    assert.match(body, /narrow the query or request fewer fields\]/);
+    const { truncated } = JSON.parse(body) as { truncated: { advice: string } };
+    assert.equal(truncated.advice, 'narrow the query or request fewer fields');
     await client.close();
   });
 });
