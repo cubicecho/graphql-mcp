@@ -1,3 +1,10 @@
+# [2.5.0](https://github.com/cubicecho/graphql-mcp/compare/v2.4.0...v2.5.0) (2026-09-01)
+
+
+### Features
+
+* **sessions:** report session ownership across instances ([40bf31b](https://github.com/cubicecho/graphql-mcp/commit/40bf31b784aa6a20c70cc51480b2a0d68836ab85)), closes [#10](https://github.com/cubicecho/graphql-mcp/issues/10)
+
 # [2.4.0](https://github.com/cubicecho/graphql-mcp/compare/v2.3.0...v2.4.0) (2026-09-01)
 
 
