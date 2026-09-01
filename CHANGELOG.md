@@ -1,3 +1,11 @@
+# [2.3.0](https://github.com/cubicecho/graphql-mcp/compare/v2.2.1...v2.3.0) (2026-09-01)
+
+
+### Features
+
+* **tools:** make selectionDepth a per-field decision ([76b8a0b](https://github.com/cubicecho/graphql-mcp/commit/76b8a0bd7b2cf4e8eace735e2ee7d4c6dc0635d8)), closes [#18](https://github.com/cubicecho/graphql-mcp/issues/18)
+* **tools:** opt into deriving mutation write hints from field names ([326acbe](https://github.com/cubicecho/graphql-mcp/commit/326acbefa55240a0e35c28d5b5d0c2615d719930)), closes [#19](https://github.com/cubicecho/graphql-mcp/issues/19)
+
 ## [2.2.1](https://github.com/cubicecho/graphql-mcp/compare/v2.2.0...v2.2.1) (2026-09-01)
 
 
