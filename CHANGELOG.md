@@ -1,3 +1,18 @@
+# [1.0.0](https://github.com/cubicecho/graphql-mcp/compare/v0.2.1...v1.0.0) (2026-09-01)
+
+
+* feat(tools)!: name generated tools in snake_case ([bb7ff8c](https://github.com/cubicecho/graphql-mcp/commit/bb7ff8c17fc3a9e87bcd15161584b30a004760ad))
+
+
+### BREAKING CHANGES
+
+* generated tool names are now snake_case. A client or prompt
+pinned to `createTodo` must call `create_todo`, or pass
+`nameCase: 'preserve'` to keep field names verbatim.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018oYxVnQ6d7DuVwajtmuGqT
+
 ## [0.2.1](https://github.com/cubicecho/graphql-mcp/compare/v0.2.0...v0.2.1) (2026-08-31)
 
 
