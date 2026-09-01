@@ -317,8 +317,8 @@ Tracked as [GitHub issues](https://github.com/cubicecho/graphql-mcp/issues), not
 in a file — a checklist in the repo goes stale silently, and an issue can be
 argued with. `TODO.md` was retired once its contents were filed.
 
-Two entries were *decisions*, not deferred work, so they live here instead. Both
-have been reconsidered and settled; reopen them only against new evidence.
+Three entries were *decisions*, not deferred work, so they live here instead.
+All have been reconsidered and settled; reopen them only against new evidence.
 
 - **No stdio convenience (`createStdioServer()`).** This package is built to run
   *side-by-side* with a GraphQL server — mounted on a route in the same app, or
@@ -328,6 +328,20 @@ have been reconsidered and settled; reopen them only against new evidence.
   stdio can wrap `createMcpServer` with the SDK's `StdioServerTransport` in a few
   lines; the README shows how. Revisit only if the side-by-side model stops being
   the primary one.
+- **The meta tools are not memoized, and measurement says they shouldn't be.**
+  `graphql_introspect` and `graphql_search` recompute from the schema on every
+  call, which looks like an obvious cache. It isn't worth one. On a 2,000-type
+  schema the no-argument overview costs 2.6 ms and a full-miss search 3.2 ms; at
+  an implausible 5,000 types they are 5.7 ms and 8.6 ms. Both are linear and
+  small next to the round trip and the model reading the output. The comparison
+  that settles it: in stateless mode `createServerFactory` already hoists the
+  schema walk out of the request path, and what remains — minting a server and
+  registering its tools — costs **32.7 ms** per request at 2,000 root fields. A
+  cache would shave ~3 ms off a 33 ms path, and would have to key on the rule
+  matcher as well as the schema (a closure, so identity-keyed) or serve one
+  caller's filtered view to another. Complexity and a stale-result bug surface
+  for no measurable gain. If this is ever revisited, the per-request server
+  minting is the number to attack, not the meta tools.
 - **Subscriptions are ignored.** MCP has no streaming-subscription tool shape, so
   there is nothing to project a `Subscription` field *onto* — a tool that can
   only ever return one event misrepresents what the field does. They are dropped
