@@ -78,8 +78,8 @@ describe('createHttpHandler', () => {
     const client = await connect(server.url);
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(), [
-      'createTodo',
-      'setCompleted',
+      'create_todo',
+      'set_completed',
       'todo',
       'todos',
     ]);
@@ -89,7 +89,7 @@ describe('createHttpHandler', () => {
   test('calls a mutation then reads it back over HTTP', async () => {
     const client = await connect(server.url);
     const created = await client.callTool({
-      name: 'createTodo',
+      name: 'create_todo',
       arguments: { input: { userId: 'u9', description: 'via http' } },
     });
     assert.equal((created as TextResult).isError, false);

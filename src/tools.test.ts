@@ -9,12 +9,64 @@ describe('buildTools', () => {
     const { schema } = makeTodoSchema();
     const tools = buildTools(schema);
     const byName = new Map(tools.map((t) => [t.name, t]));
-    assert.deepEqual([...byName.keys()].sort(), ['createTodo', 'setCompleted', 'todo', 'todos']);
+    assert.deepEqual([...byName.keys()].sort(), ['create_todo', 'set_completed', 'todo', 'todos']);
+  });
+
+  test('names tools in snake_case by default', () => {
+    const schema = buildSchema(`
+      type Query {
+        getHTTPResponse: String
+        already_snake: String
+        userID: String
+        me: String
+      }
+    `);
+    assert.deepEqual(
+      buildTools(schema)
+        .map((t) => t.name)
+        .sort(),
+      ['already_snake', 'get_http_response', 'me', 'user_id'],
+    );
+  });
+
+  test("nameCase: 'preserve' keeps the field name verbatim", () => {
+    const { schema } = makeTodoSchema();
+    const tools = buildTools(schema, { nameCase: 'preserve' });
+    assert.deepEqual(tools.map((t) => t.name).sort(), [
+      'createTodo',
+      'setCompleted',
+      'todo',
+      'todos',
+    ]);
+  });
+
+  test('the title and description keep the real field name', () => {
+    const { schema } = makeTodoSchema();
+    const createTodo = buildTools(schema).find((t) => t.name === 'create_todo');
+    assert.equal(createTodo?.title, 'Create Todo');
+    assert.match(createTodo?.description ?? '', /`createTodo`/);
+    assert.match(createTodo?.query ?? '', /createTodo\(/);
+  });
+
+  test('toolName wins over nameCase and is not re-cased', () => {
+    const { schema } = makeTodoSchema();
+    const tools = buildTools(schema, { toolName: (field) => `gqlDo_${field.name}` });
+    assert.ok(tools.every((t) => t.name.startsWith('gqlDo_')));
+  });
+
+  test('two fields colliding under snake_case throw', () => {
+    const schema = buildSchema(`
+      type Query {
+        myField: String
+        my_field: String
+      }
+    `);
+    assert.throws(() => buildTools(schema), /duplicate tool name 'my_field'/);
   });
 
   test('carries SDL descriptions, signature, and args into the description', () => {
     const { schema } = makeTodoSchema();
-    const createTodo = buildTools(schema).find((t) => t.name === 'createTodo');
+    const createTodo = buildTools(schema).find((t) => t.name === 'create_todo');
     assert.ok(createTodo);
     assert.match(createTodo.description, /Create a new todo for a user\./);
     assert.match(createTodo.description, /GraphQL mutation: `createTodo` → `Todo!`/);
@@ -25,7 +77,7 @@ describe('buildTools', () => {
     const { schema } = makeTodoSchema();
     const tools = buildTools(schema);
     const todo = tools.find((t) => t.name === 'todo');
-    const createTodo = tools.find((t) => t.name === 'createTodo');
+    const createTodo = tools.find((t) => t.name === 'create_todo');
     assert.equal(todo?.annotations.readOnlyHint, true);
     assert.equal(todo?.annotations.destructiveHint, false);
     assert.equal(createTodo?.annotations.readOnlyHint, false);
@@ -34,7 +86,7 @@ describe('buildTools', () => {
 
   test('humanizes the title', () => {
     const { schema } = makeTodoSchema();
-    const createTodo = buildTools(schema).find((t) => t.name === 'createTodo');
+    const createTodo = buildTools(schema).find((t) => t.name === 'create_todo');
     assert.equal(createTodo?.title, 'Create Todo');
   });
 
@@ -83,7 +135,7 @@ describe('buildTools include/exclude rules', () => {
   test('exclude drops matching fields and wins over include', () => {
     const { schema } = makeTodoSchema();
     const tools = buildTools(schema, { include: ['*'], exclude: ['set*', 'Query.todo'] });
-    assert.deepEqual(tools.map((t) => t.name).sort(), ['createTodo', 'todos']);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ['create_todo', 'todos']);
   });
 
   test('rules compose with the filter callback (all must pass)', () => {
@@ -109,7 +161,7 @@ describe('buildTools extensions.mcp metadata', () => {
     const { schema } = makeTodoSchema();
     setMcpExtensions(schema, 'Mutation', 'setCompleted', { hidden: true });
     const names = buildTools(schema).map((t) => t.name);
-    assert.ok(!names.includes('setCompleted'));
+    assert.ok(!names.includes('set_completed'));
     assert.equal(names.length, 3);
   });
 
@@ -147,7 +199,7 @@ describe('buildTools extensions.mcp metadata', () => {
     setMcpExtensions(schema, 'Mutation', 'setCompleted', {
       annotations: { destructiveHint: false, idempotentHint: true },
     });
-    const tool = buildTools(schema).find((t) => t.name === 'setCompleted');
+    const tool = buildTools(schema).find((t) => t.name === 'set_completed');
     assert.equal(tool?.annotations.destructiveHint, false);
     assert.equal(tool?.annotations.idempotentHint, true);
     // Untouched defaults survive the merge.
@@ -176,7 +228,7 @@ describe('buildTools decorate', () => {
           : undefined,
     });
     assert.match(
-      tools.find((t) => t.name === 'createTodo')?.description ?? '',
+      tools.find((t) => t.name === 'create_todo')?.description ?? '',
       /Ask before writing\.$/,
     );
     assert.doesNotMatch(tools.find((t) => t.name === 'todo')?.description ?? '', /Ask before/);
@@ -221,7 +273,7 @@ describe('buildTools decorate', () => {
       decorate: (d) =>
         d.kind === 'mutation' ? { annotations: { destructiveHint: false } } : undefined,
     });
-    const createTodo = tools.find((t) => t.name === 'createTodo');
+    const createTodo = tools.find((t) => t.name === 'create_todo');
     assert.equal(createTodo?.annotations.destructiveHint, false);
     // Defaults the patch didn't mention survive.
     assert.equal(createTodo?.annotations.openWorldHint, true);

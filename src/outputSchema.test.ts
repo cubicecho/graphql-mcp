@@ -166,7 +166,7 @@ describe('buildOutputSchema matches real results', () => {
   const cases = [
     { tool: 'todos', variables: {} },
     { tool: 'todo', variables: { id: 'todo-1' } },
-    { tool: 'createTodo', variables: { input: { userId: 'user-1', description: 'new' } } },
+    { tool: 'create_todo', variables: { input: { userId: 'user-1', description: 'new' } } },
   ];
 
   for (const { tool, variables } of cases) {
@@ -183,8 +183,10 @@ describe('buildOutputSchema matches real results', () => {
       });
       assert.equal(result.errors, undefined);
 
+      // Keyed by the GraphQL field name (`operationName`), not the tool name —
+      // the two differ whenever `nameCase` rewrites the field name.
       const data = result.data as Record<string, unknown>;
-      descriptor.outputSchema.parse(data[tool]);
+      descriptor.outputSchema.parse(data[descriptor.operationName]);
     });
   }
 

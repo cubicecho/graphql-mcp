@@ -32,7 +32,7 @@ describe('extendSchemaForMcp', () => {
     const extended = extendSchemaForMcp(schema, USAGE_EXTENSION);
 
     const tools = buildTools(extended);
-    const summary = tools.find((t) => t.name === 'todoSummary');
+    const summary = tools.find((t) => t.name === 'todo_summary');
     assert.ok(summary);
     assert.match(summary.description, /An MCP-only summary of the todo list\./);
 
@@ -63,7 +63,7 @@ describe('extendSchemaForMcp', () => {
   test('extension-added input types flow through the tool input schema', () => {
     const { schema } = makeTodoSchema();
     const extended = extendSchemaForMcp(schema, USAGE_EXTENSION);
-    const summary = buildTools(extended).find((t) => t.name === 'todoSummary');
+    const summary = buildTools(extended).find((t) => t.name === 'todo_summary');
     assert.ok(summary?.inputSchema.input);
     assert.match(summary.description, /- `input`: `SummaryInput`/);
   });
@@ -131,7 +131,7 @@ describe('extend.typesOnly', () => {
     const merged = extendSchemaForMcp(schema, TOOL_SURFACE);
     assert.deepEqual(
       buildTools(merged).map((t) => t.name),
-      ['agentTodos'],
+      ['agent_todos'],
     );
   });
 
@@ -170,7 +170,7 @@ describe('extend.typesOnly', () => {
       typeDefs: 'extend type Query { agentTodos(status: TodoStatus): [Todo!]! }',
     });
     const names = buildTools(merged).map((t) => t.name);
-    assert.ok(names.includes('agentTodos'));
+    assert.ok(names.includes('agent_todos'));
     assert.ok(names.includes('todos'));
   });
 

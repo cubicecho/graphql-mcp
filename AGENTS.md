@@ -78,11 +78,17 @@ src/
 
 - **The schema is the source of truth.** Tool name, description, and input
   schema mirror the GraphQL surface one-to-one. Don't hardcode domain types.
+- **Tool names are `snake_case`** (`createTodo` → `create_todo`). The MCP spec
+  only requires a unique `name`, but every example in it — and most of the
+  ecosystem — is snake_case, so that's what an agent has seen most. Only the
+  name changes: `title`, the description, the operation, and `include`/`exclude`
+  patterns all keep the real field name. `nameCase: 'preserve'` opts out;
+  `toolName` overrides entirely and is never re-cased.
 - **Per-field pipeline in `buildTools`** (later stages win): `exclude` rules →
   `include` rules → `filter` callback → `extensions.mcp.hidden` → SDL-derived
   defaults → `extensions.mcp` metadata → `decorate` callback → duplicate-name
-  check on the *final* name. Rules match GraphQL field names (never remapped
-  tool names) and only drop fields, never rename.
+  check on the *final* name. Rules match GraphQL field names (never cased or
+  remapped tool names) and only drop fields, never rename.
 - **`extend` merges MCP-only SDL + resolvers** (via `extendSchemaForMcp` /
   `@graphql-tools/schema`'s `mergeSchemas`) before tool generation. The extended
   schema feeds both `buildTools` and the default local executor; a custom/HTTP

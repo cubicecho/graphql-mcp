@@ -44,12 +44,12 @@ describe('createMcpServer', () => {
 
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(), [
-      'createTodo',
-      'setCompleted',
+      'create_todo',
+      'set_completed',
       'todo',
       'todos',
     ]);
-    const createTodo = tools.find((t) => t.name === 'createTodo');
+    const createTodo = tools.find((t) => t.name === 'create_todo');
     // The input schema reached the client as JSON Schema derived from the args.
     assert.equal(createTodo?.inputSchema.type, 'object');
     assert.ok((createTodo?.inputSchema.properties as Record<string, unknown>).input);
@@ -84,7 +84,7 @@ describe('createMcpServer', () => {
 
     const before = store.length;
     const result = await client.callTool({
-      name: 'createTodo',
+      name: 'create_todo',
       arguments: { input: { userId: 'user-2', description: 'new task' } },
     });
     const { data } = parseResult(result);
@@ -328,9 +328,9 @@ describe('createMcpServer', () => {
     const client = await connect(server);
 
     const { tools } = await client.listTools();
-    assert.ok(tools.some((t) => t.name === 'usageGuide'));
+    assert.ok(tools.some((t) => t.name === 'usage_guide'));
 
-    const result = await client.callTool({ name: 'usageGuide', arguments: {} });
+    const result = await client.callTool({ name: 'usage_guide', arguments: {} });
     const { isError, data } = parseResult(result);
     assert.equal(isError, false);
     assert.equal((data as { usageGuide: string }).usageGuide, 'call todos first');
@@ -349,12 +349,12 @@ describe('createMcpServer', () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
-      'createTodo',
+      'create_todo',
       'graphql_execute',
       'graphql_introspect',
       'graphql_search',
       'graphql_validate',
-      'setCompleted',
+      'set_completed',
       'todo',
       'todos',
     ]);
@@ -392,7 +392,7 @@ describe('createMcpServer', () => {
 
     // The generated mutation tools are gone…
     const { tools } = await client.listTools();
-    assert.ok(!tools.some((t) => t.name === 'createTodo'));
+    assert.ok(!tools.some((t) => t.name === 'create_todo'));
 
     // …and the raw-document path can't reach them either.
     const result = (await client.callTool({

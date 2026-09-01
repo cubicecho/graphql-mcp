@@ -73,9 +73,11 @@ type Mutation {
 }
 ```
 
-…you get four tools — `todo`, `todos`, `createTodo`, `setCompleted` — each with
-an input schema derived from the field's arguments and a description built from
-the SDL docstrings. Calling `createTodo` runs the equivalent of:
+…you get four tools — `todo`, `todos`, `create_todo`, `set_completed` — each
+with an input schema derived from the field's arguments and a description built
+from the SDL docstrings. (Tool names are `snake_case` by convention; pass
+`nameCase: 'preserve'` to keep your field names verbatim.) Calling `create_todo`
+runs the equivalent of:
 
 ```graphql
 mutation createTodo($input: CreateTodoInput!) {
@@ -102,6 +104,13 @@ Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
 
 - **Both queries and mutations become tools.** MCP has no query/mutation
   distinction; queries are annotated `readOnlyHint`, mutations `destructiveHint`.
+- **Names are `snake_case`.** `createTodo` becomes `create_todo`. The MCP spec
+  doesn't mandate a convention, but every example in it names tools that way and
+  so does most of the ecosystem, so it's what an agent has seen most. The
+  humanized `title` (`Create Todo`) and the description still carry the real
+  field name, and `include`/`exclude` patterns always match the GraphQL field
+  name. Pass `nameCase: 'preserve'` for verbatim field names, or `toolName` for
+  full control.
 - **Arguments → input schema.** Each field's args are converted to a Zod schema
   (the MCP input-schema format): non-null args are required, scalars/enums/lists/
   input-objects map across, custom scalars fall back to an opaque value (see
@@ -227,7 +236,8 @@ const handler = createHttpHandler({
 });
 ```
 
-Patterns match GraphQL field names (not renamed tool names), and they apply to
+Patterns match GraphQL field names (not the `snake_case`d or renamed tool
+names), and they apply to
 **every** root field of the schema being wrapped — including fields added by
 `extend` (below), so an `include` list must name those too. Omitting `include`
 keeps every field; passing an empty array matches nothing and exposes no tools
@@ -457,7 +467,7 @@ const server = createMcpServer({
   schema,
   tools: [
     {
-      name: 'createTodo', // overrides the generated createTodo tool
+      name: 'create_todo', // overrides the generated tool for the `createTodo` field
       description: 'Create a todo, with extra validation.',
       inputSchema: { description: z.string().min(1) },
       handler: async (args) => ({
@@ -481,7 +491,7 @@ const executor = createLocalExecutor(schema, { rootValue });
 
 tools: [
   {
-    name: 'urgentTodos',
+    name: 'urgent_todos',
     description: 'Todos due today, sorted by priority.',
     handler: async () => {
       const result = await runExecutor(executor, {

@@ -46,8 +46,8 @@ describe('createFetchHandler', () => {
     const client = await connect(handler);
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(), [
-      'createTodo',
-      'setCompleted',
+      'create_todo',
+      'set_completed',
       'todo',
       'todos',
     ]);

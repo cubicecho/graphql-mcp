@@ -21,7 +21,7 @@ import { argsToZodShape, type ScalarMapping } from './zodSchema.ts';
 
 /** A schema-derived MCP tool, prior to being bound to an executor/server. */
 export interface ToolDescriptor {
-  /** Tool name (the GraphQL field name, unless remapped via `toolName`). */
+  /** Tool name (the field name under `nameCase`, unless remapped via `toolName`). */
   name: string;
   /** Whether this came from `Query` or `Mutation`. */
   kind: OperationKind;
@@ -73,6 +73,13 @@ export interface McpFieldExtensions {
   selectionDepth?: number;
 }
 
+/**
+ * How a GraphQL field name is cased when projected into a tool name.
+ * `'snake'` (the default) matches the convention MCP servers use; `'preserve'`
+ * keeps the field name exactly as the schema spells it.
+ */
+export type NameCase = 'snake' | 'preserve';
+
 /** Options controlling which fields become tools and how they're named. */
 export interface BuildToolsOptions {
   /** Wrap `Query` fields as tools. Default `true`. */
@@ -113,7 +120,21 @@ export interface BuildToolsOptions {
   /** Keep a field only when this returns `true`. Receives the field and its kind. */
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to a filter
   filter?: (field: GraphQLField<any, any>, kind: OperationKind) => boolean;
-  /** Map a field to a custom tool name. Default: the field name verbatim. */
+  /**
+   * Case convention for generated tool names. Default `'snake'`, which converts
+   * the GraphQL field name to `snake_case` (`createTodo` → `create_todo`) —
+   * every example in the MCP spec names tools that way, and it's what agents
+   * see across other servers. `'preserve'` keeps the field name verbatim.
+   *
+   * Only the *name* changes: the humanized `title` (`Create Todo`) and the
+   * description still carry the real field name, and `include`/`exclude`
+   * patterns match the GraphQL field name either way.
+   */
+  nameCase?: NameCase;
+  /**
+   * Map a field to a custom tool name. Default: the field name under `nameCase`.
+   * A name returned here is used verbatim — `nameCase` is not applied on top.
+   */
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to naming
   toolName?: (field: GraphQLField<any, any>, kind: OperationKind) => string;
   /**
@@ -169,7 +190,9 @@ export function buildTools(
       const ext = (field.extensions as { mcp?: McpFieldExtensions } | undefined)?.mcp;
       if (ext?.hidden) continue;
 
-      const baseName = options.toolName ? options.toolName(field, kind) : field.name;
+      const baseName = options.toolName
+        ? options.toolName(field, kind)
+        : applyNameCase(field.name, options.nameCase);
       let descriptor = toDescriptor(
         baseName,
         field,
@@ -184,8 +207,9 @@ export function buildTools(
       if (seen.has(descriptor.name)) {
         throw new Error(
           `graphql-mcp: duplicate tool name '${descriptor.name}'. A query and mutation field ` +
-            'likely collide — disambiguate with the `toolName`, `extensions.mcp.name`, ' +
-            '`decorate`, or a filtering option.',
+            'likely collide, or two field names differ only in case — disambiguate with ' +
+            "`nameCase: 'preserve'`, `toolName`, `extensions.mcp.name`, `decorate`, or a " +
+            'filtering option.',
         );
       }
       seen.add(descriptor.name);
@@ -339,6 +363,26 @@ function annotationsFor(kind: OperationKind, title: string): ToolAnnotations {
     // Tools reach a GraphQL backend, whose data lives outside this server.
     openWorldHint: true,
   };
+}
+
+/**
+ * `createTodo` → `create_todo`; `getHTTPResponse` → `get_http_response`; `me` → `me`.
+ *
+ * The second pattern splits an acronym run from the word that follows it, so a
+ * run of capitals stays one word rather than becoming one underscore per letter.
+ * GraphQL names are already `[_A-Za-z][_0-9A-Za-z]*`, so the result is always a
+ * valid tool name; a field already spelled `snake_case` comes through unchanged.
+ */
+function toSnakeCase(fieldName: string): string {
+  return fieldName
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .toLowerCase();
+}
+
+/** Applies the `nameCase` option to a field name. */
+function applyNameCase(fieldName: string, nameCase: NameCase = 'snake'): string {
+  return nameCase === 'preserve' ? fieldName : toSnakeCase(fieldName);
 }
 
 /** `createTodo` → `Create Todo`; `me` → `Me`. */
