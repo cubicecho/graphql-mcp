@@ -28,20 +28,21 @@ import {
   isNonNullType,
   isScalarType,
 } from 'graphql';
-import { type ZodRawShape, type ZodTypeAny, z } from 'zod';
+import { z } from 'zod';
+import type { AnyZodType, ZodShape } from './zodCompat.ts';
 
 /**
  * Zod schemas keyed by GraphQL scalar name — the same shape scalar-map
  * generators emit (e.g. `defaultScalarMap` from `@vantreeseba/graphql-zod`), so
  * one can be spread in directly.
  */
-export type ScalarMap = Record<string, ZodTypeAny>;
+export type ScalarMap = Record<string, AnyZodType>;
 
 /**
  * Dynamic form of {@link ScalarMap}: return a schema for the scalar, or
  * `undefined` to fall through to the built-in mapping.
  */
-export type ScalarResolver = (scalar: GraphQLScalarType) => ZodTypeAny | undefined;
+export type ScalarResolver = (scalar: GraphQLScalarType) => AnyZodType | undefined;
 
 /** A scalar mapping: either a name→schema record or a resolver function. */
 export type ScalarMapping = ScalarMap | ScalarResolver;
@@ -56,7 +57,7 @@ export interface ZodShapeOptions {
   scalars?: ScalarMapping;
 }
 
-const SCALAR_BUILDERS: Record<string, () => ZodTypeAny> = {
+const SCALAR_BUILDERS: Record<string, () => AnyZodType> = {
   Int: () => z.number().int(),
   Float: () => z.number(),
   String: () => z.string(),
@@ -76,7 +77,7 @@ const SCALAR_BUILDERS: Record<string, () => ZodTypeAny> = {
  *
  * @param type - The scalar type to map.
  */
-export function builtinScalar(type: GraphQLScalarType): ZodTypeAny {
+export function builtinScalar(type: GraphQLScalarType): AnyZodType {
   const builder = SCALAR_BUILDERS[type.name];
   if (builder) return builder();
   const hint = type.description?.trim();
@@ -92,7 +93,7 @@ interface Ctx {
    * self-reference found while building links back to the same `z.lazy` node
    * instead of recursing forever.
    */
-  pending: Map<string, ZodTypeAny>;
+  pending: Map<string, AnyZodType>;
   /**
    * Input objects already built, keyed by type name — the *same* Zod instance is
    * returned every time a type is met again.
@@ -107,7 +108,7 @@ interface Ctx {
    * any model will read. Sharing the instance turns the walk into a DAG and the
    * repeats into `$defs`.
    */
-  done: Map<string, ZodTypeAny>;
+  done: Map<string, AnyZodType>;
   scalar: ScalarResolver;
 }
 
@@ -119,7 +120,7 @@ export function toResolver(mapping: ScalarMapping | undefined): ScalarResolver {
 }
 
 /** Applies an element/field type's nullability: required for `NonNull`, else `.nullish()`. */
-function fieldToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
+function fieldToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
   if (isNonNullType(type)) {
     return baseToZod(type.ofType, ctx);
   }
@@ -127,7 +128,7 @@ function fieldToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
 }
 
 /** Builds the Zod type for a (already nullability-stripped) list/named GraphQL type. */
-function baseToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
+function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
   if (isListType(type)) {
     return z.array(fieldToZod(type.ofType, ctx));
   }
@@ -151,14 +152,14 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
     if (built) return built;
     const pending = ctx.pending.get(type.name);
     if (pending) return pending;
-    const holder: { schema?: ZodTypeAny } = {};
+    const holder: { schema?: AnyZodType } = {};
     // `z.lazy` defers its getter until parse time, which is always after this
     // call returns and sets `holder.schema` — so the cast can't observe undefined.
     ctx.pending.set(
       type.name,
-      z.lazy(() => holder.schema as ZodTypeAny),
+      z.lazy(() => holder.schema as AnyZodType),
     );
-    const shape: ZodRawShape = {};
+    const shape: ZodShape = {};
     for (const [name, field] of Object.entries(type.getFields())) {
       shape[name] = describe(fieldToZod(field.type, ctx), field.description);
     }
@@ -179,7 +180,7 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
   return z.any();
 }
 
-function describe(schema: ZodTypeAny, description?: string | null): ZodTypeAny {
+function describe(schema: AnyZodType, description?: string | null): AnyZodType {
   return description ? schema.describe(description) : schema;
 }
 
@@ -196,11 +197,11 @@ function describe(schema: ZodTypeAny, description?: string | null): ZodTypeAny {
 export function argsToZodShape(
   args: ReadonlyArray<GraphQLArgument>,
   options: ZodShapeOptions = {},
-): ZodRawShape {
+): ZodShape {
   // Both maps live for this call only: the memo is keyed by type name alone, and
   // a different `scalars` mapping would give the same name a different schema.
   const ctx: Ctx = { pending: new Map(), done: new Map(), scalar: toResolver(options.scalars) };
-  const shape: ZodRawShape = {};
+  const shape: ZodShape = {};
   for (const arg of args) {
     shape[arg.name] = describe(fieldToZod(arg.type, ctx), arg.description);
   }

@@ -25,7 +25,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { GraphQLSchema } from 'graphql';
-import { type ZodRawShape, z } from 'zod';
+import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
 import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
@@ -33,6 +33,7 @@ import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './result.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
 import type { GraphqlExecutor, ToolAnnotations } from './types.ts';
 import { VERSION } from './version.ts';
+import type { ZodShape } from './zodCompat.ts';
 
 /** The handler signature for a custom tool: validated args plus the MCP `extra`. */
 export type ToolHandler = (
@@ -48,7 +49,7 @@ export interface CustomTool {
   name: string;
   title?: string;
   description: string;
-  inputSchema?: ZodRawShape;
+  inputSchema?: ZodShape;
   annotations?: ToolAnnotations;
   handler: ToolHandler;
 }

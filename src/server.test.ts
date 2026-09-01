@@ -710,11 +710,13 @@ describe('tool definitions stay small for a schema that filters through relation
       createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' }),
     );
     const { tools } = await client.listTools();
-    const where = JSON.stringify(
-      (tools.find((tool) => tool.name === 'tasks')?.inputSchema as { properties?: unknown })
-        ?.properties,
-    );
-    assert.ok(where.includes('runs'));
-    assert.ok(where.includes('triggers'));
+    // The whole document, not just `properties`: sharing an input type is the
+    // point of the fix, and where the shared copy lands is a zod-version
+    // detail — v3 inlines the first occurrence under `properties`, v4 hoists it
+    // into `definitions` and leaves a `$ref` behind. Either way the relation
+    // filters have to be reachable from the schema a client is handed.
+    const advertised = JSON.stringify(tools.find((tool) => tool.name === 'tasks')?.inputSchema);
+    assert.ok(advertised.includes('runs'));
+    assert.ok(advertised.includes('triggers'));
   });
 });

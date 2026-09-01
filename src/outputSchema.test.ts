@@ -6,22 +6,29 @@ import { createLocalExecutor } from './executor.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
 import { buildOutputSchema } from './outputSchema.ts';
 import { buildTools } from './tools.ts';
+import type { AnyZodType, ZodShape } from './zodCompat.ts';
 
 function fieldType(sdl: string, field: string): GraphQLOutputType {
   const schema = buildSchema(sdl);
   return (schema.getQueryType() as GraphQLObjectType).getFields()[field].type;
 }
 
-/** The object schema behind whatever list/nullable wrappers a field carries. */
-function unwrap(schema: z.ZodTypeAny): z.ZodObject<z.ZodRawShape> {
-  let current: z.ZodTypeAny = schema;
+/**
+ * The object schema behind whatever list/nullable wrappers a field carries.
+ *
+ * Typed against `ZodShape` rather than `z.ZodObject<...>`: the object class
+ * takes different type parameters under the two majors this package peers
+ * against, and `shape` is all these tests read.
+ */
+function unwrap(schema: AnyZodType): { shape: ZodShape } {
+  let current: AnyZodType = schema;
   for (;;) {
     if (current instanceof z.ZodNullable || current instanceof z.ZodOptional) {
-      current = current.unwrap();
+      current = current.unwrap() as AnyZodType;
     } else if (current instanceof z.ZodArray) {
-      current = current.element;
+      current = current.element as AnyZodType;
     } else {
-      return current as z.ZodObject<z.ZodRawShape>;
+      return current as unknown as { shape: ZodShape };
     }
   }
 }

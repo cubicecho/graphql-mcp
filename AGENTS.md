@@ -22,15 +22,16 @@ process and forward to a remote GraphQL endpoint.
 - **Tests:** Node's built-in test runner (`node --test`) with type stripping —
   **no test framework dependency**. Test files are `src/**/*.test.ts`.
 - **Formatting/linting:** [Biome](https://biomejs.dev/) (`npm run check`).
-- **Dependencies:** `zod` (the SDK's input-schema format) and
-  `@graphql-tools/schema` (schema merging for the `extend` option) are the only
-  runtime dependencies. `@modelcontextprotocol/sdk` (`>=1.12`) and `graphql`
-  (`>=16`) are **peer deps**. Express is *not* a dependency — the HTTP handler
+- **Dependencies:** `@graphql-tools/schema` (schema merging for the `extend`
+  option) is the only runtime dependency. `@modelcontextprotocol/sdk`
+  (`>=1.12`), `graphql` (`>=16`) and `zod` (`^3.25 || ^4.0`) are **peer deps** —
+  zod because the SDK validates against the caller's copy, and a second one in
+  our own tree makes `instanceof` checks fail across the boundary. Express is *not* a dependency — the HTTP handler
   is framework-agnostic. `createFetchHandler` needs SDK ≥ 1.25 and loads that
   transport lazily so the floor stays at 1.12 for everyone else.
 - **Guiding constraint:** avoid adding libraries unless writing it ourselves
   isn't worth the effort (e.g. the GraphQL→Zod mapping is hand-written). The
-  `scalars` option is a plain `Record<string, ZodTypeAny>` for the same reason —
+  `scalars` option is a plain `Record<string, AnyZodType>` for the same reason —
   it's structurally identical to what generators emit (e.g. `defaultScalarMap`
   from `@vantreeseba/graphql-zod`), so interop needs no adapter or dependency.
 
@@ -66,6 +67,7 @@ src/
   result.ts       — GraphqlResult → CallToolResult (toCallToolResult): isError, error condensing, clamping
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
   server.ts       — createMcpServer / createServerFactory / connectServer / registerGraphqlTools (+ custom tools)
+  zodCompat.ts    — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
   sessions.ts     — the bounded session table behind stateful HTTP (SessionStore)
@@ -113,6 +115,15 @@ src/
   fragments first, so a root-level spread can't hide a denied field. Without
   that check a raw document would be a way around the allow-list; keep the two
   surfaces in sync when either changes.
+- **Stay zod-version-agnostic (`zodCompat.ts`).** The peer range spans v3 and
+  v4, whose type surfaces differ: v4's `ZodTypeAny` resolves to the core
+  `$ZodType` (no `.parse`, no `.describe`) and its `ZodRawShape` is `Readonly`,
+  so shapes built by assignment are rejected. Import `AnyZodType` and `ZodShape`
+  from `./zodCompat.ts` instead of either name from `zod`. In tests, assert on
+  an issue's `code` and `keys` rather than its message text, and search the
+  whole rendered JSON Schema rather than `properties` — v4 hoists shared object
+  schemas into `definitions` and leaves a `$ref` behind. CI runs the whole gate
+  against both majors.
 - **`meta.ts` imports `CustomTool` type-only.** `server.ts` imports `meta.ts` at
   runtime, so the reverse import must stay erasable to avoid a cycle.
 - **One seam for execution: `GraphqlExecutor`.** A tool builds a

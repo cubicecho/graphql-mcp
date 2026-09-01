@@ -11,12 +11,12 @@
 
 import type { GraphQLArgument, GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
 import { print } from 'graphql';
-import type { ZodRawShape, ZodTypeAny } from 'zod';
 import { buildOperation } from './operation.ts';
 import { buildOutputSchema } from './outputSchema.ts';
 import { paginationHint } from './pagination.ts';
 import { compileRules } from './rules.ts';
 import type { OperationKind, ToolAnnotations } from './types.ts';
+import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import { argsToZodShape, type ScalarMapping } from './zodSchema.ts';
 
 /** A schema-derived MCP tool, prior to being bound to an executor/server. */
@@ -30,13 +30,13 @@ export interface ToolDescriptor {
   /** Full tool description, derived from the SDL. */
   description: string;
   /** Zod raw shape for the field's arguments (the tool `inputSchema`). */
-  inputSchema: ZodRawShape;
+  inputSchema: ZodShape;
   /**
    * Zod schema describing the field's return type, mirroring the selection set
    * this tool sends. A structural hint for introspection — the server does not
    * validate results against it (see TODO.md).
    */
-  outputSchema: ZodTypeAny;
+  outputSchema: AnyZodType;
   /** MCP behaviour hints, defaulted from the operation kind. */
   annotations: ToolAnnotations;
   /** The pre-built operation document this tool runs. */

@@ -58,10 +58,14 @@ describe('argsToZodShape', () => {
     const shape = searchArgs();
     // The advertised JSON Schema says `additionalProperties: false`; the parse
     // has to agree, and say which key was wrong.
-    assert.throws(
-      () => shape.filter.parse({ tag: 't', taag: 'typo' }),
-      /Unrecognized key\(s\).*taag/s,
-    );
+    const result = shape.filter.safeParse({ tag: 't', taag: 'typo' });
+    assert.equal(result.success, false);
+    // Asserted on the issue, not the sentence: v3 says "Unrecognized key(s) in
+    // object: 'taag'" and v4 says 'Unrecognized key: "taag"', but both carry the
+    // same code and name the key, which is the part an agent needs.
+    const issue = result.error?.issues[0] as { code?: string; keys?: string[] } | undefined;
+    assert.equal(issue?.code, 'unrecognized_keys');
+    assert.deepEqual(issue?.keys, ['taag']);
     // The keys the type does declare still parse, and survive intact.
     assert.deepEqual(shape.filter.parse({ tag: 't' }), { tag: 't' });
   });

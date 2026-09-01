@@ -31,7 +31,8 @@ import {
   isScalarType,
   isUnionType,
 } from 'graphql';
-import { type ZodRawShape, type ZodTypeAny, z } from 'zod';
+import { z } from 'zod';
+import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import { builtinScalar, type ScalarMapping, type ScalarResolver, toResolver } from './zodSchema.ts';
 
 /**
@@ -50,7 +51,7 @@ export function buildOutputSchema(
   type: GraphQLOutputType,
   maxDepth = 2,
   scalars?: ScalarMapping,
-): ZodTypeAny {
+): AnyZodType {
   const scalar = toResolver(scalars);
   const inner = schemaFor(getNamedType(type), maxDepth, new Set(), scalar);
   return wrapField(type, inner ?? z.unknown());
@@ -62,7 +63,7 @@ function schemaFor(
   depth: number,
   path: ReadonlySet<string>,
   scalar: ScalarResolver,
-): ZodTypeAny | undefined {
+): AnyZodType | undefined {
   if (isScalarType(named)) {
     // The user mapping wins over the built-ins, exactly as on the input side.
     const mapped = scalar(named);
@@ -96,8 +97,8 @@ function compositeFields(
   depth: number,
   path: ReadonlySet<string>,
   scalar: ScalarResolver,
-): ZodRawShape {
-  const shape: ZodRawShape = {};
+): ZodShape {
+  const shape: ZodShape = {};
   const nextPath = new Set(path).add(type.name);
   for (const [name, field] of Object.entries(type.getFields())) {
     // Can't auto-select a field that requires arguments we don't have.
@@ -125,7 +126,7 @@ function compositeFields(
 }
 
 /** Applies a field type's nullability around `inner`: required for `NonNull`, else `.nullable()`. */
-function wrapField(type: GraphQLOutputType, inner: ZodTypeAny): ZodTypeAny {
+function wrapField(type: GraphQLOutputType, inner: AnyZodType): AnyZodType {
   if (isNonNullType(type)) {
     return wrapBase(type.ofType, inner);
   }
@@ -133,13 +134,13 @@ function wrapField(type: GraphQLOutputType, inner: ZodTypeAny): ZodTypeAny {
 }
 
 /** Applies a (nullability-stripped) type's list wrappers around the named-type schema. */
-function wrapBase(type: GraphQLOutputType, inner: ZodTypeAny): ZodTypeAny {
+function wrapBase(type: GraphQLOutputType, inner: AnyZodType): AnyZodType {
   if (isListType(type)) {
     return z.array(wrapField(type.ofType, inner));
   }
   return inner;
 }
 
-function describe(schema: ZodTypeAny, description?: string | null): ZodTypeAny {
+function describe(schema: AnyZodType, description?: string | null): AnyZodType {
   return description ? schema.describe(description) : schema;
 }

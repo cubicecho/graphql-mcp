@@ -14,11 +14,16 @@ process and forward to a remote GraphQL endpoint.
 ```bash
 npm install @cubicecho/graphql-mcp
 # peer deps
-npm install @modelcontextprotocol/sdk graphql
+npm install @modelcontextprotocol/sdk graphql zod
 ```
 
-Needs Node ≥ 22, `@modelcontextprotocol/sdk` ≥ 1.12, and `graphql` ≥ 16.
-[`createFetchHandler`](#non-node-runtimes) alone needs SDK ≥ 1.25.
+Needs Node ≥ 22, `@modelcontextprotocol/sdk` ≥ 1.12, `graphql` ≥ 16, and `zod`
+3.25+ or 4.x. [`createFetchHandler`](#non-node-runtimes) alone needs SDK ≥ 1.25.
+
+`zod` is a peer dependency rather than a bundled one: the MCP SDK validates tool
+arguments against *your* copy, and a second copy inside this package would make
+those checks fail across the boundary. Bring whichever major you already use —
+both are tested.
 
 ## Quick start
 

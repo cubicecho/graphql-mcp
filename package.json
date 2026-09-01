@@ -42,11 +42,11 @@
   },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": ">=1.12",
-    "graphql": ">=16 <18"
+    "graphql": ">=16 <18",
+    "zod": "^3.25 || ^4.0"
   },
   "dependencies": {
-    "@graphql-tools/schema": "^10.1.0",
-    "zod": "^3.25.0"
+    "@graphql-tools/schema": "^10.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
@@ -60,6 +60,7 @@
     "@types/node": "^24.0.0",
     "graphql": "^16.14.0",
     "semantic-release": "^25.0.5",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "zod": "^4.0.0"
   }
 }
