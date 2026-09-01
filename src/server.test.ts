@@ -596,3 +596,85 @@ describe('a call that omits its arguments', () => {
     assert.deepEqual(tools.map((tool) => tool.name).sort(), ['schedule', 'tasks']);
   });
 });
+
+describe('tool definitions stay small for a schema that filters through relations', () => {
+  // The shape a generated CRUD API has: each table filters by its relations, and
+  // those filter back. Written out at every route rather than shared, one such
+  // `where` rendered at 2.8 MB and a seventeen-tool listing at 18 MB — past what
+  // any model will read, and it arrives before a single call can be made.
+  const schema = buildSchema(/* GraphQL */ `
+    input StringFilter {
+      eq: String
+      ne: String
+      contains: String
+      OR: [StringFilter!]
+    }
+    input TaskFilters {
+      id: StringFilter
+      name: StringFilter
+      prompt: StringFilter
+      runs: RunFilters
+      steps: StepFilters
+      triggers: TriggerFilters
+      OR: [TaskFilters!]
+      NOT: TaskFilters
+    }
+    input RunFilters {
+      id: StringFilter
+      status: StringFilter
+      task: TaskFilters
+      steps: StepFilters
+      triggers: TriggerFilters
+      OR: [RunFilters!]
+    }
+    input StepFilters {
+      id: StringFilter
+      kind: StringFilter
+      run: RunFilters
+      task: TaskFilters
+      triggers: TriggerFilters
+      OR: [StepFilters!]
+    }
+    input TriggerFilters {
+      id: StringFilter
+      kind: StringFilter
+      task: TaskFilters
+      run: RunFilters
+      steps: StepFilters
+      OR: [TriggerFilters!]
+    }
+    type Task {
+      id: String!
+      name: String!
+    }
+    type Query {
+      tasks(where: TaskFilters): [Task!]!
+      runs(where: RunFilters): [Task!]!
+    }
+  `);
+
+  test('the whole listing is something a client can actually read', async () => {
+    const client = await connect(
+      createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' }),
+    );
+    const { tools } = await client.listTools();
+    const size = JSON.stringify(tools).length;
+    // The bound is the order of magnitude, not the byte: four tables render at
+    // ~7.8 kB shared and ~45 kB written out, and the gap widens with every table
+    // a real schema adds.
+    assert.ok(size < 20_000, `tools/list rendered ${size} bytes`);
+  });
+
+  test('and the relation filters are still there to be used', async () => {
+    const client = await connect(
+      createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' }),
+    );
+    const { tools } = await client.listTools();
+    const where = JSON.stringify(
+      (tools.find((tool) => tool.name === 'tasks')?.inputSchema as { properties?: unknown })
+        ?.properties,
+    );
+    assert.ok(where.includes('runs'));
+    assert.ok(where.includes('triggers'));
+  });
+});

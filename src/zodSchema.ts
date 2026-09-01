@@ -12,7 +12,10 @@
  *   scalar's own SDL description (see {@link builtinScalar})
  * - enums → `z.enum([...names])` (enum *names*, the form passed as GraphQL variables)
  * - input objects → `z.object({...})`, recursively; self-references become `z.lazy()`
- *   to model the recursion precisely instead of falling back to `z.any()`.
+ *   to model the recursion precisely instead of falling back to `z.any()`. Each
+ *   named input type is built once per call and shared, so a type reached by
+ *   several routes renders as one `$defs` entry rather than being expanded again
+ *   at every site (see {@link Ctx}).
  */
 
 import {
@@ -82,7 +85,7 @@ export function builtinScalar(type: GraphQLScalarType): ZodTypeAny {
     .describe(hint ? `Custom scalar ${type.name} — ${hint}` : `Custom scalar ${type.name}`);
 }
 
-/** Recursion state: the input-object cycle guard plus the resolved scalar mapper. */
+/** Recursion state: the input-object cycle guard, the memo, and the scalar mapper. */
 interface Ctx {
   /**
    * Input objects whose shape is still being built, keyed by type name. A
@@ -90,6 +93,21 @@ interface Ctx {
    * instead of recursing forever.
    */
   pending: Map<string, ZodTypeAny>;
+  /**
+   * Input objects already built, keyed by type name — the *same* Zod instance is
+   * returned every time a type is met again.
+   *
+   * Identity is the whole point. `pending` only guards the path being walked and
+   * is cleared on the way back up, so without this a type reached twice by two
+   * different routes was rebuilt into two structurally identical but distinct
+   * schemas. `toJSONSchema` deduplicates by instance, so those became two
+   * expansions rather than a `$ref`, and a schema where several tables filter
+   * through one another grew multiplicatively: one real `where` argument
+   * rendered at 2.8 MB, and its whole tool listing at 18 MB, which is past what
+   * any model will read. Sharing the instance turns the walk into a DAG and the
+   * repeats into `$defs`.
+   */
+  done: Map<string, ZodTypeAny>;
   scalar: ScalarResolver;
 }
 
@@ -127,6 +145,10 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
     // Self-referential input types (e.g. a nested filter tree) resolve to the
     // `z.lazy` node registered before the shape is built, so the recursion is
     // modelled precisely instead of collapsing to an opaque `z.any()`.
+    // A type already finished is reused outright; one still on the stack resolves
+    // to its `z.lazy` placeholder, which is what makes a cycle terminate.
+    const built = ctx.done.get(type.name);
+    if (built) return built;
     const pending = ctx.pending.get(type.name);
     if (pending) return pending;
     const holder: { schema?: ZodTypeAny } = {};
@@ -142,6 +164,7 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
     }
     ctx.pending.delete(type.name);
     holder.schema = z.object(shape);
+    ctx.done.set(type.name, holder.schema);
     return holder.schema;
   }
   // Unreachable for valid input types; keep type-checking happy and fail soft.
@@ -166,7 +189,9 @@ export function argsToZodShape(
   args: ReadonlyArray<GraphQLArgument>,
   options: ZodShapeOptions = {},
 ): ZodRawShape {
-  const ctx: Ctx = { pending: new Map(), scalar: toResolver(options.scalars) };
+  // Both maps live for this call only: the memo is keyed by type name alone, and
+  // a different `scalars` mapping would give the same name a different schema.
+  const ctx: Ctx = { pending: new Map(), done: new Map(), scalar: toResolver(options.scalars) };
   const shape: ZodRawShape = {};
   for (const arg of args) {
     shape[arg.name] = describe(fieldToZod(arg.type, ctx), arg.description);
