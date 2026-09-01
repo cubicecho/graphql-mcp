@@ -18,9 +18,14 @@
  *
  * This table is per-process. Running several instances behind a load balancer
  * means either sticky routing or staying stateless — see issue #10.
+ *
+ * The events a session's stream has already sent are bounded separately, in
+ * `eventStore.ts`, and belong to the session: they are what a client reconnects
+ * against, and they are released when the session here is.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ReplayOption } from './eventStore.ts';
 
 /** The transport half of a session: anything the store can shut down. */
 export interface ClosableTransport {
@@ -59,6 +64,16 @@ export interface SessionOptions {
    * proxy that buffers streaming responses.
    */
   enableJsonResponse?: boolean;
+  /**
+   * How each session buffers SSE events so a dropped connection can resume from
+   * `Last-Event-ID`. Default `true`: a bounded in-memory buffer per session.
+   *
+   * `false` turns resumability off, which is what the transport does unaided —
+   * a dropped stream then loses whatever was in flight. An options object tunes
+   * the bounds; a factory supplies a store of your own, which is what replay
+   * across restarts or replicas needs. See {@link ReplayOption}.
+   */
+  replay?: ReplayOption;
 }
 
 /** Default idle window before an unused session is evicted. */

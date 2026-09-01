@@ -12,8 +12,9 @@
  * - **Stateful** (`sessions: true`) — the client initializes once, gets an
  *   `Mcp-Session-Id`, and is routed back to the same long-lived server on every
  *   later request. That is what makes an open SSE stream — and therefore
- *   server-initiated messages — possible. It also pins a client to one process;
- *   see {@link SessionOptions} and issue #10.
+ *   server-initiated messages — possible, and each session buffers what it has
+ *   sent so a dropped stream resumes rather than losing it (see `eventStore.ts`).
+ *   It also pins a client to one process; see {@link SessionOptions} and issue #10.
  *
  * Express is assumed for the MVP, but nothing here imports it: any framework
  * works as long as it hands the handler a Node `IncomingMessage` and a Node
@@ -26,6 +27,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { eventStoreFactory } from './eventStore.ts';
 import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
 import { type Session, type SessionOptions, SessionStore } from './sessions.ts';
 
@@ -89,6 +91,9 @@ export function createHttpHandler(options: HttpHandlerOptions): McpHttpHandler {
   const store = sessionOptions
     ? new SessionStore<StreamableHTTPServerTransport>(sessionOptions)
     : null;
+  // One replay buffer per session, so a reconnecting client resumes its own
+  // stream and the buffer dies with the session.
+  const newEventStore = eventStoreFactory(sessionOptions?.replay);
 
   const handler = async (req: McpHttpRequest, res: ServerResponse): Promise<void> => {
     // Per-request context derived from the real HTTP request wins over a static
@@ -133,6 +138,7 @@ export function createHttpHandler(options: HttpHandlerOptions): McpHttpHandler {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: store.generateSessionId,
       enableJsonResponse: sessionOptions.enableJsonResponse ?? false,
+      eventStore: newEventStore(),
       // Registered before the initialize response is written, so a client that
       // fires its next request immediately can't beat the session into the table.
       onsessioninitialized: (id) => store.add(id, session),

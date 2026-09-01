@@ -25,6 +25,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { type EventStore, eventStoreFactory } from './eventStore.ts';
 import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
 import { type Session, type SessionOptions, SessionStore } from './sessions.ts';
 
@@ -69,6 +70,7 @@ interface WebTransport {
 interface WebTransportOptions {
   sessionIdGenerator?: () => string;
   enableJsonResponse?: boolean;
+  eventStore?: EventStore;
   onsessioninitialized?: (id: string) => void | Promise<void>;
   onsessionclosed?: (id: string) => void | Promise<void>;
 }
@@ -122,6 +124,7 @@ export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandle
   const makeServer = createServerFactory(serverOptions);
   const sessionOptions = sessions === true ? {} : sessions || undefined;
   const store = sessionOptions ? new SessionStore<WebTransport>(sessionOptions) : null;
+  const newEventStore = eventStoreFactory(sessionOptions?.replay);
 
   const handler = async (request: Request): Promise<Response> => {
     const Transport = await loadTransport();
@@ -158,6 +161,7 @@ export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandle
     const transport = new Transport({
       sessionIdGenerator: store.generateSessionId,
       enableJsonResponse: sessionOptions.enableJsonResponse ?? false,
+      eventStore: newEventStore(),
       onsessioninitialized: (id) => store.add(id, session),
       onsessionclosed: (id) => store.drop(id),
     });

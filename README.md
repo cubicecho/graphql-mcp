@@ -777,6 +777,7 @@ const handler = createHttpHandler({
     idleTimeoutMs: 5 * 60 * 1000, // evict a client that walked away (default)
     maxSessions: 1000, // LRU cap on live sessions (default)
     enableJsonResponse: false, // SSE; set true behind a buffering proxy
+    replay: true, // buffer events so a dropped stream can resume (default)
   },
 });
 
@@ -789,6 +790,43 @@ balancer needs sticky routing — and on isolate-per-request platforms like
 Cloudflare Workers it can't work at all. Stay stateless there. An unknown or
 expired session id is answered with `404`, which tells a spec-compliant client to
 initialize again.
+
+### Resuming a dropped stream
+
+The stream is the reason to be stateful, and streams drop. A client that loses
+its SSE connection reconnects with the SSE `Last-Event-ID` header, saying how far
+it got; the server sends what came after. That only works if something kept the
+events, so each session gets a bounded in-memory buffer — without one the
+transport never even writes an event id, and a long tool call's result is simply
+gone when the connection dies mid-flight.
+
+Tune the bounds, or turn it off:
+
+```ts
+sessions: {
+  replay: { maxEventsPerStream: 64, maxStreams: 4 }, // the defaults
+}
+```
+
+`maxEventsPerStream` is the reconnect window: a client that misses more than
+that while disconnected can't resume and must start a new stream. It is told so
+— a resume from an event that has aged out is answered `400` rather than with a
+stream that silently skips the gap, because a client that believes it caught up
+has no way to find out otherwise. The memory ceiling is the product of the three
+caps: `maxSessions × maxStreams × maxEventsPerStream` messages.
+
+`replay: false` turns resumability off, which is what the SDK does unaided.
+
+Buffers live in the process that owns the session, so they don't survive a
+restart or reach another replica. For that, supply your own store — a factory
+called once per session, returning anything with the `EventStore` shape (Redis,
+a Durable Object, a table):
+
+```ts
+import type { EventStore } from '@cubicecho/graphql-mcp';
+
+sessions: { replay: (): EventStore => new RedisEventStore(redis) };
+```
 
 ## Development
 

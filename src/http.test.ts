@@ -277,3 +277,151 @@ describe('createHttpHandler close()', () => {
     hosted.close();
   });
 });
+
+/**
+ * A dropped SSE stream and a reconnect claiming `Last-Event-ID`, driven over raw
+ * HTTP rather than through the SDK client — the client reconnects on its own
+ * schedule, and the point here is what the *server* does when it is asked to
+ * resume. See `eventStore.ts`.
+ */
+describe('resuming a dropped stream', () => {
+  const PROTOCOL = '2025-11-25';
+  const INITIALIZE = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: {
+      protocolVersion: PROTOCOL,
+      capabilities: {},
+      clientInfo: { name: 'resume-test', version: '0.0.0' },
+    },
+  });
+
+  interface RawResponse {
+    status: number;
+    sessionId?: string;
+    /** The first SSE event, or `'<timeout>'` if the stream sent nothing. */
+    first: string;
+    /** Drops the connection, as a flaky network would. */
+    abort(): void;
+  }
+
+  /** One request, resolved as soon as the first bytes of the body land. */
+  function raw(
+    url: URL,
+    method: string,
+    headers: Record<string, string>,
+    body?: string,
+  ): Promise<RawResponse> {
+    return new Promise((resolve, reject) => {
+      const req = http.request(url, { method, headers }, (res) => {
+        let settled = false;
+        const done = (first: string) => {
+          if (settled) return;
+          settled = true;
+          const sessionId = res.headers['mcp-session-id'];
+          resolve({
+            status: res.statusCode ?? 0,
+            sessionId: Array.isArray(sessionId) ? sessionId[0] : sessionId,
+            first,
+            abort: () => req.destroy(),
+          });
+        };
+        res.on('data', (chunk) => done(String(chunk)));
+        res.on('end', () => done(''));
+        // A stream that stays open with nothing to say is the interesting
+        // answer in the no-replay case, so it resolves rather than hanging.
+        setTimeout(() => done('<timeout>'), 750).unref();
+      });
+      req.on('error', reject);
+      req.end(body);
+    });
+  }
+
+  /**
+   * Initializes a session and drops the connection the instant the first event
+   * arrives — the response to `initialize` is still in flight at that point,
+   * which is exactly the work a replay buffer exists to save.
+   */
+  async function initializeThenDrop(url: URL) {
+    const init = await raw(
+      url,
+      'POST',
+      { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      INITIALIZE,
+    );
+    init.abort();
+    return { ...init, eventId: /^id: (.*)$/m.exec(init.first)?.[1] };
+  }
+
+  function reconnect(url: URL, sessionId: string, lastEventId: string) {
+    return raw(url, 'GET', {
+      'mcp-session-id': sessionId,
+      'mcp-protocol-version': PROTOCOL,
+      accept: 'text/event-stream',
+      'last-event-id': lastEventId,
+    });
+  }
+
+  /**
+   * Runs `body` against a stateful handler and always tears it down — a failed
+   * assertion would otherwise leave an HTTP server listening and an SSE stream
+   * open, and the test process would hang instead of reporting the failure.
+   */
+  async function withSessions(
+    replay: boolean | undefined,
+    body: (url: URL) => Promise<void>,
+  ): Promise<void> {
+    const { schema, root } = makeTodoSchema();
+    const handler = createHttpHandler({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      sessions: replay === undefined ? true : { replay },
+    });
+    const hosted = await host(handler);
+    try {
+      await body(hosted.url);
+    } finally {
+      hosted.close();
+      await handler.close();
+    }
+  }
+
+  test('a reconnect replays the reply the dropped connection never delivered', async () => {
+    await withSessions(undefined, async (url) => {
+      const dropped = await initializeThenDrop(url);
+      // The stream opens with a priming event, which is the id to resume from.
+      assert.ok(dropped.eventId, `expected an event id, got ${JSON.stringify(dropped.first)}`);
+
+      const resumed = await reconnect(url, dropped.sessionId ?? '', dropped.eventId);
+      assert.equal(resumed.status, 200);
+      // The `initialize` result, which the client never saw the first time.
+      assert.match(resumed.first, /"protocolVersion"/);
+      resumed.abort();
+    });
+  });
+
+  test('without replay the stream carries no event id to resume from', async () => {
+    await withSessions(false, async (url) => {
+      const dropped = await initializeThenDrop(url);
+      assert.equal(dropped.eventId, undefined);
+      // And the reply it was carrying is simply gone: reconnecting opens a
+      // fresh, silent stream rather than catching the client up.
+      const resumed = await reconnect(url, dropped.sessionId ?? '', '1');
+      assert.equal(resumed.first, '<timeout>');
+      resumed.abort();
+    });
+  });
+
+  test('an unresumable id is refused rather than answered with a silent stream', async () => {
+    await withSessions(undefined, async (url) => {
+      const dropped = await initializeThenDrop(url);
+      const resumed = await reconnect(url, dropped.sessionId ?? '', 'aged-out');
+      // 400, so the client knows to start over; without a store the same
+      // request gets a 200 and no events, which it cannot tell from "nothing
+      // happened".
+      assert.equal(resumed.status, 400);
+      resumed.abort();
+    });
+  });
+});

@@ -72,6 +72,7 @@ src/
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
   sessions.ts     — the bounded session table behind stateful HTTP (SessionStore)
+  eventStore.ts   — the bounded SSE replay buffer behind resumability (MemoryEventStore)
   http.ts         — createHttpHandler for Node (IncomingMessage/ServerResponse)
   fetch.ts        — createFetchHandler for Request/Response runtimes
   *.test.ts       — co-located tests; fixtures.test.ts holds the shared "todos" schema
@@ -287,6 +288,21 @@ src/
   `sendToolListChanged` — retires the cache permanently, because from then on two
   servers can disagree about what they expose. `registerGeneratedTool` hoists its
   `z.object(shape).strict()` for the same reason (a `WeakMap` on the shape).
+- **A session's stream is resumable, and the buffer is bounded** (`eventStore.ts`).
+  The SDK writes SSE event ids only when given an `eventStore`, so without one a
+  dropped connection loses whatever was in flight — which is the work a stateful
+  session exists to deliver. Each session gets its own `MemoryEventStore`
+  (`replay: true`, the default), capped on events per stream *and* streams per
+  session, so the ceiling is `maxSessions × maxStreams × maxEventsPerStream` and
+  the buffers die with the session the table was already bounding. One store per
+  session, never shared: a shared buffer would let one session's reconnect replay
+  another's events. An aged-out event id is reported as *unknown*
+  (`getStreamIdForEventId` → `undefined`, which the transport answers with a
+  400) rather than replayed as the surviving suffix — a client told its resume
+  point is gone can start over, one handed a stream with a silent gap cannot.
+  `EventStore` is modelled structurally here rather than imported, so the public
+  types hold across the whole peer range and a caller can supply Redis or a
+  Durable Object for replay that survives a restart.
 - **Two handlers, one behaviour.** `http.ts` (Node) and `fetch.ts`
   (`Request`/`Response`) differ only in how a request reaches the transport;
   session handling, context derivation, and the 404-for-an-unknown-session rule
