@@ -32,3 +32,23 @@ export type AnyZodType = ZodType;
  * by assignment. Replaces `ZodRawShape`.
  */
 export type ZodShape = Record<string, AnyZodType>;
+
+/**
+ * Names a schema, so a JSON Schema render that hoists it into `definitions`
+ * keys it by that name instead of by position.
+ *
+ * A schema reached from several places is written out once and referenced; v4
+ * calls the entry `__schema0`, `__schema1`, … in the order it met them. The
+ * reader here is a model, and `#/definitions/__schema7` tells it nothing — the
+ * GraphQL type name (`TaskFilters`, `StringFilter`) is the whole meaning, and
+ * this package has it at build time.
+ *
+ * Only v4 hoists, and only v4 has `.meta()`; v3 inlines the first occurrence
+ * and never renders a `$ref`, so there is nothing to name and this is a no-op
+ * there. `.meta()` returns a *clone* carrying the name — use the return value,
+ * or the name is registered against a schema nobody references.
+ */
+export function withName<T extends AnyZodType>(schema: T, name: string): T {
+  const meta = (schema as { meta?: (metadata: { id: string }) => T }).meta;
+  return typeof meta === 'function' ? meta.call(schema, { id: name }) : schema;
+}

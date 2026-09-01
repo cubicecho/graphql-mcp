@@ -140,6 +140,14 @@ src/
   `pending` is the cycle guard for a type still on the stack (`z.lazy`), `done`
   is the memo for one already finished — deleting from `pending` is not the same
   thing, and conflating them is what caused the blow-up.
+- **A hoisted input type carries its GraphQL name (`withName` in
+  `zodCompat.ts`).** Left anonymous, v4's render keys `definitions` by position
+  — `__schema0`, `__schema7` — and the reader is a model, for whom the type name
+  (`TaskFilters`, `StringFilter`) is the whole meaning. `.meta({ id })` is
+  v4-only and returns a *clone*, so the return value is what goes into `done`
+  and `holder.schema`; on v3 it is a no-op, which is right because v3 inlines
+  and never renders a `$ref`. Naming also makes v4 hoist a single-use type it
+  would otherwise inline — about +2% on a listing, for a name at every site.
 - **`connectServer(server, transport)` is how a server should be connected.**
   `params.arguments` is optional in the MCP schema, and a tool whose arguments
   are all optional gives a client nothing to put there — but the SDK hands that

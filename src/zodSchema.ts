@@ -14,8 +14,8 @@
  * - input objects → a strict `z.object({...})`, recursively; self-references become `z.lazy()`
  *   to model the recursion precisely instead of falling back to `z.any()`. Each
  *   named input type is built once per call and shared, so a type reached by
- *   several routes renders as one `$defs` entry rather than being expanded again
- *   at every site (see {@link Ctx}).
+ *   several routes renders as one `$defs` entry — keyed by its GraphQL type name
+ *   — rather than being expanded again at every site (see {@link Ctx}).
  */
 
 import {
@@ -29,7 +29,7 @@ import {
   isScalarType,
 } from 'graphql';
 import { z } from 'zod';
-import type { AnyZodType, ZodShape } from './zodCompat.ts';
+import { type AnyZodType, withName, type ZodShape } from './zodCompat.ts';
 
 /**
  * Zod schemas keyed by GraphQL scalar name — the same shape scalar-map
@@ -172,7 +172,11 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
     // signals that part of the intent was discarded and nothing prompts a retry.
     // Strict makes the enforced contract match the advertised one and names the
     // offending field, the way the GraphQL endpoint itself would.
-    holder.schema = z.object(shape).strict();
+    // Named after the GraphQL type: a shared input object is hoisted into the
+    // rendered `definitions`, and without a name the entry is keyed by position
+    // (`__schema0`), which strips the one piece of context an agent needs to
+    // read a `where` argument. See {@link withName}.
+    holder.schema = withName(z.object(shape).strict(), type.name);
     ctx.done.set(type.name, holder.schema);
     return holder.schema;
   }

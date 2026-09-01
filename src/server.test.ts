@@ -719,4 +719,28 @@ describe('tool definitions stay small for a schema that filters through relation
     assert.ok(advertised.includes('runs'));
     assert.ok(advertised.includes('triggers'));
   });
+
+  test('a shared filter is named after its GraphQL type, not by position', async () => {
+    const client = await connect(
+      createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' }),
+    );
+    const { tools } = await client.listTools();
+    const advertised = tools.find((tool) => tool.name === 'tasks')?.inputSchema as Record<
+      string,
+      unknown
+    >;
+    // The fallback name for a hoisted anonymous schema is its position, which
+    // carries nothing: an agent reading a `where` argument has to resolve
+    // `#/definitions/__schema7` by hand, fifteen times, with nothing to anchor
+    // any of it to. The GraphQL type name is the meaning, and we have it.
+    assert.doesNotMatch(JSON.stringify(advertised), /__schema\d/);
+    // Where a shared type lands is a zod-version detail — v3 inlines it, v4
+    // hoists it — so assert on the entries that exist rather than on there
+    // being any. Every one has to be a type the SDL declares.
+    const declared = ['StringFilter', 'TaskFilters', 'RunFilters', 'StepFilters', 'TriggerFilters'];
+    const hoisted = (advertised.definitions ?? advertised.$defs ?? {}) as Record<string, unknown>;
+    for (const name of Object.keys(hoisted)) {
+      assert.ok(declared.includes(name), `definitions.${name} is not a GraphQL type name`);
+    }
+  });
 });
