@@ -1,3 +1,15 @@
+## [2.2.1](https://github.com/cubicecho/graphql-mcp/compare/v2.2.0...v2.2.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **server:** answer a malformed call in the JSON envelope ([3e4706e](https://github.com/cubicecho/graphql-mcp/commit/3e4706e57b120f8a623563365b32539322795bdf)), closes [#17](https://github.com/cubicecho/graphql-mcp/issues/17)
+
+
+### Performance Improvements
+
+* **server:** render the tool listing once per server factory ([535c006](https://github.com/cubicecho/graphql-mcp/commit/535c00644794bf4bf7f5810343ae44b0341b0d2e)), closes [#16](https://github.com/cubicecho/graphql-mcp/issues/16)
+
 # [2.2.0](https://github.com/cubicecho/graphql-mcp/compare/v2.1.0...v2.2.0) (2026-09-01)
 
 
