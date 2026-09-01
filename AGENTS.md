@@ -148,6 +148,12 @@ src/
   and `holder.schema`; on v3 it is a no-op, which is right because v3 inlines
   and never renders a `$ref`. Naming also makes v4 hoist a single-use type it
   would otherwise inline — about +2% on a listing, for a name at every site.
+  It pays for that many times over on a *reused* type: v4 hoists only what it
+  must (cycles), so a non-cyclic filter shared by ten columns used to be written
+  out ten times, where v3's converter back-referenced every repeat. Six tables
+  of that rendered at 275 kB on v4 against v3's 149 kB; named, it is 106 kB.
+  `server.test.ts` guards the invariant — a shared type appears exactly once —
+  rather than a byte count, since where the copy lives differs by major.
 - **`connectServer(server, transport)` is how a server should be connected.**
   `params.arguments` is optional in the MCP schema, and a tool whose arguments
   are all optional gives a client nothing to put there — but the SDK hands that

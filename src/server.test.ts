@@ -744,3 +744,51 @@ describe('tool definitions stay small for a schema that filters through relation
     }
   });
 });
+
+describe('a filter type reused across columns is rendered once', () => {
+  // The other half of the size story, and the half the cyclic schema above
+  // cannot catch. `StringFilter` has no self-reference, so nothing about it
+  // *forces* a render to share it — the v3 converter did anyway, by pointing
+  // every repeat at the first occurrence, while v4 hoists only what it must and
+  // wrote the type out at all ten columns. Ten columns across six tables is an
+  // ordinary generated CRUD API, and that path rendered its listing at 275 kB
+  // against v3's 149 kB. Naming each input type (see `withName`) is what makes
+  // v4 hoist it too; this test is the guard on that not drifting back.
+  const columns = ['id', 'name', 'slug', 'status', 'kind', 'owner', 'title', 'body', 'tag', 'note'];
+  const schema = buildSchema(/* GraphQL */ `
+    input StringFilter {
+      eq: String
+      ne: String
+      contains: String
+      startsWith: String
+      in: [String!]
+    }
+    input StepFilters {
+${columns.map((column) => `      ${column}: StringFilter`).join('\n')}
+    }
+    type Step {
+      id: String!
+    }
+    type Query {
+      steps(where: StepFilters): [Step!]!
+    }
+  `);
+
+  test('the shared type appears once however many columns reference it', async () => {
+    const client = await connect(
+      createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' }),
+    );
+    const { tools } = await client.listTools();
+    const advertised = JSON.stringify(tools[0]?.inputSchema);
+    // `startsWith` belongs to `StringFilter` alone, so counting it counts how
+    // many times the type was written out. Where the single copy lives is a
+    // zod-version detail — inline plus back-references on v3, a named
+    // `definitions` entry on v4 — but there has to be exactly one.
+    const expansions = advertised.split('"startsWith"').length - 1;
+    assert.equal(expansions, 1, `StringFilter was written out ${expansions} times`);
+    // The size that follows from it. Both majors land near 1.3 kB; the path
+    // that expanded per column took the same document to 3.4 kB, and the gap
+    // multiplies with every column and table a real schema adds.
+    assert.ok(advertised.length < 2_000, `one filter argument rendered ${advertised.length} bytes`);
+  });
+});
