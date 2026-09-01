@@ -1,3 +1,11 @@
+## [1.0.1](https://github.com/cubicecho/graphql-mcp/compare/v1.0.0...v1.0.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* answer a tools/call that omits its arguments ([8b70d8a](https://github.com/cubicecho/graphql-mcp/commit/8b70d8a5f90db039726b4ac9ea816866ca4f8528))
+* build each input type once so tool schemas stay readable ([1f03252](https://github.com/cubicecho/graphql-mcp/commit/1f0325207a5a3e3bc88c0cc0a3383958e1321ee4))
+
 # [1.0.0](https://github.com/cubicecho/graphql-mcp/compare/v0.2.1...v1.0.0) (2026-09-01)
 
 
