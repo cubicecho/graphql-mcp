@@ -154,6 +154,25 @@ src/
   of that rendered at 275 kB on v4 against v3's 149 kB; named, it is 106 kB.
   `server.test.ts` guards the invariant — a shared type appears exactly once —
   rather than a byte count, since where the copy lives differs by major.
+- **An argument's default is *advertised*, never applied (`withDefault` in
+  `zodCompat.ts`).** The JSON Schema `default` keyword is advisory — it takes no
+  part in validation — so it rides on `.meta()` rather than on Zod's
+  `.default()`. `.default()` would substitute the value at parse time, which
+  puts it into the GraphQL `variables`; the server would then receive an
+  explicitly-passed `10` and could never apply its own default, so the SDL and
+  this package would be two sources of truth for one value and the wrong one
+  would win the moment the SDL changed. Apply it *after* nullability wrapping,
+  or the keyword lands inside one branch of an `anyOf` instead of on the
+  property. Like `withName` this is v4-only; on v3 the prose in the description
+  is the only statement of the default, so tests check the prose
+  unconditionally and the keyword only where `.meta()` exists.
+  The value is read with `valueFromASTUntyped` off the AST literal, because an
+  enum's internal value need not be its SDL name and the *name* is what crosses
+  the wire. The description says "omit for the default" rather than "default:",
+  and warns that an explicit `null` is sent as null — GraphQL does not read a
+  passed null as a request for the default, and an agent sending null to mean
+  "no preference" would silently get null. Under `nullBranches: 'never'` the
+  warning is dropped, since null can no longer be sent at all.
 - **A nullable input position states its optionality twice, and the default
   keeps it that way (`nullBranches` in `zodSchema.ts`).** A nullable argument is
   left out of `required` *and* given an explicit null branch (`anyOf: [T, {type:

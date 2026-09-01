@@ -22,6 +22,7 @@
 
 import {
   type GraphQLArgument,
+  type GraphQLInputField,
   type GraphQLInputType,
   type GraphQLScalarType,
   isEnumType,
@@ -29,9 +30,10 @@ import {
   isListType,
   isNonNullType,
   isScalarType,
+  valueFromASTUntyped,
 } from 'graphql';
 import { z } from 'zod';
-import { type AnyZodType, withName, type ZodShape } from './zodCompat.ts';
+import { type AnyZodType, withDefault, withName, type ZodShape } from './zodCompat.ts';
 
 /**
  * Zod schemas keyed by GraphQL scalar name — the same shape scalar-map
@@ -222,7 +224,10 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
     );
     const shape: ZodShape = {};
     for (const [name, field] of Object.entries(type.getFields())) {
-      shape[name] = describe(fieldToZod(field.type, ctx, 'property'), field.description);
+      shape[name] = withArgDefault(
+        describe(fieldToZod(field.type, ctx, 'property'), field.description),
+        field,
+      );
     }
     ctx.pending.delete(type.name);
     // `.strict()`, not the default `strip`: the JSON Schema the SDK renders from
@@ -250,6 +255,37 @@ function describe(schema: AnyZodType, description?: string | null): AnyZodType {
 }
 
 /**
+ * An argument or input field's default as the JSON a caller would actually
+ * send, or `undefined` when it has none.
+ *
+ * The AST literal is preferred over the coerced `defaultValue` because the two
+ * disagree exactly where it matters: an enum's *internal* value need not be its
+ * SDL name, and the name is what crosses the wire as a GraphQL variable.
+ * `valueFromASTUntyped` reads the literal without a type, which yields the name
+ * for an enum and the plain JS value for everything else — precisely the JSON
+ * form. A programmatically built schema carries no AST, so the coerced value is
+ * the fallback.
+ */
+function defaultJsonOf(source: GraphQLArgument | GraphQLInputField): unknown {
+  const node = source.astNode?.defaultValue;
+  if (node) return valueFromASTUntyped(node);
+  return source.defaultValue;
+}
+
+/**
+ * Attaches the JSON Schema `default` keyword when there is one to attach.
+ * Advisory only — see {@link withDefault} for why this is metadata rather than
+ * a Zod `.default()`.
+ */
+function withArgDefault(
+  schema: AnyZodType,
+  source: GraphQLArgument | GraphQLInputField,
+): AnyZodType {
+  const value = defaultJsonOf(source);
+  return value === undefined ? schema : withDefault(schema, value);
+}
+
+/**
  * Builds a Zod raw shape (`{ argName: ZodType }`) from a GraphQL field's
  * arguments, ready to pass as a tool's `inputSchema`. Non-null args are required;
  * nullable args are optional. Each arg's GraphQL description is carried onto its
@@ -274,7 +310,10 @@ export function argsToZodShape(
   };
   const shape: ZodShape = {};
   for (const arg of args) {
-    shape[arg.name] = describe(fieldToZod(arg.type, ctx, 'property'), arg.description);
+    shape[arg.name] = withArgDefault(
+      describe(fieldToZod(arg.type, ctx, 'property'), arg.description),
+      arg,
+    );
   }
   return shape;
 }

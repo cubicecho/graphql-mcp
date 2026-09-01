@@ -336,6 +336,40 @@ createHttpHandler({
 Tool arguments cross the wire as JSON, so keep the mapped types
 JSON-representable — `z.string().datetime()` rather than `z.date()`.
 
+## Argument defaults
+
+An argument's SDL default shows up in two places. The tool description states it
+in prose, and the rendered JSON Schema carries the `default` keyword:
+
+```graphql
+type Query {
+  list(limit: Int = 10, status: Status = OPEN): [T!]!
+}
+```
+
+```json
+{ "limit": { "type": ["integer", "null"], "default": 10 },
+  "status": { "anyOf": [{ "enum": ["OPEN", "DONE"] }, { "type": "null" }], "default": "OPEN" } }
+```
+
+The keyword is **advisory**. The value is not injected into the arguments, so an
+omitted argument stays omitted on the wire and *GraphQL* applies its own
+default — the SDL stays the single source of truth. An enum's default is
+rendered as its name, which is what a variable actually carries.
+
+The description is careful about one thing worth knowing:
+
+```text
+- `limit`: `Int` (omit for the default `10`; an explicit `null` is sent as null)
+```
+
+GraphQL does not read a passed `null` as a request for the default. Omitting the
+argument gets you `10`; sending `null` gets you `null`. (Under
+`nullBranches: 'never'` the caveat is dropped, since `null` can't be sent.)
+
+On zod 3 the `default` keyword is absent — there is no metadata channel that
+doesn't also change parsing — and the prose carries it alone.
+
 ## Trimming null branches
 
 A nullable GraphQL argument is advertised two ways at once: it is absent from

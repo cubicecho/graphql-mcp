@@ -10,7 +10,7 @@
  */
 
 import type { GraphQLArgument, GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
-import { print } from 'graphql';
+import { isNonNullType, print } from 'graphql';
 import { buildOperation } from './operation.ts';
 import { buildOutputSchema } from './outputSchema.ts';
 import { paginationHint } from './pagination.ts';
@@ -292,7 +292,7 @@ function toDescriptor(
     name,
     kind,
     title: humanize(field.name),
-    description: buildDescription(field, kind, selection),
+    description: buildDescription(field, kind, selection, shape.nullBranches ?? 'always'),
     inputSchema: argsToZodShape(field.args, shape),
     // `nullBranches` is an *input* concern: it trades away the ability to send
     // an explicit null. An output schema only describes what comes back, where
@@ -312,6 +312,7 @@ function buildDescription(
   field: GraphQLField<any, any>,
   kind: OperationKind,
   selection: string,
+  nullBranches: NullBranches = 'always',
 ): string {
   const lines: string[] = [];
   lines.push(field.description?.trim() || `The \`${field.name}\` ${kind}.`);
@@ -327,7 +328,7 @@ function buildDescription(
     lines.push('');
     lines.push('Arguments:');
     for (const arg of field.args) {
-      lines.push(`- ${describeArg(arg)}`);
+      lines.push(`- ${describeArg(arg, nullBranches)}`);
     }
   }
   // The return type alone doesn't tell an agent which fields arrive: the
@@ -349,10 +350,23 @@ function buildDescription(
  * can't tell whether omitting it returns everything or a server-chosen page, so
  * it either guesses a value or is surprised by the result.
  */
-function describeArg(arg: GraphQLArgument): string {
+function describeArg(arg: GraphQLArgument, nullBranches: NullBranches): string {
   const parts = [`\`${arg.name}\`: \`${arg.type.toString()}\``];
   const fallback = defaultOf(arg);
-  if (fallback) parts.push(`(default: \`${fallback}\`)`);
+  // "default: 10" reads as "10 is what you get unless you say otherwise", and an
+  // explicit `null` is very much saying otherwise — GraphQL treats a passed null
+  // as null, not as a request for the default. An agent that sends null to mean
+  // "no preference" gets null. Say which lever actually reaches the default, and
+  // only warn about null where null can still be sent (`nullBranches: 'never'`
+  // rejects it outright, so the warning would describe an impossible call).
+  if (fallback) {
+    const nullable = !isNonNullType(arg.type) && nullBranches !== 'never';
+    parts.push(
+      nullable
+        ? `(omit for the default \`${fallback}\`; an explicit \`null\` is sent as null)`
+        : `(omit for the default \`${fallback}\`)`,
+    );
+  }
   if (arg.deprecationReason) parts.push(`(deprecated: ${arg.deprecationReason.trim()})`);
   const description = arg.description?.trim();
   const suffix = description ? ` — ${description}` : '';

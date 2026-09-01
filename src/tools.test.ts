@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { buildSchema, GraphQLInt, GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
+import { z } from 'zod';
 import { makeTodoSchema, setMcpExtensions } from './fixtures.test.ts';
 import { buildTools } from './tools.ts';
 
@@ -413,6 +415,23 @@ describe('buildTools deprecation', () => {
   });
 });
 
+/**
+ * Whether the installed zod exposes `.meta()`. The JSON Schema `default`
+ * keyword rides on it, so it is a v4-only affordance — on v3 the prose in the
+ * tool description is the only statement of a default, which is why every test
+ * here checks the prose unconditionally and the keyword only when it can exist.
+ */
+const HAS_META = typeof (z.string() as { meta?: unknown }).meta === 'function';
+
+/** The rendered JSON Schema properties for a single-field schema's only tool. */
+function renderedArgs(sdl: string): Record<string, { default?: unknown }> {
+  const tool = buildTools(buildSchema(sdl))[0];
+  const rendered = toJsonSchemaCompat(z.object(tool.inputSchema)) as {
+    properties: Record<string, { default?: unknown }>;
+  };
+  return rendered.properties;
+}
+
 describe('buildTools argument defaults', () => {
   const sdl = `
     enum Status { OPEN DONE }
@@ -436,13 +455,56 @@ describe('buildTools argument defaults', () => {
   };
 
   test('scalar and enum defaults are shown as the literal a caller would write', () => {
-    assert.match(description(), /`status`: `Status` \(default: `OPEN`\)/);
-    assert.match(description(), /`limit`: `Int` \(default: `10`\)/);
+    assert.match(description(), /`status`: `Status` \(omit for the default `OPEN`/);
+    assert.match(description(), /`limit`: `Int` \(omit for the default `10`/);
   });
 
   test('list and object defaults are printed as GraphQL literals', () => {
-    assert.match(description(), /`tags`: `\[String!\]` \(default: `\[\]`\)/);
-    assert.match(description(), /`filter`: `Filter` \(default: `\{tag: "x"\}`\)/);
+    assert.match(description(), /`tags`: `\[String!\]` \(omit for the default `\[\]`/);
+    assert.match(description(), /`filter`: `Filter` \(omit for the default `\{tag: "x"\}`/);
+  });
+
+  test('a nullable default says that an explicit null is not a request for it', () => {
+    // GraphQL treats a passed `null` as null, not as "use the default". An agent
+    // reading "default: 10" and sending null to mean "no preference" gets null.
+    assert.match(
+      description(),
+      /`limit`: `Int` \(omit for the default `10`; an explicit `null` is sent as null\)/,
+    );
+  });
+
+  test("nullBranches: 'never' drops the null caveat, since null can no longer be sent", () => {
+    const list = buildTools(buildSchema(sdl), { nullBranches: 'never' }).find(
+      (t) => t.name === 'list',
+    );
+    assert.match(list?.description ?? '', /`limit`: `Int` \(omit for the default `10`\)/);
+    assert.doesNotMatch(list?.description ?? '', /explicit `null`/);
+  });
+
+  test('the default is advertised in the rendered JSON Schema, not just the prose', {
+    skip: HAS_META ? false : 'zod 3 has no `.meta()`, so there is no metadata channel',
+  }, () => {
+    // Advisory metadata, not a Zod `.default()`: the keyword tells an agent what
+    // it gets by omitting the argument, while the value stays absent on the wire
+    // so GraphQL applies its own default rather than this package deciding it.
+    const rendered = renderedArgs(sdl);
+    assert.equal(rendered.limit?.default, 10);
+    // An enum's default is its *name*, which is what crosses the wire as a
+    // variable — not the internal value, which need not match it.
+    assert.equal(rendered.status?.default, 'OPEN');
+    assert.deepEqual(rendered.tags?.default, []);
+    assert.deepEqual(rendered.filter?.default, { tag: 'x' });
+    assert.equal('default' in (rendered.after ?? {}), false);
+  });
+
+  test('advertising the default does not inject it into the parsed arguments', () => {
+    // The failure this guards against is silent: a `.default()` would put the
+    // value into `variables`, so the server would receive an explicitly-passed
+    // 10 and could never apply its own default — two sources of truth, and the
+    // wrong one winning the moment the SDL changes.
+    const list = buildTools(buildSchema(sdl)).find((t) => t.name === 'list');
+    assert.ok(list);
+    assert.deepEqual(z.object(list.inputSchema).parse({}), {});
   });
 
   test('an argument with no default gets no default note', () => {
@@ -461,7 +523,13 @@ describe('buildTools argument defaults', () => {
         },
       }),
     });
-    assert.match(buildTools(schema)[0].description, /`limit`: `Int` \(default: `25`\)/);
+    assert.match(buildTools(schema)[0].description, /`limit`: `Int` \(omit for the default `25`/);
+    if (HAS_META) {
+      const rendered = toJsonSchemaCompat(z.object(buildTools(schema)[0].inputSchema)) as {
+        properties: Record<string, { default?: unknown }>;
+      };
+      assert.equal(rendered.properties.limit?.default, 25);
+    }
   });
 });
 

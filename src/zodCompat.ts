@@ -52,3 +52,27 @@ export function withName<T extends AnyZodType>(schema: T, name: string): T {
   const meta = (schema as { meta?: (metadata: { id: string }) => T }).meta;
   return typeof meta === 'function' ? meta.call(schema, { id: name }) : schema;
 }
+
+/**
+ * Advertises a value as the schema's JSON Schema `default`, **without** making
+ * Zod apply it.
+ *
+ * The distinction is the whole point. `.default(v)` would substitute `v` at
+ * parse time, which puts the value into the GraphQL `variables` and so makes
+ * this package decide the default instead of the server — two sources of truth
+ * for one value, and the wrong one wins whenever the schema changes. The JSON
+ * Schema `default` keyword is advisory and takes no part in validation, so
+ * writing it as metadata advertises the server's default while still letting
+ * the argument be genuinely absent on the wire.
+ *
+ * Apply it *after* any nullability wrapping, so the keyword lands on the
+ * property rather than inside one branch of an `anyOf`.
+ *
+ * Like {@link withName} this is v4-only — `.meta()` does not exist on v3, where
+ * it degrades to a no-op — and it returns a **clone**, so the return value is
+ * what must be stored.
+ */
+export function withDefault<T extends AnyZodType>(schema: T, value: unknown): T {
+  const meta = (schema as { meta?: (metadata: { default: unknown }) => T }).meta;
+  return typeof meta === 'function' ? meta.call(schema, { default: value }) : schema;
+}
