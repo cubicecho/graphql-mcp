@@ -18,7 +18,7 @@
  * schema, whereas these tools return the whole GraphQL `{ data, errors }`
  * envelope as JSON text — and on a resolver error `data` is partially null, so
  * a conforming result can't be promised. It stays on the descriptor for
- * introspection; TODO.md records what registering it would actually take.
+ * introspection; issue #15 records what registering it would actually take.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

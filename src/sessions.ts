@@ -17,7 +17,7 @@
  * no benefit over sweeping exactly when the table is touched.
  *
  * This table is per-process. Running several instances behind a load balancer
- * means either sticky routing or staying stateless — see TODO.md.
+ * means either sticky routing or staying stateless — see issue #10.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

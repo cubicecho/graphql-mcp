@@ -34,7 +34,7 @@ export interface ToolDescriptor {
   /**
    * Zod schema describing the field's return type, mirroring the selection set
    * this tool sends. A structural hint for introspection — the server does not
-   * validate results against it (see TODO.md).
+   * validate results against it (see issue #15).
    */
   outputSchema: AnyZodType;
   /** MCP behaviour hints, defaulted from the operation kind. */

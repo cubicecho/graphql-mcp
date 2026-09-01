@@ -277,4 +277,23 @@ Requires repo secret **`NPM_ACCESS_TOKEN`** (OIDC trusted publishing via
 
 ## Deferred work
 
-See [TODO.md](./TODO.md).
+Tracked as [GitHub issues](https://github.com/cubicecho/graphql-mcp/issues), not
+in a file — a checklist in the repo goes stale silently, and an issue can be
+argued with. `TODO.md` was retired once its contents were filed.
+
+Two entries were *decisions*, not deferred work, so they live here instead. Both
+have been reconsidered and settled; reopen them only against new evidence.
+
+- **No stdio convenience (`createStdioServer()`).** This package is built to run
+  *side-by-side* with a GraphQL server — mounted on a route in the same app, or
+  as a process forwarding to a remote endpoint — and both are HTTP shapes.
+  Owning a stdio entry point would mean owning a lifecycle (process signals,
+  stream teardown) the HTTP path never touches, and a caller who genuinely wants
+  stdio can wrap `createMcpServer` with the SDK's `StdioServerTransport` in a few
+  lines; the README shows how. Revisit only if the side-by-side model stops being
+  the primary one.
+- **Subscriptions are ignored.** MCP has no streaming-subscription tool shape, so
+  there is nothing to project a `Subscription` field *onto* — a tool that can
+  only ever return one event misrepresents what the field does. They are dropped
+  from tool generation and the `execute` meta tool refuses them explicitly, which
+  is the honest failure. Revisit if MCP grows a streaming result shape.

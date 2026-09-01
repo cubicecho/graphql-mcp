@@ -13,7 +13,7 @@
  *   `Mcp-Session-Id`, and is routed back to the same long-lived server on every
  *   later request. That is what makes an open SSE stream — and therefore
  *   server-initiated messages — possible. It also pins a client to one process;
- *   see {@link SessionOptions} and TODO.md.
+ *   see {@link SessionOptions} and issue #10.
  *
  * Express is assumed for the MVP, but nothing here imports it: any framework
  * works as long as it hands the handler a Node `IncomingMessage` and a Node

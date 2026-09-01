@@ -7,9 +7,10 @@
  * always included so the result is self-describing (and never an empty, invalid
  * selection set).
  *
- * Two things are deliberately skipped (see TODO.md): fields that require
+ * Two things are deliberately skipped (see issue #12): fields that require
  * arguments (we can't invent argument values) and types already on the current
- * path (cycle guard).
+ * path (cycle guard). An interface contributes only its own fields, not those of
+ * its implementations — issue #11, which `outputSchema.ts` must move in step with.
  */
 
 import {

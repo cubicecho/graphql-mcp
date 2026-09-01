@@ -14,7 +14,7 @@
  * nullable field in the response as `null`, so it is never simply absent).
  *
  * This is a structural *hint* for descriptor introspection, not a validator the
- * server runs — see TODO.md on registering it with the MCP SDK.
+ * server runs — see issue #15 on registering it with the MCP SDK.
  */
 
 import {
