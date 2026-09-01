@@ -116,6 +116,11 @@ Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
   (the MCP input-schema format): non-null args are required, scalars/enums/lists/
   input-objects map across, custom scalars fall back to an opaque value (see
   [Custom scalars](#custom-scalars)).
+- **Unknown arguments are rejected.** Input objects — and the argument object
+  itself — are strict, matching the `additionalProperties: false` the tool
+  listing already advertises. A misspelled field comes back as an error naming
+  the key, rather than a success with the value silently dropped, which is the
+  failure an agent has no way to notice or retry.
 - **Return type → selection set.** A selection set is auto-generated: every
   scalar/enum leaf plus nested objects up to `selectionDepth` (default 2), always
   including `__typename`. Fields that require arguments and cyclic types are skipped.

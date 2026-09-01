@@ -25,7 +25,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { GraphQLSchema } from 'graphql';
-import type { ZodRawShape } from 'zod';
+import { type ZodRawShape, z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
 import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
@@ -270,7 +270,13 @@ function registerGeneratedTool(
     {
       title: descriptor.title,
       description: descriptor.description,
-      inputSchema: descriptor.inputSchema,
+      // A strict object rather than the raw shape. Handed a shape, the SDK wraps
+      // it in a plain `z.object`, which strips unknown keys — while the listing
+      // it renders from that same schema says `additionalProperties: false`. An
+      // agent that misspells an argument would otherwise get a success result
+      // with its typo quietly discarded. The descriptor keeps exposing the raw
+      // shape, so `decorate` and custom tools are unaffected.
+      inputSchema: z.object(descriptor.inputSchema).strict(),
       annotations: descriptor.annotations,
     },
     async (args: Record<string, unknown>, extra: unknown) => {

@@ -11,7 +11,7 @@
  *   `String`/`ID` ⇒ string, `Boolean` ⇒ boolean), then `z.any()` carrying the
  *   scalar's own SDL description (see {@link builtinScalar})
  * - enums → `z.enum([...names])` (enum *names*, the form passed as GraphQL variables)
- * - input objects → `z.object({...})`, recursively; self-references become `z.lazy()`
+ * - input objects → a strict `z.object({...})`, recursively; self-references become `z.lazy()`
  *   to model the recursion precisely instead of falling back to `z.any()`. Each
  *   named input type is built once per call and shared, so a type reached by
  *   several routes renders as one `$defs` entry rather than being expanded again
@@ -163,7 +163,15 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): ZodTypeAny {
       shape[name] = describe(fieldToZod(field.type, ctx), field.description);
     }
     ctx.pending.delete(type.name);
-    holder.schema = z.object(shape);
+    // `.strict()`, not the default `strip`: the JSON Schema the SDK renders from
+    // this object already advertises `additionalProperties: false`, and a plain
+    // `z.object` silently drops the unknown key instead of rejecting it. For a
+    // caller that is a model, silence is the expensive failure — a misspelled
+    // field name comes back `isError: false` with a success payload, so nothing
+    // signals that part of the intent was discarded and nothing prompts a retry.
+    // Strict makes the enforced contract match the advertised one and names the
+    // offending field, the way the GraphQL endpoint itself would.
+    holder.schema = z.object(shape).strict();
     ctx.done.set(type.name, holder.schema);
     return holder.schema;
   }

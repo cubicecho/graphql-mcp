@@ -54,6 +54,18 @@ describe('argsToZodShape', () => {
     assert.deepEqual(shape.filter.parse({ tag: 't', limit: 2 }), { tag: 't', limit: 2 });
   });
 
+  test('an unknown field on an input object is rejected, not dropped', () => {
+    const shape = searchArgs();
+    // The advertised JSON Schema says `additionalProperties: false`; the parse
+    // has to agree, and say which key was wrong.
+    assert.throws(
+      () => shape.filter.parse({ tag: 't', taag: 'typo' }),
+      /Unrecognized key\(s\).*taag/s,
+    );
+    // The keys the type does declare still parse, and survive intact.
+    assert.deepEqual(shape.filter.parse({ tag: 't' }), { tag: 't' });
+  });
+
   test('enums accept their member names only', () => {
     const shape = searchArgs();
     assert.equal(shape.color.parse('RED'), 'RED');

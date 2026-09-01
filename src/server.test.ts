@@ -56,6 +56,46 @@ describe('createMcpServer', () => {
     await client.close();
   });
 
+  test('an unknown key is rejected at both levels, naming the field', async () => {
+    // The tool listing advertises `additionalProperties: false`; a call has to be
+    // held to that. An agent that misspells an argument needs an error it can
+    // correct, not a success payload with its typo quietly dropped.
+    const { schema, root, store } = makeTodoSchema();
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const local = createLocalExecutor(schema, { rootValue: root });
+    const server = createMcpServer({
+      schema,
+      executor: (request) => {
+        seen.push(request.variables);
+        return local(request);
+      },
+    });
+    const client = await connect(server);
+
+    const nested = (await client.callTool({
+      name: 'create_todo',
+      arguments: { input: { userId: 'u1', description: 'real', descriptoin: 'typo' } },
+    })) as TextResult;
+    assert.equal(nested.isError, true);
+    assert.match(nested.content[0].text, /descriptoin/);
+
+    const topLevel = (await client.callTool({
+      name: 'todo',
+      arguments: { id: 'todo-1', nope: 'typo' },
+    })) as TextResult;
+    assert.equal(topLevel.isError, true);
+    assert.match(topLevel.content[0].text, /nope/);
+
+    // Neither call reached GraphQL, and neither wrote anything.
+    assert.deepEqual(seen, []);
+    assert.equal(store.length, 2);
+
+    // The same calls without the stray key still work.
+    const ok = await client.callTool({ name: 'todo', arguments: { id: 'todo-1' } });
+    assert.equal(parseResult(ok).isError, false);
+    await client.close();
+  });
+
   test('calling a query tool runs the operation and returns data', async () => {
     const { schema, root } = makeTodoSchema();
     const server = createMcpServer({
