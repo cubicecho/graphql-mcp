@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/cubicecho/graphql-mcp/compare/v2.0.0...v2.0.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* name hoisted input types after their GraphQL type ([bd30626](https://github.com/cubicecho/graphql-mcp/commit/bd3062634f2dafb40c6bf407dffe6618b1efbfe2)), closes [#4](https://github.com/cubicecho/graphql-mcp/issues/4)
+
 # [2.0.0](https://github.com/cubicecho/graphql-mcp/compare/v1.0.2...v2.0.0) (2026-09-01)
 
 
