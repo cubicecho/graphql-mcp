@@ -274,6 +274,34 @@ const handler = createHttpHandler({
 For non-HTTP setups, pass `context` as a static value or a factory of the MCP
 request `extra`.
 
+## Choosing a tool surface
+
+Before deciding *which* fields become tools, decide what kind of surface you are
+building. There are three, they compose, and each answers a different failure:
+
+| Surface | What an agent sees | Answers |
+|---|---|---|
+| **Generated** (the default) | one tool per root field, described from the SDL | open-ended reads over data nobody anticipated — every field is reachable without you having thought of the question |
+| **Curated** ([`operations`](#hand-written-operations-as-tools), [`typesOnly`](#a-tool-specific-operation-surface-typesonly)) | the handful of operations you wrote | known workflows and multi-step writes — the shape is one you chose, so there is less to get wrong |
+| **Exploratory** ([`metaTools`](#schema-exploration-tools-large-schemas)) | four navigation tools instead of a listing | a schema too large to project at all — the agent reads the parts it needs |
+
+The trade is one sentence: **a curated surface is a bet that you know the
+questions.** When the bet is right it wins decisively — in the measurement
+behind this package's argument-shape work, a curated arm made zero failed calls
+against a generated arm's three, on a listing over an order of magnitude
+smaller, with more than ten times the share of bytes spent on prose an agent
+actually reads.
+
+When the bet is wrong it loses. On a bulk analytical read from the same
+comparison the *generated* surface won on call count, because raw field access
+is a natural join for a question no hand-written operation anticipated. If your
+agent's job is to answer things you haven't thought of, generate.
+
+They compose, so it is rarely either/or: an operation overrides a generated tool
+by name, meta tools sit alongside both, and a `tools` entry beats everything.
+The usual shape is to generate, then hand-write the two or three tools whose
+argument shapes an agent keeps getting wrong.
+
 ## Choosing which fields become tools
 
 Allow/deny lists take graphql-shield-style patterns — a field name with optional
@@ -700,6 +728,48 @@ The meta tools are not out of step when they still print
 `tasks(where: TaskFilters)`: they describe the *schema*, and `graphql_execute`
 runs schema documents where that is exactly right. `mapArgs` reshapes one tool's
 front door, not the graph behind it.
+
+## Designing a surface agents get right
+
+Once a surface exists, most of what goes wrong with it is one thing.
+
+**Argument shapes are the largest single source of failed calls.** Every failure
+in the comparison above was the same mistake: a shape guessed from an argument's
+name. A generator that emits `orderBy: { <column>: { direction, priority } }`,
+`where: { <column>: { eq } }`, or `set:` where the sibling mutation says
+`values:` is asking a model to guess, and it will guess the shape it has seen
+most often elsewhere. The correct shape was in the JSON Schema the whole time —
+inside a listing far too large to read. A model reads the *description*.
+
+This package now writes a literal example into the prose for you
+([Argument shape examples](#argument-shape-examples)), which is on by default
+for exactly that reason. Two levers for what it can't reach: `exampleDepth: 0`
+turns it off for a field whose example is noise, and
+[`decorate`](#decorating-tools-for-agents) replaces the description outright —
+or, with [`mapArgs`](#rewriting-a-tools-argument-shape), replaces the argument
+shape itself so there is nothing awkward left to explain.
+
+**Prose-to-bytes is a diagnostic worth running once.** Ask a live server for its
+listing and compare the description text against the whole payload:
+
+```ts
+const { tools } = await client.listTools();
+const all = JSON.stringify(tools).length;
+const prose = tools.reduce((n, t) => n + (t.description?.length ?? 0), 0);
+console.log(`${((prose / all) * 100).toFixed(1)}% prose across ${tools.length} tools`);
+```
+
+A surface that is a couple of percent prose is nearly all machine-readable
+schema an agent will skim past, and [`nullBranches`](#trimming-null-branches),
+[`selectionDepth`](#selection-depth) and `include`/`exclude` all still have
+leverage on it. A surface that is a third prose is done — spend the effort
+elsewhere.
+
+**Then read the descriptions the way an agent would.** A green test suite
+answers whether the tool works, not whether it can be called correctly the first
+time. Print one tool's description, cover the schema, and ask whether you could
+write the call. See also [What a tool returns](#what-a-tool-returns) for the
+result shape they will be reading back.
 
 ## MCP-only schema extensions
 
