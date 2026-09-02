@@ -721,7 +721,8 @@ It connects, then makes the server tolerant of a `tools/call` that leaves
 `params.arguments` out. That key is optional in the MCP spec, and a tool whose
 arguments are all optional — or which takes none at all — gives a client nothing
 to put there. Without this, such a call is rejected by input validation before
-the tool runs.
+the tool runs. A `prompts/get` for a prompt registered with an empty argument
+schema is fixed up the same way, for the same reason.
 
 ## Other HTTP servers
 

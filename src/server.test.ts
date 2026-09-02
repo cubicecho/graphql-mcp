@@ -652,6 +652,22 @@ describe('a call that omits its arguments', () => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((tool) => tool.name).sort(), ['schedule', 'tasks']);
   });
+
+  // `prompts/get` has the same shape of bug: the MCP schema makes
+  // `params.arguments` optional, but the SDK parses it against the prompt's
+  // argument schema regardless, so a prompt registered with an empty one is
+  // uncallable by a client that correctly sends nothing.
+  test('a prompt with an empty argument schema is gettable with no arguments at all', async () => {
+    const mcp = server();
+    mcp.registerPrompt(
+      'triage',
+      { title: 'Triage', description: 'How to triage a task.', argsSchema: {} },
+      () => ({ messages: [{ role: 'user', content: { type: 'text', text: 'Triage it.' } }] }),
+    );
+    const client = await connectTolerant(mcp);
+    const result = await client.getPrompt({ name: 'triage' });
+    assert.equal(result.messages.length, 1);
+  });
 });
 
 describe('tool definitions stay small for a schema that filters through relations', () => {

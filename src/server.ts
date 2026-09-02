@@ -207,8 +207,8 @@ function pickMeta<K extends keyof MetaToolsOptions>(
 }
 
 /**
- * Connects `server` to `transport`, treating a `tools/call` that omits
- * `arguments` as one that sent `{}`.
+ * Connects `server` to `transport`, treating a request that omits `arguments`
+ * as one that sent `{}`.
  *
  * The MCP schema makes `params.arguments` optional, and a tool taking no
  * arguments at all — every generated tool for a field with no args — gives a
@@ -218,6 +218,9 @@ function pickMeta<K extends keyof MetaToolsOptions>(
  * schedule: expected object, received undefined`. A model that reasonably sent
  * no arguments then has no way to call the tool at all, and retrying produces
  * the identical error.
+ *
+ * `prompts/get` has the same shape of bug for a prompt registered with an empty
+ * argument schema, so both methods are corrected.
  *
  * It has to be fixed on the way in. The schema cannot be made tolerant: the SDK
  * renders `tools/list` from the same value it validates against, and anything
@@ -240,7 +243,16 @@ export async function connectServer(server: McpServer, transport: Transport): Pr
 }
 
 /**
- * A `tools/call` with no `arguments`, rewritten to carry an empty object.
+ * Requests whose `params.arguments` the MCP schema makes optional and whose SDK
+ * handler parses it anyway: `tools/call` for a tool that takes no arguments, and
+ * `prompts/get` for a prompt registered with an empty argument schema. Both are
+ * the natural call for a client with nothing to send, and both are rejected
+ * before the handler runs.
+ */
+const OPTIONAL_ARGUMENTS = new Set(['tools/call', 'prompts/get']);
+
+/**
+ * A request with no `arguments`, rewritten to carry an empty object.
  *
  * Copied rather than mutated: the caller's message may be shared (a transport is
  * free to hand the same parsed body to more than one listener), and a request
@@ -249,7 +261,7 @@ export async function connectServer(server: McpServer, transport: Transport): Pr
 function withArguments<T>(message: T): T {
   if (!message || typeof message !== 'object') return message;
   const request = message as { method?: unknown; params?: Record<string, unknown> };
-  if (request.method !== 'tools/call') return message;
+  if (typeof request.method !== 'string' || !OPTIONAL_ARGUMENTS.has(request.method)) return message;
   if (!request.params || typeof request.params !== 'object') return message;
   if (request.params.arguments !== undefined) return message;
   return { ...request, params: { ...request.params, arguments: {} } } as T;

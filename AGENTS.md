@@ -220,8 +220,11 @@ src/
   that parses `undefined` stops being recognised as an object schema (the tool
   is then advertised as taking no arguments at all). So `connectServer` wraps
   `transport.onmessage` after `connect` and defaults a missing `arguments` to
-  `{}`. `createHttpHandler` and `createFetchHandler` use it; a caller wiring up
-  its own transport (stdio) should too.
+  `{}`. The same applies to `prompts/get` for a prompt registered with an empty
+  argument schema, so `OPTIONAL_ARGUMENTS` lists both methods — add to that set
+  rather than adding a second wrapper. `createHttpHandler` and
+  `createFetchHandler` use it; a caller wiring up its own transport (stdio)
+  should too.
 - **Tools pass arguments as GraphQL variables**, never inlined into the query
   string — the executor's variable layer handles coercion/escaping.
 - **Selection sets are auto-generated** (`buildSelectionSet`): all scalar/enum
