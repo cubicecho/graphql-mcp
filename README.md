@@ -732,7 +732,7 @@ const handler = createHttpHandler({
 
 | Tool | What it does |
 |---|---|
-| `graphql_introspect` | Prints a type's SDL; with no argument, the callable root fields plus every type name. |
+| `graphql_introspect` | Prints a type's SDL — plus a JSON [shape example](#argument-shape-examples) when it is an input type; with no argument, the callable root fields plus every type name. |
 | `graphql_search` | Finds types and fields by substring, across names and descriptions. |
 | `graphql_validate` | Checks a document against the schema without running it. |
 | `graphql_execute` | Runs a document, with `variables`. |

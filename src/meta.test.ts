@@ -85,6 +85,29 @@ describe('graphql_introspect', () => {
     assert.match(out, /completed: Boolean!/);
   });
 
+  test('an input type carries a JSON shape example under its SDL', async () => {
+    // The overview prints `createTodo(input: CreateTodoInput)` and stops there,
+    // so this is the call an agent makes next — and the SDL alone still leaves
+    // it to assemble the literal itself.
+    const out = body(await call(makeTools(), 'graphql_introspect', { type: 'CreateTodoInput' }));
+    assert.match(out, /input CreateTodoInput \{/);
+    assert.match(out, /# Minimal JSON example \(required fields only\):/);
+    assert.match(out, /# \{"userId":"string","description":"string"\}/);
+  });
+
+  test('an output type gets SDL and nothing else', async () => {
+    // Only inputs have a shape a caller has to construct.
+    const out = body(await call(makeTools(), 'graphql_introspect', { type: 'Todo' }));
+    assert.doesNotMatch(out, /Minimal JSON example/);
+  });
+
+  test('the overview stays example-free', async () => {
+    // A whole-schema listing is the one place the budget cannot afford them,
+    // and it is exactly what the per-type call above answers better.
+    const out = body(await call(makeTools(), 'graphql_introspect'));
+    assert.doesNotMatch(out, /Minimal JSON example/);
+  });
+
   test('an unknown type is an error with a suggestion', async () => {
     const result = await call(makeTools(), 'graphql_introspect', { type: 'Todoo' });
     assert.equal(result.isError, true);

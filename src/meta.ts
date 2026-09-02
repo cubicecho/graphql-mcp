@@ -31,6 +31,7 @@ import {
   validate,
 } from 'graphql';
 import { z } from 'zod';
+import { exampleForType } from './argExample.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, text, toCallToolResult } from './result.ts';
 import { compileRules, type RuleMatcher } from './rules.ts';
 import type { CustomTool } from './server.ts';
@@ -144,9 +145,27 @@ function introspectTool(
             'Call with no arguments to list every type.',
         );
       }
-      return text(printType(type), maxChars);
+      return text(withShapeExample(type), maxChars);
     },
   };
+}
+
+/**
+ * The printed SDL for one type, plus a JSON shape example when it is an input
+ * object.
+ *
+ * The overview deliberately gets no examples — it is a whole-schema listing on
+ * schemas large enough to need meta tools, and one example per argument per
+ * field would spend the `maxChars` budget on what this call answers better.
+ * Here it is bounded and asked for: reading `orderBy: TaskOrderBy` in the
+ * overview is precisely what sends an agent to introspect `TaskOrderBy`, and the
+ * SDL alone leaves it to assemble the literal itself.
+ */
+function withShapeExample(type: GraphQLNamedType): string {
+  const sdl = printType(type);
+  if (!isInputObjectType(type)) return sdl;
+  const example = exampleForType(type);
+  return example ? `${sdl}\n\n# Minimal JSON example (required fields only):\n# ${example}` : sdl;
 }
 
 function searchTool(

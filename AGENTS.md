@@ -218,6 +218,12 @@ src/
   non-null position that cannot be rendered abandons the whole example. The
   module walks `GraphQLInputType` alone — no zod, no SDK — so it is the rare
   thing that cannot render differently across the zod peer range.
+  `graphql_introspect` gets the same example on its **per-type** path and
+  deliberately not on the overview: the overview is a whole-schema listing on
+  schemas large enough to need meta tools, clamped by `maxChars`, and one example
+  per argument per field would spend that budget on what the per-type call
+  answers better. A signature is not a contradiction of a signature-plus-example,
+  so the two surfaces still agree.
 - **A nullable input position states its optionality twice, and the default
   keeps it that way (`nullBranches` in `zodSchema.ts`).** A nullable argument is
   left out of `required` *and* given an explicit null branch (`anyOf: [T, {type:
