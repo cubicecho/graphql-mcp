@@ -71,6 +71,7 @@ src/
   zodCompat.ts    — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
+  argExample.ts   — a literal JSON example of one argument's shape (buildArgExample)
   sessions.ts     — the bounded session table behind stateful HTTP (SessionStore)
                     plus SessionDirectory, which reports session ownership across instances
   eventStore.ts   — the bounded SSE replay buffer behind resumability (MemoryEventStore)
@@ -194,6 +195,29 @@ src/
   passed null as a request for the default, and an agent sending null to mean
   "no preference" would silently get null. Under `nullBranches: 'never'` the
   warning is dropped, since null can no longer be sent at all.
+- **The shape of an argument goes in the prose, not only in the schema
+  (`argExample.ts`).** A controlled A/B on one consumer's 17-field surface
+  (issue #21, reported 2026-09-02): a generated arm against a hand-written-
+  operations arm, same schema, same model, same transport. `tools/list` was
+  423,373 bytes against 12,609; the largest single tool 49,651 against 2,688;
+  the share of bytes that is prose 2.4% against 40%; 33 tool calls against 27 —
+  and **3 failed calls against 0**. All three failures were one mistake: an
+  argument's shape guessed from its name (`orderBy: { startedAt: "desc" }` for a
+  type that is really `{ <column>: { direction, priority } }`, with an enum
+  spelled `ASC`). The correct shape was in the JSON Schema the whole time. So a
+  correct answer being *available* is not the same as it being read, which is
+  why the examples are on by default and cost ~1% of the listing. The counter-
+  result from the same report belongs beside it: on a bulk analytical read the
+  *generated* arm won 3 calls to 5, because raw field access is a natural join
+  for a question no hand-written operation anticipated. A curated surface is a
+  bet that you know the questions.
+  **The rule the renderer must not lose: a truncated example is worse than
+  none.** An example missing a required field is valid-looking JSON the server
+  rejects — the same failure, relocated. So `exampleDepth` bounds *optional*
+  expansion only, every non-null field is expanded however deep it goes, and a
+  non-null position that cannot be rendered abandons the whole example. The
+  module walks `GraphQLInputType` alone — no zod, no SDK — so it is the rare
+  thing that cannot render differently across the zod peer range.
 - **A nullable input position states its optionality twice, and the default
   keeps it that way (`nullBranches` in `zodSchema.ts`).** A nullable argument is
   left out of `required` *and* given an explicit null branch (`anyOf: [T, {type:

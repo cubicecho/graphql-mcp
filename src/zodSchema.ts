@@ -268,8 +268,12 @@ function describe(schema: AnyZodType, description?: string | null): AnyZodType {
  * for an enum and the plain JS value for everything else — precisely the JSON
  * form. A programmatically built schema carries no AST, so the coerced value is
  * the fallback.
+ *
+ * Exported for `argExample.ts`, which needs the same JSON form for the same
+ * reason — an example printing an enum's internal value would be one an agent
+ * cannot send. Not re-exported from `index.ts`.
  */
-function defaultJsonOf(source: GraphQLArgument | GraphQLInputField): unknown {
+export function defaultJsonOf(source: GraphQLArgument | GraphQLInputField): unknown {
   const node = source.astNode?.defaultValue;
   if (node) return valueFromASTUntyped(node);
   return source.defaultValue;

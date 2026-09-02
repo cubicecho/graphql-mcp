@@ -107,6 +107,7 @@ export {
 } from './sessions.ts';
 export type {
   BuildToolsOptions,
+  ExampleDepth,
   McpFieldExtensions,
   MutationHints,
   NameCase,

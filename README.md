@@ -394,6 +394,61 @@ argument gets you `10`; sending `null` gets you `null`. (Where
 On zod 3 the `default` keyword is absent — there is no metadata channel that
 doesn't also change parsing — and the prose carries it alone.
 
+## Argument shape examples
+
+An argument whose type is an input object carries a compact JSON example in its
+description, showing the minimum a caller has to send:
+
+```text
+Arguments (`shape:` shows a minimal JSON example — required fields only):
+- `where`: `TaskFilters` — Filter the tasks returned.
+  shape: {"name":{"eq":"string"}}
+- `orderBy`: `[TaskOrderBy!]`
+  shape: [{"startedAt":{"direction":"ASC","priority":0}}]
+- `limit`: `Int` (omit for the default `50`; an explicit `null` is sent as null)
+```
+
+The shape was always in `inputSchema`, and that is exactly why this exists.
+Measured against a hand-written-operations arm on the same schema, the generated
+surface's only failed calls were argument shapes guessed from the argument's
+*name* — `orderBy: { startedAt: "desc" }` for a type that is really a nested
+object keyed by column, with an enum spelled `ASC`. The correct answer was in
+the JSON Schema. It was inside a listing where a fortieth of the bytes are
+prose, and the prose is what gets read. The examples add roughly one percent.
+
+What goes in one, and what doesn't:
+
+- **Every required field, however deep.** An example missing one is
+  valid-looking JSON the server rejects, which relocates the failure instead of
+  removing it. If a required field can't be rendered — the only case is a type
+  that contains itself — the whole example is dropped rather than shipped
+  incomplete.
+- **The first field of an all-optional object.** A required-only rule renders
+  `{}` for a filter type and teaches nothing, and rendering every optional field
+  is the size problem again.
+- **An enum's member as the schema spells it**, which is the half of the
+  measured failure that prose alone would not have fixed.
+- **One element of a list**, and a field's own default in place of a
+  placeholder.
+- Nothing at all for a scalar argument, for an argument whose own default is
+  already printed as a GraphQL literal on the line above, or for an example that
+  outgrows its budget — past a few hundred characters it stops being a hint and
+  becomes the schema again, in a second syntax.
+
+`exampleDepth` bounds how far *optional* expansion goes, and `0` turns examples
+off — per schema, per field, or from the SDL:
+
+```ts
+createMcpServer({ schema, exampleDepth: 0 });
+createMcpServer({ schema, exampleDepth: (field, kind) => (kind === 'query' ? 3 : 0) });
+field.extensions = { mcp: { exampleDepth: 0 } };
+```
+
+Unlike [selection depth](#selection-depth) there is no `descriptor.exampleDepth`
+and no `decorate` rebuild. Depth is on the descriptor because the query, the
+output schema and the description all have to agree about it; an example affects
+the description alone, and `decorate` can already replace that outright.
+
 ## Trimming null branches
 
 A nullable GraphQL argument is advertised two ways at once: it is absent from

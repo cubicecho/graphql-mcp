@@ -11,6 +11,7 @@
 
 import type { GraphQLArgument, GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
 import { isNonNullType, print } from 'graphql';
+import { buildArgExample, DEFAULT_EXAMPLE_DEPTH } from './argExample.ts';
 import { buildOperation } from './operation.ts';
 import { buildOutputSchema } from './outputSchema.ts';
 import { paginationHint } from './pagination.ts';
@@ -103,6 +104,8 @@ export interface McpFieldExtensions {
   selectionDepth?: number;
   /** Per-field null-branch handling (overrides the `nullBranches` option). */
   nullBranches?: NullBranches;
+  /** Per-field argument-example depth, `0` to omit them (overrides the option). */
+  exampleDepth?: number;
 }
 
 /**
@@ -144,6 +147,19 @@ export type NullBranchesOption =
   | NullBranches
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
   | ((field: GraphQLField<any, any>, kind: OperationKind) => NullBranches);
+
+/**
+ * How deep an argument's `shape:` example expands, or a callback deciding per
+ * field. `0` omits examples for that field.
+ *
+ * The depth bounds *optional* expansion only — a required field is always shown,
+ * because an example missing one is a call the server rejects. See
+ * {@link BuildToolsOptions.exampleDepth}.
+ */
+export type ExampleDepth =
+  | number
+  // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
+  | ((field: GraphQLField<any, any>, kind: OperationKind) => number);
 
 /**
  * How a GraphQL field name is cased when projected into a tool name.
@@ -233,6 +249,25 @@ export interface BuildToolsOptions {
    * writes use one to clear a column. See {@link NullBranchesOption}.
    */
   nullBranches?: NullBranchesOption;
+  /**
+   * How deep the `shape:` example under each argument expands. Default `3`; `0`
+   * turns examples off.
+   *
+   * An argument whose type is an input object gets a compact JSON literal in its
+   * description showing what to send. The shape is already in `inputSchema`, but
+   * a large `inputSchema` is not what a model reads — measured against a
+   * hand-written arm on the same schema, every failed call was an argument shape
+   * guessed from its name while the correct one sat unread in the JSON Schema.
+   * The examples cost about 1% of the listing.
+   *
+   * A callback sets it per field, and `extensions.mcp.exampleDepth` or a
+   * `decorate` patch replacing `description` still have the last word. Unlike
+   * `selectionDepth` this is not recorded on the descriptor and a patch cannot
+   * rebuild at a new depth: depth has to be on the descriptor because the query,
+   * the output schema and the description must agree about it, while an example
+   * affects the description alone — which `decorate` can already replace outright.
+   */
+  exampleDepth?: ExampleDepth;
   /**
    * How mutation `destructiveHint`/`idempotentHint` defaults are decided.
    * Default `'uniform'`; `'byName'` derives them from the conventional
@@ -332,6 +367,7 @@ export function buildTools(
           nullBranches: ext?.nullBranches ?? branchesFor(options.nullBranches, field, kind),
         },
         mutationHints: options.mutationHints ?? 'uniform',
+        exampleDepth: ext?.exampleDepth ?? depthFor(options.exampleDepth, field, kind),
       };
       let descriptor = toDescriptor(field, built);
       if (ext) descriptor = applyExtensions(descriptor, ext);
@@ -437,6 +473,8 @@ interface DescriptorOptions {
   shape?: ZodShapeOptions;
   /** How a mutation's write hints are decided. */
   mutationHints?: MutationHints;
+  /** Depth for the argument `shape:` examples; `0` omits them. */
+  exampleDepth?: number;
 }
 
 function toDescriptor(
@@ -444,7 +482,14 @@ function toDescriptor(
   field: GraphQLField<any, any>,
   options: DescriptorOptions,
 ): ToolDescriptor {
-  const { name, kind, selectionDepth, shape = {}, mutationHints = 'uniform' } = options;
+  const {
+    name,
+    kind,
+    selectionDepth,
+    shape = {},
+    mutationHints = 'uniform',
+    exampleDepth = DEFAULT_EXAMPLE_DEPTH,
+  } = options;
   const { query, operationName, argNames, selection } = buildOperation(kind, field, selectionDepth);
   const pageHint = paginationHint(field.args);
   // Resolved once and passed to all three: the argument prose warns about
@@ -455,7 +500,7 @@ function toDescriptor(
     name,
     kind,
     title: humanize(field.name),
-    description: buildDescription(field, kind, selection, nullBranches),
+    description: buildDescription(field, kind, selection, nullBranches, exampleDepth),
     inputSchema: argsToZodShape(field.args, { ...shape, nullBranches }),
     // `nullBranches` is an *input* concern: it trades away the ability to send
     // an explicit null. An output schema only describes what comes back, where
@@ -471,14 +516,14 @@ function toDescriptor(
   };
 }
 
-/** The depth for one field: a callback is asked, a number is taken as-is. */
+/** A depth for one field: a callback is asked, a number is taken as-is. */
 function depthFor(
-  selectionDepth: SelectionDepth | undefined,
+  depth: SelectionDepth | ExampleDepth | undefined,
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to depth
   field: GraphQLField<any, any>,
   kind: OperationKind,
 ): number | undefined {
-  return typeof selectionDepth === 'function' ? selectionDepth(field, kind) : selectionDepth;
+  return typeof depth === 'function' ? depth(field, kind) : depth;
 }
 
 /** The null-branch mode for one field: a callback is asked, a string taken as-is. */
@@ -498,6 +543,7 @@ function buildDescription(
   kind: OperationKind,
   selection: string,
   nullBranches: NullBranches = DEFAULT_NULL_BRANCHES,
+  exampleDepth: number = DEFAULT_EXAMPLE_DEPTH,
 ): string {
   const lines: string[] = [];
   lines.push(field.description?.trim() || `The \`${field.name}\` ${kind}.`);
@@ -510,11 +556,22 @@ function buildDescription(
   lines.push('');
   lines.push(`GraphQL ${kind}: \`${field.name}\` → \`${field.type.toString()}\``);
   if (field.args.length) {
+    const examples = field.args.map((arg) => buildArgExample(arg, exampleDepth));
     lines.push('');
-    lines.push('Arguments:');
-    for (const arg of field.args) {
+    // The caveat rides on the header, once per tool rather than once per
+    // argument, and only where there is an example for it to qualify.
+    lines.push(
+      examples.some(Boolean)
+        ? 'Arguments (`shape:` shows a minimal JSON example — required fields only):'
+        : 'Arguments:',
+    );
+    field.args.forEach((arg, index) => {
       lines.push(`- ${describeArgument(arg, nullBranches)}`);
-    }
+      // Its own line, never appended to the argument line: the default there is
+      // a GraphQL literal, and two syntaxes running together read as one.
+      const example = examples[index];
+      if (example) lines.push(`  shape: ${example}`);
+    });
   }
   // The return type alone doesn't tell an agent which fields arrive: the
   // selection is built automatically and truncated at `selectionDepth`, so a

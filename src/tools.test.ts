@@ -671,6 +671,117 @@ describe('buildTools per-field selection depth', () => {
   });
 });
 
+describe('buildTools argument shape examples', () => {
+  // The shape an argument expects is already in `inputSchema`. That is the
+  // problem being fixed: on a real surface the schema is hundreds of kilobytes
+  // and a model reads the prose, so a non-obvious shape gets guessed from the
+  // argument's name instead.
+  const sdl = `
+    enum Direction { ASC DESC }
+    scalar DateTime
+    input StringFilter { eq: String contains: String }
+    input OrderByField { direction: Direction! priority: Int! }
+    input TaskOrderBy { startedAt: OrderByField }
+    input TaskFilters { name: StringFilter OR: [TaskFilters!] }
+    input TaskInput { name: String! due: DateTime }
+    type Task { id: ID! name: String! }
+    type Query { tasks(where: TaskFilters, orderBy: [TaskOrderBy!], limit: Int = 50): [Task!]! }
+    type Mutation { createTask(input: TaskInput!): Task }
+  `;
+  const schema = buildSchema(sdl);
+
+  const byName = (tools: ReturnType<typeof buildTools>) => new Map(tools.map((t) => [t.name, t]));
+
+  /** Every `shape:` line in a description, paired with the argument above it. */
+  function examples(description: string): Array<[string, string]> {
+    const lines = description.split('\n');
+    const found: Array<[string, string]> = [];
+    lines.forEach((line, index) => {
+      const shape = /^ {2}shape: (.+)$/.exec(line);
+      if (!shape) return;
+      const arg = /^- `([^`]+)`/.exec(lines[index - 1] ?? '');
+      assert.ok(arg, `a shape line with no argument above it: ${line}`);
+      found.push([arg[1], shape[1]]);
+    });
+    return found;
+  }
+
+  test('an argument that takes an input object carries a JSON example', () => {
+    const tasks = byName(buildTools(schema)).get('tasks');
+    assert.match(
+      tasks?.description ?? '',
+      /Arguments \(`shape:` shows a minimal JSON example — required fields only\):/,
+    );
+    assert.deepEqual(examples(tasks?.description ?? ''), [
+      ['where', '{"name":{"eq":"string"}}'],
+      // The measured failure was `orderBy: { startedAt: "desc" }` against a type
+      // that is really a nested object keyed by column — and `ASC`, not `"desc"`.
+      ['orderBy', '[{"startedAt":{"direction":"ASC","priority":0}}]'],
+    ]);
+    // A scalar argument keeps its plain line; there is nothing to show.
+    assert.match(tasks?.description ?? '', /- `limit`: `Int` \(omit for the default `50`/);
+  });
+
+  test('every rendered example validates against the tool it appears on', () => {
+    // The assertion that turns "we print an example" into "we cannot print a
+    // wrong one". An example is only useful if the server would accept it, and
+    // parsing it against the tool's own advertised schema is the same check the
+    // server makes — including the strictness that rejects an unknown key.
+    let checked = 0;
+    for (const tool of buildTools(schema)) {
+      for (const [arg, json] of examples(tool.description)) {
+        const parsed = tool.inputSchema[arg].safeParse(JSON.parse(json));
+        assert.ok(parsed.success, `${tool.name}.${arg} rejects its own example: ${json}`);
+        checked += 1;
+      }
+    }
+    assert.equal(checked, 3);
+  });
+
+  test('exampleDepth 0 drops the examples and the caveat with them', () => {
+    const tasks = byName(buildTools(schema, { exampleDepth: 0 })).get('tasks');
+    assert.match(tasks?.description ?? '', /^Arguments:$/m);
+    assert.deepEqual(examples(tasks?.description ?? ''), []);
+  });
+
+  test('a callback sets the depth per field', () => {
+    const tools = byName(
+      buildTools(schema, { exampleDepth: (field) => (field.name === 'tasks' ? 0 : 3) }),
+    );
+    assert.deepEqual(examples(tools.get('tasks')?.description ?? ''), []);
+    assert.deepEqual(examples(tools.get('create_task')?.description ?? ''), [
+      ['input', '{"name":"string"}'],
+    ]);
+  });
+
+  test('extensions.mcp.exampleDepth beats the option', () => {
+    const annotated = buildSchema(sdl);
+    setMcpExtensions(annotated, 'Query', 'tasks', { exampleDepth: 0 });
+    const tools = byName(buildTools(annotated, { exampleDepth: 3 }));
+    assert.deepEqual(examples(tools.get('tasks')?.description ?? ''), []);
+    assert.equal(examples(tools.get('create_task')?.description ?? '').length, 1);
+  });
+
+  test('nullBranches does not reach the examples', () => {
+    // The renderer only ever emits fields it chose to include, so it never emits
+    // a null — pinned here because a future change could couple them silently.
+    const always = byName(buildTools(schema)).get('tasks');
+    const never = byName(buildTools(schema, { nullBranches: 'never' })).get('tasks');
+    assert.deepEqual(examples(always?.description ?? ''), examples(never?.description ?? ''));
+  });
+
+  test('a decorate patch replacing the description replaces the examples too', () => {
+    // Deliberately unlike `selectionDepth`: an example affects the description
+    // alone, so there is nothing to rebuild and no descriptor field to keep in
+    // step — `decorate` already owns the whole string.
+    const [tool] = buildTools(schema, {
+      include: ['tasks'],
+      decorate: () => ({ description: 'Mine.' }),
+    });
+    assert.equal(tool.description, 'Mine.');
+  });
+});
+
 describe('buildTools per-field null branches', () => {
   // The trade splits by kind on a generated CRUD surface: a filter set to an
   // explicit null is a caller mistake, while a mutation uses one to clear a
