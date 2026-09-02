@@ -280,10 +280,14 @@ export function buildTools(
       const baseName = options.toolName
         ? options.toolName(field, kind)
         : applyNameCase(field.name, options.nameCase);
-      const shape = { scalars: options.scalars, nullBranches: options.nullBranches };
-      const hints = options.mutationHints ?? 'uniform';
-      const depth = ext?.selectionDepth ?? depthFor(options.selectionDepth, field, kind);
-      let descriptor = toDescriptor(baseName, field, kind, depth, shape, hints);
+      const built: DescriptorOptions = {
+        name: baseName,
+        kind,
+        selectionDepth: ext?.selectionDepth ?? depthFor(options.selectionDepth, field, kind),
+        shape: { scalars: options.scalars, nullBranches: options.nullBranches },
+        mutationHints: options.mutationHints ?? 'uniform',
+      };
+      let descriptor = toDescriptor(field, built);
       if (ext) descriptor = applyExtensions(descriptor, ext);
       const patch = options.decorate?.(descriptor, field, kind);
       if (patch) {
@@ -295,7 +299,7 @@ export function buildTools(
           patch.selectionDepth !== undefined &&
           patch.selectionDepth !== descriptor.selectionDepth
         ) {
-          descriptor = toDescriptor(baseName, field, kind, patch.selectionDepth, shape, hints);
+          descriptor = toDescriptor(field, { ...built, selectionDepth: patch.selectionDepth });
           if (ext) descriptor = applyExtensions(descriptor, ext);
         }
         descriptor = applyPatch(descriptor, patch);
@@ -358,15 +362,36 @@ function applyExtensions(d: ToolDescriptor, ext: McpFieldExtensions): ToolDescri
   };
 }
 
+/**
+ * Everything {@link toDescriptor} needs about one field beyond the field itself.
+ *
+ * One object rather than a positional list because `buildTools` calls
+ * `toDescriptor` *twice* — once to build, and again to rebuild when a `decorate`
+ * patch changes what the operation selects. A per-field input added as a
+ * parameter is easy to forward at the first call site and forget at the second,
+ * and the result is silently wrong for exactly the tools a patch touched. With
+ * an object the rebuild spreads what it was built with and overrides the one key
+ * that changed.
+ */
+interface DescriptorOptions {
+  /** The tool name, already through `toolName`/`nameCase`. */
+  name: string;
+  /** Whether the field came from `Query` or `Mutation`. */
+  kind: OperationKind;
+  /** Depth to build the selection at; `undefined` takes the package default. */
+  selectionDepth?: number;
+  /** Scalar mapping and null-branch handling for the input schema. */
+  shape?: ZodShapeOptions;
+  /** How a mutation's write hints are decided. */
+  mutationHints?: MutationHints;
+}
+
 function toDescriptor(
-  name: string,
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
   field: GraphQLField<any, any>,
-  kind: OperationKind,
-  selectionDepth?: number,
-  shape: ZodShapeOptions = {},
-  mutationHints: MutationHints = 'uniform',
+  options: DescriptorOptions,
 ): ToolDescriptor {
+  const { name, kind, selectionDepth, shape = {}, mutationHints = 'uniform' } = options;
   const { query, operationName, argNames, selection } = buildOperation(kind, field, selectionDepth);
   const pageHint = paginationHint(field.args);
   return {
@@ -420,7 +445,7 @@ function buildDescription(
     lines.push('');
     lines.push('Arguments:');
     for (const arg of field.args) {
-      lines.push(`- ${describeArg(arg, nullBranches)}`);
+      lines.push(`- ${describeArgument(arg, nullBranches)}`);
     }
   }
   // The return type alone doesn't tell an agent which fields arrive: the
@@ -441,8 +466,16 @@ function buildDescription(
  * The default matters as much as the type. An agent told only `\`limit\`: \`Int\``
  * can't tell whether omitting it returns everything or a server-chosen page, so
  * it either guesses a value or is surprised by the result.
+ *
+ * Exported for sibling modules that render an argument line of their own, so
+ * there is one renderer to change rather than two that drift apart. Not
+ * re-exported from `index.ts` — this is an internal seam, not public API
+ * (the `builtinScalar`/`toResolver` precedent in `zodSchema.ts`).
  */
-function describeArg(arg: GraphQLArgument, nullBranches: NullBranches): string {
+export function describeArgument(
+  arg: GraphQLArgument,
+  nullBranches: NullBranches = 'always',
+): string {
   const parts = [`\`${arg.name}\`: \`${arg.type.toString()}\``];
   const fallback = defaultOf(arg);
   // "default: 10" reads as "10 is what you get unless you say otherwise", and an
@@ -496,8 +529,10 @@ const REMOVING_PREFIX = /^(?:delete|remove|destroy)(?=$|_|[A-Z0-9])/;
  * off the conventional prefix instead — see {@link MutationHints}. The match is
  * on the *GraphQL field name*, not the tool name, so `nameCase`, `toolName`, and
  * `extensions.mcp.name` cannot change what a tool claims about itself.
+ *
+ * Exported for sibling modules on the same terms as {@link describeArgument}.
  */
-function annotationsFor(
+export function annotationsFor(
   kind: OperationKind,
   fieldName: string,
   title: string,
@@ -535,8 +570,8 @@ function applyNameCase(fieldName: string, nameCase: NameCase = 'snake'): string 
   return nameCase === 'preserve' ? fieldName : toSnakeCase(fieldName);
 }
 
-/** `createTodo` → `Create Todo`; `me` → `Me`. */
-function humanize(fieldName: string): string {
+/** `createTodo` → `Create Todo`; `me` → `Me`. Exported for sibling modules. */
+export function humanize(fieldName: string): string {
   const spaced = fieldName
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/[_-]+/g, ' ')
