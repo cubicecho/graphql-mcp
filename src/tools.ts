@@ -27,6 +27,25 @@ import {
   type ZodShapeOptions,
 } from './zodSchema.ts';
 
+/**
+ * Turns a tool's validated arguments into the variables its operation sends.
+ *
+ * `args` has already been checked against the tool's advertised `inputSchema`,
+ * so a mapper never validates — it reshapes. `extra` is the SDK's per-call
+ * handler argument, the same value a {@link ToolDescriptor} handler and a
+ * `ContextFactory` receive, so a mapper can inject something request-scoped.
+ *
+ * Every key it returns must be a variable the operation declares. graphql-js
+ * discards an undeclared variable *silently*, so a typo would otherwise produce
+ * a successful call with the mapped intent thrown away — the expensive failure
+ * when the caller is a model. The mismatch is reported instead, as
+ * `BAD_TOOL_CONFIG`.
+ */
+export type ArgMapper = (
+  args: Record<string, unknown>,
+  extra: unknown,
+) => Record<string, unknown> | Promise<Record<string, unknown>>;
+
 /** A schema-derived MCP tool, prior to being bound to an executor/server. */
 export interface ToolDescriptor {
   /** Tool name (the field name under `nameCase`, unless remapped via `toolName`). */
@@ -51,8 +70,30 @@ export interface ToolDescriptor {
   query: string;
   /** The operation name inside `query` (the root-field name — not the tool name). */
   operationName: string;
-  /** The field's argument names (used to pluck variables from validated input). */
+  /**
+   * The variables the operation in {@link ToolDescriptor.query} declares.
+   *
+   * Without {@link ToolDescriptor.mapArgs} these are also the advertised
+   * argument names, and the handler plucks them straight from validated input.
+   * With one, the advertised shape and the operation's variables are no longer
+   * the same list, and this stays the *operation's* side of it — so it becomes
+   * the check that a mapper returned something the operation can actually send.
+   */
   argNames: string[];
+  /**
+   * Rewrites validated arguments into the operation's variables, letting a tool
+   * advertise a shape that isn't the field's own.
+   *
+   * The point is to flatten a generated argument surface without hand-writing
+   * the operation behind it: advertise `id: String!` from `decorate` while the
+   * query still sends `where: { id: { eq } }`. Set it alongside a replaced
+   * `inputSchema` — the advertised schema and the pre-call validator are the
+   * same object, so replacing it is coherent end to end.
+   *
+   * Optional, and absent it changes nothing: a descriptor without one plucks
+   * {@link ToolDescriptor.argNames} from the arguments as before.
+   */
+  mapArgs?: ArgMapper;
   /**
    * The selection depth `query` and {@link ToolDescriptor.outputSchema} were
    * built at. Always set by {@link buildTools}; optional so a hand-built
@@ -423,6 +464,21 @@ function applyPatch(
   d: ToolDescriptor,
   patch: ToolDescriptor | Partial<ToolDescriptor>,
 ): ToolDescriptor {
+  // Setting `inputSchema` says the advertised shape is no longer the field's
+  // arguments; leaving `description` says the prose still describes the old
+  // ones — down to the `shape:` examples, which would confidently show a
+  // literal for an argument the tool now rejects. Regenerating the prose would
+  // mean walking a Zod schema back into English across the v3/v4 split, so this
+  // is a boot-time refusal instead of a rendering. A mapper that keeps the same
+  // keys (injecting a tenant id, reordering) sets no `inputSchema` and never
+  // trips it.
+  if (patch.mapArgs && patch.inputSchema && patch.description === undefined) {
+    throw new Error(
+      `graphql-mcp: tool '${d.name}' sets \`mapArgs\` and \`inputSchema\` without a ` +
+        "`description`. The generated description still lists the field's own arguments, " +
+        'which this tool no longer accepts — set `description` in the same patch.',
+    );
+  }
   const merged: ToolDescriptor = { ...d };
   for (const [key, value] of Object.entries(patch)) {
     if (value !== undefined) (merged as unknown as Record<string, unknown>)[key] = value;

@@ -15,9 +15,11 @@ import { createLocalExecutor } from './executor.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './index.ts';
 import {
+  type CreateMcpServerOptions,
   connectServer,
   createMcpServer,
   createServerFactory,
+  registerGraphqlTools,
   type ServerFactory,
 } from './server.ts';
 
@@ -667,6 +669,206 @@ describe('a call that omits its arguments', () => {
     const client = await connectTolerant(mcp);
     const result = await client.getPrompt({ name: 'triage' });
     assert.equal(result.messages.length, 1);
+  });
+});
+
+describe('mapArgs', () => {
+  // The point is to flatten a generated argument surface without hand-writing
+  // the operation behind it — the ~180-line custom tool this replaces.
+  const sdl = `
+    input IdFilter { eq: String }
+    input TaskFilters { id: IdFilter }
+    type Task { id: ID! name: String! }
+    type Query { tasks(where: TaskFilters, limit: Int): [Task!]! }
+  `;
+
+  /** A server whose executor records what it was asked to run. */
+  function spied(options: Partial<CreateMcpServerOptions> = {}) {
+    const seen: Array<{ variables?: Record<string, unknown> }> = [];
+    const schema = buildSchema(sdl);
+    const server = createMcpServer({
+      schema,
+      executor: async (request) => {
+        seen.push({ variables: request.variables });
+        return { data: { tasks: [] } };
+      },
+      ...options,
+    });
+    return { server, seen };
+  }
+
+  /** `decorate` flattening `tasks` down to a single `id` argument. */
+  const flatten = {
+    decorate: () => ({
+      inputSchema: { id: z.string() },
+      description: 'Fetch one task by id.',
+      mapArgs: (args: Record<string, unknown>) => ({ where: { id: { eq: args.id } } }),
+    }),
+  };
+
+  test("a flat argument reaches the executor in the operation's shape", async () => {
+    const { server, seen } = spied(flatten);
+    const client = await connect(server);
+    const tools = await client.listTools();
+    // The advertised schema is the flat one, and it is also what the pre-call
+    // guard checks — the two are the same object by construction.
+    assert.deepEqual(Object.keys(tools.tools[0].inputSchema.properties ?? {}), ['id']);
+
+    await client.callTool({ name: 'tasks', arguments: { id: 't1' } });
+    assert.deepEqual(seen[0].variables, { where: { id: { eq: 't1' } } });
+    await client.close();
+  });
+
+  test('without a mapper the pluck is unchanged', async () => {
+    const { server, seen } = spied();
+    const client = await connect(server);
+    await client.callTool({ name: 'tasks', arguments: { limit: 5 } });
+    assert.deepEqual(seen[0].variables, { limit: 5 });
+    await client.close();
+  });
+
+  test('an async mapper is awaited and sees `extra`', async () => {
+    const { server, seen } = spied({
+      decorate: () => ({
+        inputSchema: { id: z.string() },
+        description: 'Fetch one task by id.',
+        mapArgs: async (args: Record<string, unknown>, extra: unknown) => {
+          assert.ok(extra && typeof extra === 'object', 'the mapper got no `extra`');
+          return { where: { id: { eq: args.id } }, limit: 1 };
+        },
+      }),
+    });
+    const client = await connect(server);
+    await client.callTool({ name: 'tasks', arguments: { id: 't2' } });
+    assert.deepEqual(seen[0].variables, { where: { id: { eq: 't2' } }, limit: 1 });
+    await client.close();
+  });
+
+  test('an undefined value is still dropped rather than sent', async () => {
+    const { server, seen } = spied({
+      decorate: () => ({
+        inputSchema: { id: z.string().optional() },
+        description: 'Fetch tasks.',
+        mapArgs: (args: Record<string, unknown>) => ({ where: undefined, limit: args.id ? 1 : 2 }),
+      }),
+    });
+    const client = await connect(server);
+    await client.callTool({ name: 'tasks', arguments: {} });
+    assert.deepEqual(seen[0].variables, { limit: 2 });
+    await client.close();
+  });
+
+  test('a throwing mapper answers in the JSON envelope as BAD_INPUT', async () => {
+    const { server } = spied({
+      decorate: () => ({
+        inputSchema: { id: z.string() },
+        description: 'Fetch one task by id.',
+        mapArgs: () => {
+          throw new Error('id must be a task id, not a slug');
+        },
+      }),
+    });
+    const client = await connect(server);
+    const result = parseResult(await client.callTool({ name: 'tasks', arguments: { id: 'x' } }));
+    assert.equal(result.isError, true);
+    const [error] = result.errors as Array<{ message: string; extensions: { code: string } }>;
+    assert.equal(error.extensions.code, 'BAD_INPUT');
+    assert.match(error.message, /not a slug/);
+    await client.close();
+  });
+
+  test('a key the operation does not declare is a BAD_TOOL_CONFIG, not a silent drop', async () => {
+    // graphql-js discards an undeclared variable without a word, so left alone
+    // this call succeeds with the mapped intent thrown away.
+    const { server } = spied({
+      decorate: () => ({
+        inputSchema: { id: z.string() },
+        description: 'Fetch one task by id.',
+        mapArgs: (args: Record<string, unknown>) => ({ filter: args.id }),
+      }),
+    });
+    const client = await connect(server);
+    const result = parseResult(await client.callTool({ name: 'tasks', arguments: { id: 'x' } }));
+    assert.equal(result.isError, true);
+    const [error] = result.errors as Array<{ message: string; extensions: { code: string } }>;
+    assert.equal(error.extensions.code, 'BAD_TOOL_CONFIG');
+    assert.match(error.message, /'tasks'/);
+    assert.match(error.message, /'filter'/);
+    // It has to say retrying won't help, or an agent loops on its own arguments.
+    assert.match(error.message, /will not help/);
+    await client.close();
+  });
+
+  test('the guard still rejects a key the replaced schema does not advertise', async () => {
+    const { server } = spied(flatten);
+    const client = await connect(server);
+    const result = parseResult(
+      await client.callTool({ name: 'tasks', arguments: { id: 'x', where: {} } }),
+    );
+    assert.equal(result.isError, true);
+    const [error] = result.errors as Array<{ extensions: { code: string } }>;
+    assert.equal(error.extensions.code, 'BAD_INPUT');
+    await client.close();
+  });
+
+  test('a mapper is refused without a description to go with the new schema', () => {
+    // The generated prose still lists the field's own arguments, down to the
+    // `shape:` examples — a confident literal for an argument the tool now
+    // rejects. Boot-time, so it is never a traffic failure.
+    assert.throws(
+      () =>
+        createMcpServer({
+          schema: buildSchema(sdl),
+          executor: async () => ({ data: {} }),
+          decorate: () => ({ inputSchema: { id: z.string() }, mapArgs: (a) => a }),
+        }),
+      /tool 'tasks' sets `mapArgs` and `inputSchema` without a `description`/,
+    );
+  });
+
+  test('a hand-built descriptor carries a mapper through registerGraphqlTools', async () => {
+    // The descriptor field is optional so this path exists at all; a caller
+    // assembling descriptors itself gets the same handling as `decorate` does.
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const schema = buildSchema(sdl);
+    const server = createMcpServer({ schema, executor: async () => ({ data: {} }), include: [] });
+    registerGraphqlTools(
+      server,
+      [
+        {
+          name: 'task_by_id',
+          kind: 'query',
+          title: 'Task By Id',
+          description: 'Fetch one task by id.',
+          inputSchema: { id: z.string() },
+          outputSchema: z.unknown(),
+          annotations: { readOnlyHint: true },
+          query: 'query tasks($where: TaskFilters) { tasks(where: $where) { id } }',
+          operationName: 'tasks',
+          argNames: ['where'],
+          mapArgs: (args) => ({ where: { id: { eq: args.id } } }),
+        },
+      ],
+      async (request) => {
+        seen.push(request.variables);
+        return { data: { tasks: [] } };
+      },
+    );
+    const client = await connect(server);
+    await client.callTool({ name: 'task_by_id', arguments: { id: 't9' } });
+    assert.deepEqual(seen[0], { where: { id: { eq: 't9' } } });
+    await client.close();
+  });
+
+  test('a mapper that keeps the advertised shape needs no description', () => {
+    // Injecting a tenant id or reordering sets no `inputSchema` and is fine.
+    assert.doesNotThrow(() =>
+      createMcpServer({
+        schema: buildSchema(sdl),
+        executor: async () => ({ data: {} }),
+        decorate: () => ({ mapArgs: (args: Record<string, unknown>) => ({ ...args, limit: 10 }) }),
+      }),
+    );
   });
 });
 

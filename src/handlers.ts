@@ -118,6 +118,17 @@ export type ToolValidators = ReadonlyMap<string, AnyZodType>;
 export const BAD_INPUT = 'BAD_INPUT';
 
 /**
+ * `extensions.code` on an error the *caller* cannot fix: the server's own
+ * configuration produced a call that cannot be sent.
+ *
+ * Distinct from {@link BAD_INPUT} because the two ask for opposite responses. An
+ * agent that reads `BAD_INPUT` should adjust its arguments and retry; an agent
+ * that reads this should stop, because retrying its own arguments cannot
+ * possibly help.
+ */
+export const BAD_TOOL_CONFIG = 'BAD_TOOL_CONFIG';
+
+/**
  * Checks a `tools/call`'s arguments before the SDK does, so a rejection comes
  * back as the same JSON envelope as every other outcome.
  *

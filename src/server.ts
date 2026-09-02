@@ -29,6 +29,8 @@ import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
 import {
+  BAD_INPUT,
+  BAD_TOOL_CONFIG,
   guardToolArguments,
   shareToolListing,
   type ToolListingCache,
@@ -390,10 +392,9 @@ function registerGeneratedTool(
       annotations: descriptor.annotations,
     },
     async (args: Record<string, unknown>, extra: unknown) => {
-      const variables: Record<string, unknown> = {};
-      for (const argName of descriptor.argNames) {
-        if (args[argName] !== undefined) variables[argName] = args[argName];
-      }
+      const mapped = await toVariables(descriptor, args, extra, maxChars);
+      if ('failure' in mapped) return mapped.failure;
+      const { variables } = mapped;
       const resolvedContext = await resolveContext(context, extra);
       const result = await runExecutor(executor, {
         query: descriptor.query,
@@ -404,6 +405,66 @@ function registerGeneratedTool(
       return toCallToolResult(result, maxChars, descriptor.pageHint);
     },
   );
+}
+
+/**
+ * The variables one call sends, or a finished failure result.
+ *
+ * Both failures are *reported*, never thrown: `result.ts` promises a parseable
+ * JSON body on every outcome, and a caller that is a model needs the reason in
+ * the body it already knows how to read.
+ */
+async function toVariables(
+  descriptor: ToolDescriptor,
+  args: Record<string, unknown>,
+  extra: unknown,
+  maxChars: number,
+): Promise<{ variables: Record<string, unknown> } | { failure: CallToolResult }> {
+  let source = args;
+  if (descriptor.mapArgs) {
+    try {
+      source = await descriptor.mapArgs(args, extra);
+    } catch (error) {
+      // The mapper is where a server puts its own argument rules, so what it
+      // throws is usually something the caller can act on — `BAD_INPUT` is the
+      // code an agent already knows to read as "fix your arguments".
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        failure: toCallToolResult(
+          { errors: [{ message, extensions: { code: BAD_INPUT } }] },
+          maxChars,
+        ),
+      };
+    }
+    const declared = new Set(descriptor.argNames);
+    const undeclared = Object.keys(source).filter((key) => !declared.has(key));
+    if (undeclared.length) {
+      // graphql-js drops an undeclared variable without a word, so left alone
+      // this is a call that succeeds with the mapped intent discarded. Say it is
+      // the server's fault, so an agent stops rather than retrying its own input.
+      return {
+        failure: toCallToolResult(
+          {
+            errors: [
+              {
+                message:
+                  `Tool '${descriptor.name}' is misconfigured: its argument mapper returned ` +
+                  `${undeclared.map((key) => `'${key}'`).join(', ')}, which the operation does ` +
+                  'not declare. Retrying with different arguments will not help.',
+                extensions: { code: BAD_TOOL_CONFIG },
+              },
+            ],
+          },
+          maxChars,
+        ),
+      };
+    }
+  }
+  const variables: Record<string, unknown> = {};
+  for (const argName of descriptor.argNames) {
+    if (source[argName] !== undefined) variables[argName] = source[argName];
+  }
+  return { variables };
 }
 
 /**

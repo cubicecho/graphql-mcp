@@ -627,7 +627,8 @@ fields: {
       mcp: {
         appendDescription: 'Prefer this over `todo` when listing; filter by status.',
         title: 'List Todos',
-        // also: hidden, name, description, annotations, selectionDepth
+        // also: hidden, name, description, annotations,
+        // selectionDepth, nullBranches, exampleDepth
       },
     },
   },
@@ -648,6 +649,56 @@ createHttpHandler({
 ```
 
 Precedence: SDL-derived defaults < `extensions.mcp` < `decorate`.
+
+### Rewriting a tool's argument shape
+
+A generated argument surface is the schema's shape, not the shape an agent finds
+easy. `mapArgs` lets a tool advertise the second while still sending the first,
+so flattening one awkward argument no longer means hand-writing the operation
+behind it:
+
+```ts
+decorate: (descriptor) =>
+  descriptor.name === 'tasks'
+    ? {
+        inputSchema: { id: z.string() },
+        description: 'Fetch one task by id.',
+        mapArgs: (args) => ({ where: { id: { eq: args.id } } }),
+      }
+    : undefined;
+```
+
+`args` has already been validated against the schema you advertised — the
+advertised schema and the pre-call validator are the same object, so replacing
+it is coherent end to end and unknown keys are still rejected. The mapper may be
+async, and it receives the SDK's per-call `extra` as its second argument, so it
+can inject something request-scoped. Every key it returns has to be a variable
+the operation declares.
+
+Two failures come back in the [usual JSON envelope](#what-a-tool-returns)
+rather than as exceptions:
+
+- **The mapper threw** — `BAD_INPUT`, carrying its message. A mapper is where
+  server-side argument rules naturally go, and that is the code an agent already
+  reads as "fix your arguments and retry".
+- **The mapper returned a key the operation doesn't declare** —
+  `BAD_TOOL_CONFIG`, naming the tool. graphql-js discards an undeclared variable
+  *silently*, so without this the call succeeds with the mapped intent thrown
+  away, which is the expensive failure when the caller is a model. The message
+  says retrying will not help, so an agent stops rather than looping on its own
+  arguments.
+
+Setting `mapArgs` **and** `inputSchema` without also setting `description` is
+refused at startup, naming the tool. The generated description still lists the
+field's own arguments — down to the `shape:` example, which would confidently
+show a literal for an argument the tool now rejects. A mapper that keeps the
+advertised shape (injecting a tenant id, reordering) sets no `inputSchema` and
+is unaffected.
+
+The meta tools are not out of step when they still print
+`tasks(where: TaskFilters)`: they describe the *schema*, and `graphql_execute`
+runs schema documents where that is exactly right. `mapArgs` reshapes one tool's
+front door, not the graph behind it.
 
 ## MCP-only schema extensions
 
@@ -803,6 +854,14 @@ tools: [
   },
 ];
 ```
+
+Reuse it for the failure path too. A custom tool that returns a plain payload on
+success still returns the `{ errors: [...] }` envelope when its arguments don't
+validate, because `guardToolArguments` answers above the handler — so a tool
+that invents its own success shape shows an agent two different result shapes
+for the one tool. `BAD_INPUT`, the `extensions.code` those envelopes carry, is
+exported, so a tool that rejects a call on its own rules can answer with the
+same code the generated ones do.
 
 ## Prompts, resources, and the rest of the SDK
 

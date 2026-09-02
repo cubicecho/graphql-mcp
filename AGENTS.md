@@ -274,6 +274,23 @@ src/
   should too.
 - **Tools pass arguments as GraphQL variables**, never inlined into the query
   string — the executor's variable layer handles coercion/escaping.
+- **`mapArgs` turned `argNames` from a pluck list into a check list**
+  (`toVariables` in `server.ts`). A descriptor's `argNames` is the operation's
+  *declared* variables; without a mapper it is still the pluck list and the
+  behaviour is byte-identical. With one, the mapper's output is checked against
+  it first, because graphql-js discards a variable the document never declared
+  **silently** — the call succeeds with the mapped intent thrown away, which is
+  the expensive failure when the caller is a model. Both mapper failures are
+  *reported*, never thrown: `result.ts` promises a parseable JSON body on every
+  outcome, so a throw here would be the one code path that breaks that promise.
+  They carry different codes on purpose — `BAD_INPUT` for a mapper that threw
+  (the caller can fix its arguments and retry), `BAD_TOOL_CONFIG` for an
+  undeclared key (the caller cannot; the message says so, or an agent loops).
+  A patch setting both `mapArgs` and `inputSchema` without a `description` is
+  refused in `applyPatch` at boot, because the generated prose — down to the
+  `shape:` literal from `argExample.ts` — would confidently describe arguments
+  the tool now rejects. Regenerating that prose from the advertised Zod shape
+  would mean walking zod across the v3/v4 split; the throw is the cheaper guard.
 - **Selection sets are auto-generated** (`buildSelectionSet`): all scalar/enum
   leaves at each level, descending into nested objects up to `selectionDepth`
   (default `DEFAULT_SELECTION_DEPTH`, exported from `selection.ts` so the depth a

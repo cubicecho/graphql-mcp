@@ -63,6 +63,16 @@ export type { SchemaExtension } from './extend.ts';
 export { extendSchemaForMcp, stripRootTypes } from './extend.ts';
 export type { FetchHandlerOptions, McpFetchHandler } from './fetch.ts';
 export { createFetchHandler } from './fetch.ts';
+export {
+  /**
+   * `extensions.code` on an argument-validation error. Exported so a custom tool
+   * can answer a bad call with the same code the generated ones do — a client
+   * that branches on it should not have to know which kind of tool it called.
+   */
+  BAD_INPUT,
+  /** `extensions.code` on a failure caused by the server's own configuration. */
+  BAD_TOOL_CONFIG,
+} from './handlers.ts';
 export type { HttpHandlerOptions, McpHttpHandler, McpHttpRequest } from './http.ts';
 export { createHttpHandler } from './http.ts';
 export type { MetaToolDeps, MetaToolName, MetaToolsOptions } from './meta.ts';
@@ -106,6 +116,7 @@ export {
   SessionStore,
 } from './sessions.ts';
 export type {
+  ArgMapper,
   BuildToolsOptions,
   ExampleDepth,
   McpFieldExtensions,
