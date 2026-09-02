@@ -1,3 +1,10 @@
+## [2.5.1](https://github.com/cubicecho/graphql-mcp/compare/v2.5.0...v2.5.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **server:** default a prompts/get with no arguments to {} ([ca5b2fd](https://github.com/cubicecho/graphql-mcp/commit/ca5b2fdcbe6c1eaad1805dfada264e52723e2d62))
+
 # [2.5.0](https://github.com/cubicecho/graphql-mcp/compare/v2.4.0...v2.5.0) (2026-09-01)
 
 
