@@ -20,6 +20,14 @@ function todoOperations(options: Parameters<typeof buildOperationTools>[2] = {})
   return buildOperationTools(schema, [TODO_OPERATIONS, TODO_FRAGMENTS], options);
 }
 
+/**
+ * Whether the installed zod exposes `.meta()`. The JSON Schema `default`
+ * keyword rides on it, so it is a v4-only affordance — on v3 a variable's
+ * default is stated only in the prose, which is why the prose is asserted
+ * unconditionally and the keyword only when it can exist.
+ */
+const HAS_META = typeof (z.string() as { meta?: unknown }).meta === 'function';
+
 /** Finds one descriptor by tool name, failing loudly rather than returning undefined. */
 function named(descriptors: ToolDescriptor[], name: string): ToolDescriptor {
   const found = descriptors.find((d) => d.name === name);
@@ -145,9 +153,10 @@ describe('buildOperationTools', () => {
     // it would make an agent send a value the document already chose.
     const [tool] = tasks(`query listTasks($limit: Int! = 10) { tasks(limit: $limit) { id } }`);
     assert.equal(z.object(tool.inputSchema).safeParse({}).success, true);
+    assert.match(tool.description, /omit for the default `10`/);
     const rendered = JSON.stringify(toJsonSchemaCompat(z.object(tool.inputSchema)));
     assert.doesNotMatch(rendered, /"required"/);
-    assert.match(rendered, /"default":10/);
+    if (HAS_META) assert.match(rendered, /"default":10/);
   });
 
   test('a non-null variable without a default stays required', () => {
@@ -160,10 +169,12 @@ describe('buildOperationTools', () => {
       tasks(status: $status) { id }
     }`);
     assert.match(tool.description, /omit for the default `OPEN`/);
-    assert.match(
-      JSON.stringify(toJsonSchemaCompat(z.object(tool.inputSchema))),
-      /"default":"OPEN"/,
-    );
+    if (HAS_META) {
+      assert.match(
+        JSON.stringify(toJsonSchemaCompat(z.object(tool.inputSchema))),
+        /"default":"OPEN"/,
+      );
+    }
   });
 
   test('nullBranches never drops the explicit-null branch, and the prose with it', () => {

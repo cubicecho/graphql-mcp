@@ -471,10 +471,31 @@ point at, so never reach for `git rebase` or `git pull --rebase` here.
 
 ## CI & releases
 
+**Run the gate before you commit or push**, in the workflow's own order — a
+push that fails CI blocks the release job behind it:
+
+```bash
+npx biome check .        # `npm run format` first if this reports formatting
+npm run typecheck && npm run typecheck:tests
+npm test && npm run coverage && npm run build
+```
+
+**And run the suite against zod 3 as well**, because the lockfile pins zod 4 and
+only one of the two majors is exercised otherwise. The v4-only affordances
+(`.meta()`, and so the JSON Schema `default` keyword and `$ref` names — see
+`zodCompat.ts`) degrade to no-ops on v3, so a new assertion about rendered
+metadata passes locally and fails CI. Guard those with the `HAS_META` constant
+the test files already define, and assert the tool *prose* unconditionally.
+
+```bash
+npm install --no-save zod@^3.25 && npm test   # then `npm ci` to restore zod 4
+```
+
 Two GitHub Actions workflows:
 
 - **`.github/workflows/test.yml`** — runs on every push: biome check, typecheck,
-  typecheck:tests, test, coverage, build.
+  typecheck:tests, test, coverage, build — **once per zod major** (`^3.25` and
+  `^4.0`), installed over the lockfile with `npm install --no-save`.
 - **`.github/workflows/release.yml`** — runs after **Test** succeeds on `main`,
   then `npx semantic-release` ([`.releaserc.json`](./.releaserc.json)).
   `@semantic-release/npm` bumps `package.json`, updates `CHANGELOG.md`, and
