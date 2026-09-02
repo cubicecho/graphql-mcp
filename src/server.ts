@@ -63,6 +63,17 @@ export interface CustomTool {
 /** Derives the per-call GraphQL context from the MCP request's `extra`. */
 export type ContextFactory = (extra: unknown) => unknown | Promise<unknown>;
 
+/**
+ * A hook run on each freshly minted server, after every generated, meta and
+ * custom tool is registered and before the listing and argument wrappers are
+ * installed — the one window in which `registerPrompt`/`registerResource` can
+ * still declare their capabilities, since the SDK's `registerCapabilities`
+ * throws once a transport is attached.
+ *
+ * Synchronous by design: see {@link CreateMcpServerOptions.decorateServer}.
+ */
+export type ServerDecorator = (server: McpServer) => void;
+
 /** Options for {@link createMcpServer} / {@link createServerFactory}. */
 export interface CreateMcpServerOptions extends BuildToolsOptions {
   /** The GraphQL schema to expose. */
@@ -84,6 +95,32 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
   context?: unknown | ContextFactory;
   /** Custom tools to add or override generated (and meta) ones by name. */
   tools?: CustomTool[];
+  /**
+   * Runs against each server this factory mints, before it is connected — the
+   * hook for everything the MCP SDK offers that this package does not generate:
+   * `registerPrompt`, `registerResource`, completions.
+   *
+   * It has to run here rather than after `connect`, because the SDK's
+   * `registerCapabilities` throws once a transport is attached: a prompt
+   * registered later answers `prompts/list` while having told the client at
+   * `initialize` that the server had none.
+   *
+   * **Synchronous.** `createMcpServer` and {@link ServerFactory} return a server,
+   * not a promise, and both shipped handlers connect it the moment it comes
+   * back — so an awaited registration would be racing `initialize`. A hook
+   * returning a promise is refused rather than silently losing its
+   * capabilities. Do async setup before building the handler and close over the
+   * result.
+   *
+   * **Register the same tools every time.** The `tools/list` a factory renders
+   * is shared across every server it mints, so a hook whose *tool* set varies
+   * would serve one caller's listing to another. Prompts and resources may vary
+   * freely — only the tool listing is cached. Prefer the {@link
+   * CreateMcpServerOptions.tools} option for tools anyway: a tool registered
+   * here is outside the argument guard, so a malformed call to it gets the
+   * SDK's `-32602` text instead of this package's JSON error envelope.
+   */
+  decorateServer?: ServerDecorator;
   /**
    * Character budget for a tool result before it is truncated (with a note
    * saying how much was cut). Guards an agent's context against a field that
@@ -192,6 +229,9 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
       // here must not reject what the SDK would have accepted.
       if (tool.inputSchema) validators.set(tool.name, z.object(tool.inputSchema));
     }
+    // Before the wrappers, and before `connect`: prompts and resources can only
+    // declare their capabilities while no transport is attached.
+    runServerDecorator(server, options.decorateServer);
     shareToolListing(server, listing);
     guardToolArguments(server, validators satisfies ToolValidators, maxChars);
     return server;
@@ -204,6 +244,42 @@ function pickMeta<K extends keyof MetaToolsOptions>(
   key: K,
 ): MetaToolsOptions[K] | undefined {
   return typeof options.metaTools === 'object' ? options.metaTools[key] : undefined;
+}
+
+/**
+ * Runs the `decorateServer` hook, reporting the two ways it can be wrong.
+ *
+ * A hook is run once per minted server, so under a stateless HTTP handler a
+ * throwing one fails every request, not one — the wrapped message says so,
+ * because the stack alone reads like a transient fault.
+ *
+ * The thenable check is not paranoia: `(server) => void` structurally accepts an
+ * `async` function, and the SDK throws on `registerCapabilities` after a
+ * transport is attached — so an awaited registration would fail intermittently,
+ * under load, far from its cause.
+ */
+function runServerDecorator(server: McpServer, hook: ServerDecorator | undefined): void {
+  if (!hook) return;
+  let result: unknown;
+  try {
+    result = hook(server);
+  } catch (cause) {
+    throw new Error(
+      'graphql-mcp: the decorateServer hook threw while preparing a server. It runs on every ' +
+        'server this factory mints, so a stateless handler will fail every request until it ' +
+        'is fixed.',
+      { cause },
+    );
+  }
+  if (result && typeof (result as { then?: unknown }).then === 'function') {
+    throw new Error(
+      'graphql-mcp: decorateServer must be synchronous. The server is connected the moment it ' +
+        'is returned, and the SDK refuses to register capabilities once a transport is ' +
+        'attached — so anything registered after an await would answer prompts/list having ' +
+        'told the client at initialize that there were none. Do the async work before creating ' +
+        'the handler and close over the result.',
+    );
+  }
 }
 
 /**

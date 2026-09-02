@@ -670,6 +670,119 @@ describe('a call that omits its arguments', () => {
   });
 });
 
+describe('decorateServer', () => {
+  const schema = buildSchema(/* GraphQL */ `
+    type Query {
+      tasks: String
+    }
+  `);
+
+  const factory = (decorateServer: (server: McpServer) => void) =>
+    createServerFactory({
+      schema,
+      executor: createLocalExecutor(schema),
+      name: 't',
+      version: '0',
+      decorateServer,
+    });
+
+  const addPrompt = (server: McpServer) =>
+    server.registerPrompt(
+      'triage',
+      { title: 'Triage', description: 'How to triage a task.', argsSchema: {} },
+      () => ({ messages: [{ role: 'user', content: { type: 'text', text: 'Triage it.' } }] }),
+    );
+
+  // The whole reason the hook runs where it does. The SDK refuses to register a
+  // capability once a transport is attached, so a prompt added after `connect`
+  // answers `prompts/get` while `initialize` told the client there were none —
+  // and a client that reads capabilities never asks.
+  test('a prompt registered in the hook is advertised at initialize', async () => {
+    const client = await connect(factory(addPrompt)());
+    assert.ok(client.getServerCapabilities()?.prompts, 'prompts capability was not advertised');
+  });
+
+  test('and the client can fetch it', async () => {
+    const client = await connect(factory(addPrompt)());
+    const { prompts } = await client.listPrompts();
+    assert.deepEqual(
+      prompts.map((prompt) => prompt.name),
+      ['triage'],
+    );
+  });
+
+  test('the hook runs once per server the factory mints', async () => {
+    let calls = 0;
+    const build = factory((server) => {
+      calls += 1;
+      addPrompt(server);
+    });
+    const first = await connect(build());
+    const second = await connect(build());
+    assert.equal(calls, 2);
+    assert.equal((await first.listPrompts()).prompts.length, 1);
+    assert.equal((await second.listPrompts()).prompts.length, 1);
+  });
+
+  const registerTool = (server: McpServer, name: string) =>
+    server.registerTool(name, { description: 'A hand-registered tool.' }, () => ({
+      content: [{ type: 'text' as const, text: 'ok' }],
+    }));
+
+  const names = async (client: Client) =>
+    (await client.listTools()).tools.map((tool) => tool.name).sort();
+
+  test('a tool registered in the hook is listed alongside the generated ones', async () => {
+    const client = await connect(factory((server) => registerTool(server, 'ping'))());
+    assert.deepEqual(await names(client), ['ping', 'tasks']);
+  });
+
+  // Pins the placement *before* `shareToolListing`: a `registerTool` after that
+  // wrapper is installed latches `cache.off` for the whole factory, silently
+  // undoing the shared listing for every server it ever mints. Probed by giving
+  // the hook a varying tool set — forbidden by the documented contract, and the
+  // only way to observe from outside which listing a server actually served.
+  test('the shared listing survives a hook that registers tools', async () => {
+    let n = 0;
+    const build = factory((server) => {
+      n += 1;
+      registerTool(server, `hook${n}`);
+    });
+    const first = await connect(build());
+    assert.deepEqual(await names(first), ['hook1', 'tasks']);
+    // The cache is warm, so the second server is served the first's listing —
+    // which it would not be had the hook retired it.
+    const second = await connect(build());
+    assert.deepEqual(await names(second), ['hook1', 'tasks']);
+  });
+
+  test('a hook that throws names itself', () => {
+    assert.throws(
+      () =>
+        factory(() => {
+          throw new Error('no such prompt file');
+        })(),
+      /decorateServer/,
+    );
+  });
+
+  test('and keeps the original as its cause', () => {
+    assert.throws(
+      () =>
+        factory(() => {
+          throw new Error('no such prompt file');
+        })(),
+      (error: Error) => (error.cause as Error).message === 'no such prompt file',
+    );
+  });
+
+  // `(server) => void` structurally accepts an async function, so without this
+  // the failure is a capability race that only shows up under load.
+  test('a hook that returns a promise is refused', () => {
+    assert.throws(() => factory((() => Promise.resolve()) as () => void)(), /synchronous/);
+  });
+});
+
 describe('tool definitions stay small for a schema that filters through relations', () => {
   // The shape a generated CRUD API has: each table filters by its relations, and
   // those filter back. Written out at every route rather than shared, one such

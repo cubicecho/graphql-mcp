@@ -329,6 +329,20 @@ src/
 - **Custom tools** (the `tools` option) add to — or override by name — generated
   tools. `registerTool` throws on duplicate names, so overrides are resolved
   *before* registering.
+- **`decorateServer` runs in the only window that works.** Prompts and resources
+  can declare their capabilities only while no transport is attached, so the
+  hook is called between minting the server and connecting it — and *before*
+  `shareToolListing`, because the SDK's `registerTool` calls
+  `sendToolListChanged`, whose override latches `cache.off` unconditionally and
+  would retire issue #16's listing cache factory-wide. It is synchronous by
+  construction (a thenable return throws): `ServerFactory` is sync and both
+  handlers mint-then-connect, so an await there is registration racing
+  `initialize`. Two hazards live in the README rather than in code, because
+  neither is detectable at runtime: a hook that varies its *tool* set serves one
+  server's cached listing to another (`sendToolListChanged` is a no-op
+  pre-connect, so nothing can invalidate it), and a tool registered in the hook
+  is absent from `validators`, so a bad call falls back to the SDK's `-32602`
+  instead of the `BAD_INPUT` envelope.
 - **Anything the SDL says, the agent sees.** A description carries the field's
   deprecation reason (right under the summary, before the signature), each
   argument's default rendered as the GraphQL literal a caller would write, and

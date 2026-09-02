@@ -81,6 +81,7 @@ export type {
   ContextFactory,
   CreateMcpServerOptions,
   CustomTool,
+  ServerDecorator,
   ServerFactory,
   ToolHandler,
 } from './server.ts';

@@ -11,7 +11,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { createLocalExecutor } from './executor.ts';
 import { createFetchHandler, type McpFetchHandler } from './fetch.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
-import { MemorySessionDirectory, type SessionOptions } from './sessions.ts';
+import { MemorySessionDirectory } from './sessions.ts';
 
 const BASE = new URL('https://worker.test/mcp');
 
@@ -27,7 +27,9 @@ async function connect(handler: McpFetchHandler): Promise<Client> {
 }
 
 /** A handler over the todos fixture, with the executor already wired up. */
-function todoHandler(options: { sessions?: boolean | SessionOptions } = {}): McpFetchHandler {
+function todoHandler(
+  options: Partial<Parameters<typeof createFetchHandler>[0]> = {},
+): McpFetchHandler {
   const { schema, root } = makeTodoSchema();
   return createFetchHandler({
     schema,
@@ -42,6 +44,25 @@ interface TextResult {
 }
 
 describe('createFetchHandler', () => {
+  // Two handlers, one behaviour: the same assertion http.test.ts makes. The hook
+  // has to run before the server is connected or the capability is never
+  // advertised, and nothing about that is transport-specific.
+  test('a decorateServer prompt is advertised and round-trips', async () => {
+    const handler = todoHandler({
+      decorateServer: (server) =>
+        server.registerPrompt(
+          'triage',
+          { title: 'Triage', description: 'How to triage a todo.', argsSchema: {} },
+          () => ({ messages: [{ role: 'user', content: { type: 'text', text: 'Triage it.' } }] }),
+        ),
+    });
+    const client = await connect(handler);
+    assert.ok(client.getServerCapabilities()?.prompts, 'prompts capability was not advertised');
+    assert.equal((await client.getPrompt({ name: 'triage' })).messages.length, 1);
+    await client.close();
+    await handler.close();
+  });
+
   test('lists the schema tools', async () => {
     const handler = todoHandler();
     const client = await connect(handler);

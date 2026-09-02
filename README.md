@@ -703,6 +703,58 @@ tools: [
 ];
 ```
 
+## Prompts, resources, and the rest of the SDK
+
+This package generates tools. Everything else the MCP SDK can serve — prompts,
+resources, completions — is reached with `decorateServer`, a hook that runs
+against each freshly minted `McpServer` before it is connected:
+
+```ts
+const handler = createHttpHandler({
+  schema,
+  executor,
+  decorateServer: (server) => {
+    server.registerPrompt(
+      'triage',
+      { title: 'Triage', description: 'How to triage a todo.', argsSchema: {} },
+      () => ({ messages: [{ role: 'user', content: { type: 'text', text: 'Triage it.' } }] }),
+    );
+  },
+});
+```
+
+`server` is the SDK's own `McpServer`, so its full API is available and nothing
+here needs to model it. The option is on `createMcpServer`, `createServerFactory`,
+`createHttpHandler` and `createFetchHandler` alike.
+
+**The hook has to run where it does.** A server can only declare its
+capabilities while no transport is attached — register a prompt after `connect`
+and the client is told at `initialize` that there are no prompts, so it never
+asks. That window is between minting the server and connecting it, which is the
+window this hook occupies. It is why registering prompts on the server your own
+code holds works for a single stdio process and silently serves nothing under
+`createHttpHandler`, which mints a server per request.
+
+Two things to know:
+
+- **The hook is synchronous.** Anything awaited between minting a server and
+  connecting it is registration racing `initialize`. `registerPrompt` and
+  `registerResource` are synchronous, so nothing is lost; a hook that returns a
+  promise is refused with an error rather than left to fail under load. If your
+  registrations need data, load it once outside the hook and close over it. A
+  hook that throws fails every request it runs for — on Express 4 a rejected
+  promise hangs the request instead of answering it, so wrap your handler in an
+  error-catching adapter.
+- **Vary prompts and resources freely; do not vary tools.** The rendered
+  `tools/list` is shared across every server one factory mints
+  ([Sessions](#sessions) mints one per session), so a hook that registers a
+  different *tool* set depending on external state will serve one caller's
+  listing to another. Prompts and resources are not cached and may differ per
+  server. Tools that vary belong in the `tools` option, which also gets the
+  `BAD_INPUT` envelope — a tool registered through this hook is not covered by
+  the argument guard, so a malformed call to it gets the SDK's raw JSON-RPC
+  error rather than the JSON result envelope every other tool answers with.
+
 ## Connecting your own transport
 
 `createHttpHandler` and `createFetchHandler` connect their servers for you. If

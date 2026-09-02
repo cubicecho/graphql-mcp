@@ -123,6 +123,57 @@ describe('createHttpHandler', () => {
   });
 });
 
+describe('createHttpHandler with decorateServer', () => {
+  // The hook is the only window in which a prompt can declare its capability:
+  // the SDK refuses to register one once a transport is attached, and the
+  // handler connects each server the moment it is minted. Asserted over real
+  // HTTP because that is the path a host app takes.
+  let hosted: { url: URL; close: () => void };
+
+  before(async () => {
+    const { schema, root } = makeTodoSchema();
+    hosted = await host(
+      createHttpHandler({
+        schema,
+        executor: createLocalExecutor(schema, { rootValue: root }),
+        decorateServer: (server) =>
+          server.registerPrompt(
+            'triage',
+            { title: 'Triage', description: 'How to triage a todo.', argsSchema: {} },
+            () => ({ messages: [{ role: 'user', content: { type: 'text', text: 'Triage it.' } }] }),
+          ),
+      }),
+    );
+  });
+
+  after(() => hosted.close());
+
+  test('the prompt capability survives initialize', async () => {
+    const client = await connect(hosted.url);
+    assert.ok(client.getServerCapabilities()?.prompts, 'prompts capability was not advertised');
+    await client.close();
+  });
+
+  test('and the prompt round-trips', async () => {
+    const client = await connect(hosted.url);
+    const { messages } = await client.getPrompt({ name: 'triage' });
+    assert.equal(messages.length, 1);
+    await client.close();
+  });
+
+  test('the generated tools are untouched', async () => {
+    const client = await connect(hosted.url);
+    const { tools } = await client.listTools();
+    assert.deepEqual(tools.map((t) => t.name).sort(), [
+      'create_todo',
+      'set_completed',
+      'todo',
+      'todos',
+    ]);
+    await client.close();
+  });
+});
+
 describe('createHttpHandler without a body parser', () => {
   // The docs used to require `express.json()`. The transport falls back to
   // reading the request stream when `req.body` is undefined, so a bare
