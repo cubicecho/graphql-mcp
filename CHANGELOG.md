@@ -1,3 +1,14 @@
+# [2.6.0](https://github.com/cubicecho/graphql-mcp/compare/v2.5.1...v2.6.0) (2026-09-02)
+
+
+### Features
+
+* add mapArgs, rewriting a generated tool's argument shape ([d038aef](https://github.com/cubicecho/graphql-mcp/commit/d038aefd1701559e074df56d87c272e4ca0b482b)), closes [#21](https://github.com/cubicecho/graphql-mcp/issues/21)
+* **meta:** show an input type's shape example under introspect ([4c64895](https://github.com/cubicecho/graphql-mcp/commit/4c6489504da88e868de2619b6a590b0c9fb66e67))
+* **server:** add decorateServer for prompts, resources, and the rest of the SDK ([552a947](https://github.com/cubicecho/graphql-mcp/commit/552a947786b21384ce8065220c9e4bbe6b1c44a6)), closes [#20](https://github.com/cubicecho/graphql-mcp/issues/20)
+* **tools:** make nullBranches a per-field decision ([df30d5f](https://github.com/cubicecho/graphql-mcp/commit/df30d5ff6b1c23b1cd42cbfa9c28d65daaf7e617)), closes [#22](https://github.com/cubicecho/graphql-mcp/issues/22)
+* **tools:** show a literal argument-shape example in descriptions ([1b09f17](https://github.com/cubicecho/graphql-mcp/commit/1b09f17f8133b5d2b5762f79543a9f551920f835)), closes [#21](https://github.com/cubicecho/graphql-mcp/issues/21) [#21](https://github.com/cubicecho/graphql-mcp/issues/21)
+
 ## [2.5.1](https://github.com/cubicecho/graphql-mcp/compare/v2.5.0...v2.5.1) (2026-09-02)
 
 
