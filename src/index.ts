@@ -26,6 +26,7 @@
  * - `selection` — auto-built selection sets (`buildSelectionSet`)
  * - `outputSchema` — return type → Zod result schema (`buildOutputSchema`)
  * - `operation` — per-field operation documents (`buildOperation`)
+ * - `operations` — hand-written documents → `ToolDescriptor`s (`buildOperationTools`)
  * - `rules` — include/exclude pattern matching (`compileRules`)
  * - `extend` — MCP-only schema additions (`extendSchemaForMcp`, `stripRootTypes`)
  * - `tools` — schema → `ToolDescriptor`s (`buildTools`)
@@ -79,6 +80,12 @@ export type { MetaToolDeps, MetaToolName, MetaToolsOptions } from './meta.ts';
 export { buildMetaTools } from './meta.ts';
 export type { BuiltOperation } from './operation.ts';
 export { buildOperation } from './operation.ts';
+export type {
+  BuildOperationToolsOptions,
+  OperationSource,
+  OperationsInput,
+} from './operations.ts';
+export { buildOperationTools } from './operations.ts';
 export { buildOutputSchema } from './outputSchema.ts';
 export type { Pagination, PaginationStyle } from './pagination.ts';
 export { detectPagination, paginationHint } from './pagination.ts';

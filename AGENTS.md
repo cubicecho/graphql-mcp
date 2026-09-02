@@ -63,6 +63,7 @@ src/
   rules.ts        — include/exclude pattern matching (compileRules)
   extend.ts       — MCP-only schema additions via mergeSchemas (extendSchemaForMcp, stripRootTypes)
   tools.ts        — schema → ToolDescriptor[] (buildTools): names, descriptions, annotations
+  operations.ts   — hand-written documents → ToolDescriptor[] (buildOperationTools)
   meta.ts         — opt-in schema-exploration tools (buildMetaTools): introspect/search/validate/execute
   result.ts       — GraphqlResult → CallToolResult (toCallToolResult): isError, error condensing, clamping
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
@@ -126,6 +127,30 @@ src/
   extension `typeDefs` must then declare `type Query` (not `extend type Query`);
   `extendSchemaForMcp` throws with that guidance if the merged schema has no
   query type.
+- **A hand-written operation is a tool the same way a root field is**
+  (`operations.ts`). `buildOperationTools` produces the identical
+  `ToolDescriptor` shape, so an operation tool runs through the same
+  registration, `validators` entry, executor seam, and `result.ts` formatting —
+  and overrides a generated tool of the same name, exactly as a `tools` entry
+  does. Everything is decided at build time: documents are merged into one
+  `DocumentNode` (so a fragment file resolves from an operation file), validated
+  minus `NoUnusedFragmentsRule` (a shared fragment file legitimately holds
+  fragments not every run uses), then split with `separateOperations`, which
+  already does the transitive fragment collection. Three things it does *not*
+  share with the generated path, each for a stated reason: `include`/`exclude`/
+  `filter` do not apply (they match GraphQL field names and govern schema
+  projection — an operation is the server author's own code, at the same trust
+  level as a `CustomTool` handler); a non-null variable **with a default** is
+  advertised as optional (`$limit: Int! = 20` means "you may omit it", and
+  `argsToZodShape`'s NonNull ⇒ required is still right for a field argument,
+  which never carries a variable default); and `outputSchema` is `z.unknown()`
+  until a selection-set-driven walker exists, which nothing observes today
+  because it is not registered with the SDK (issue #15). Descriptions come from
+  `#` comments via `loc.startToken.prev` — a lexer detail, not documented
+  graphql-js surface, so a `noLocation` document degrades to a generic summary
+  rather than crashing. Input types are **not** deduplicated across operations;
+  a shared memo would have to key on `scalars` and `nullBranches` too, and one
+  that doesn't is the 18 MB → 456 kB bug in a new place.
 - **`include` fails closed.** An omitted `include` keeps everything; a present
   but empty array matches nothing (consistent with `compileRules([])`), so a
   dynamically built allow-list can't silently expose the whole schema.

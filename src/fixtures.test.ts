@@ -8,7 +8,7 @@
  * registers no tests of its own.
  */
 
-import { buildSchema, type GraphQLSchema } from 'graphql';
+import { buildSchema, type GraphQLSchema, Source } from 'graphql';
 import type { McpFieldExtensions } from './tools.ts';
 
 export const TODO_SDL = /* GraphQL */ `
@@ -141,3 +141,44 @@ function defaultSeed(): TodoRecord[] {
     { id: 'todo-2', completed: true, description: 'read the brief', userId: 'user-1' },
   ];
 }
+
+/**
+ * Hand-written operations over {@link TODO_SDL}, for the `operations` surface.
+ *
+ * Deliberately exercises the awkward parts: a two-line leading comment, a
+ * per-variable comment (the one kind of prose GraphQL gives an operation no
+ * syntax for), an enum default, an operation with no comment at all, a
+ * mutation, and a fragment defined in a *separate* source so cross-file
+ * resolution is covered by anything that uses this.
+ */
+export const TODO_OPERATIONS = new Source(
+  `# List every todo on the board.
+# Pass \`status\` to narrow it.
+query listTodos(
+  # Only todos in this state.
+  $status: TodoStatus = OPEN
+) {
+  todos(status: $status) { ...TodoFields }
+}
+
+query oneTodo($id: String!) {
+  todo(id: $id) { ...TodoFields completed }
+}
+
+# Create a todo and hand back just its id.
+mutation addTodo($input: CreateTodoInput!) {
+  createTodo(input: $input) { id }
+}
+`,
+  'todos.graphql',
+);
+
+/** The fragment {@link TODO_OPERATIONS} references, in a source of its own. */
+export const TODO_FRAGMENTS = new Source(
+  `fragment TodoFields on Todo {
+  id
+  description
+}
+`,
+  'fragments.graphql',
+);

@@ -746,8 +746,11 @@ function toSnakeCase(fieldName: string): string {
     .toLowerCase();
 }
 
-/** Applies the `nameCase` option to a field name. */
-function applyNameCase(fieldName: string, nameCase: NameCase = 'snake'): string {
+/**
+ * Applies the `nameCase` option to a field name. Exported for sibling modules
+ * on the same terms as {@link describeArgument}.
+ */
+export function applyNameCase(fieldName: string, nameCase: NameCase = 'snake'): string {
   return nameCase === 'preserve' ? fieldName : toSnakeCase(fieldName);
 }
 
