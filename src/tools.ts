@@ -20,6 +20,7 @@ import type { OperationKind, ToolAnnotations } from './types.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import {
   argsToZodShape,
+  DEFAULT_NULL_BRANCHES,
   type NullBranches,
   type ScalarMapping,
   type ZodShapeOptions,
@@ -64,6 +65,17 @@ export interface ToolDescriptor {
    */
   selectionDepth?: number;
   /**
+   * Whether this tool's nullable arguments advertise an explicit `null` branch.
+   * Always set by {@link buildTools}; optional so a hand-built descriptor need
+   * not carry one.
+   *
+   * Settable from `decorate`, which rebuilds the input schema *and* the
+   * description at the new setting — the description's per-argument advice about
+   * sending an explicit `null` is only true for one of the two modes, so the
+   * prose and the schema have to move together.
+   */
+  nullBranches?: NullBranches;
+  /**
    * Advice naming the field's pagination argument, appended to a result's
    * truncation note. Absent when the field takes no recognised paging argument.
    */
@@ -89,6 +101,8 @@ export interface McpFieldExtensions {
   annotations?: Partial<ToolAnnotations>;
   /** Per-field selection depth (overrides the `selectionDepth` option). */
   selectionDepth?: number;
+  /** Per-field null-branch handling (overrides the `nullBranches` option). */
+  nullBranches?: NullBranches;
 }
 
 /**
@@ -105,6 +119,31 @@ export type SelectionDepth =
   | number
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to depth
   | ((field: GraphQLField<any, any>, kind: OperationKind) => number);
+
+/**
+ * Null-branch handling for a schema's tools: one mode for every field, or a
+ * callback deciding per field — deliberately the same shape as
+ * {@link SelectionDepth}, so there is one spelling of "per-field knob".
+ *
+ * The callback exists because the trade differs by *kind* far more often than
+ * by schema. On a generated CRUD surface the read side never legitimately takes
+ * an explicit null — a filter argument set to null is a caller mistake, not a
+ * request to match null — while the write side uses one to clear a column. A
+ * single mode makes that one decision for both:
+ *
+ * ```ts
+ * nullBranches: (_field, kind) => (kind === 'query' ? 'never' : 'always')
+ * ```
+ *
+ * Note that per-kind means one input type can render two ways across the tool
+ * listing. Safe as the SDK converts it (one tool at a time, so no `$defs` id
+ * collides), but see the README before flattening every tool's `$defs` into a
+ * single downstream namespace.
+ */
+export type NullBranchesOption =
+  | NullBranches
+  // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
+  | ((field: GraphQLField<any, any>, kind: OperationKind) => NullBranches);
 
 /**
  * How a GraphQL field name is cased when projected into a tool name.
@@ -188,8 +227,12 @@ export interface BuildToolsOptions {
    * is that an explicit `null` becomes a validation error, so a mutation whose
    * schema uses `null` to *clear* a field can no longer express that. See
    * {@link ZodShapeOptions.nullBranches}.
+   *
+   * A callback sets it per field — `(_, kind) => kind === 'query' ? 'never' : 'always'`
+   * — which is the usual shape of the trade: reads never need an explicit null,
+   * writes use one to clear a column. See {@link NullBranchesOption}.
    */
-  nullBranches?: NullBranches;
+  nullBranches?: NullBranchesOption;
   /**
    * How mutation `destructiveHint`/`idempotentHint` defaults are decided.
    * Default `'uniform'`; `'byName'` derives them from the conventional
@@ -284,24 +327,34 @@ export function buildTools(
         name: baseName,
         kind,
         selectionDepth: ext?.selectionDepth ?? depthFor(options.selectionDepth, field, kind),
-        shape: { scalars: options.scalars, nullBranches: options.nullBranches },
+        shape: {
+          scalars: options.scalars,
+          nullBranches: ext?.nullBranches ?? branchesFor(options.nullBranches, field, kind),
+        },
         mutationHints: options.mutationHints ?? 'uniform',
       };
       let descriptor = toDescriptor(field, built);
       if (ext) descriptor = applyExtensions(descriptor, ext);
       const patch = options.decorate?.(descriptor, field, kind);
       if (patch) {
-        // A patched depth changes what the operation selects, so everything
-        // derived from the selection is rebuilt rather than left describing the
-        // old one. The patch is then applied over the rebuilt descriptor, so an
-        // explicit `query` or `description` alongside it still wins.
-        if (
-          patch.selectionDepth !== undefined &&
-          patch.selectionDepth !== descriptor.selectionDepth
-        ) {
-          descriptor = toDescriptor(field, { ...built, selectionDepth: patch.selectionDepth });
+        // A patched depth changes what the operation selects and a patched
+        // null-branch mode changes the input schema *and* the argument prose, so
+        // everything derived from either is rebuilt rather than left describing
+        // the old one. Both patched values are resolved before the comparison:
+        // rebuilding on one while forwarding the descriptor's stale copy of the
+        // other would silently reset whichever the patch didn't mention.
+        const depth = patch.selectionDepth ?? descriptor.selectionDepth;
+        const branches = patch.nullBranches ?? descriptor.nullBranches;
+        if (depth !== descriptor.selectionDepth || branches !== descriptor.nullBranches) {
+          descriptor = toDescriptor(field, {
+            ...built,
+            selectionDepth: depth,
+            shape: { ...built.shape, nullBranches: branches },
+          });
           if (ext) descriptor = applyExtensions(descriptor, ext);
         }
+        // The patch is then applied over the rebuilt descriptor, so an explicit
+        // `query` or `description` alongside it still wins.
         descriptor = applyPatch(descriptor, patch);
       }
 
@@ -394,12 +447,16 @@ function toDescriptor(
   const { name, kind, selectionDepth, shape = {}, mutationHints = 'uniform' } = options;
   const { query, operationName, argNames, selection } = buildOperation(kind, field, selectionDepth);
   const pageHint = paginationHint(field.args);
+  // Resolved once and passed to all three: the argument prose warns about
+  // sending an explicit `null` only where one can still be sent, so a schema
+  // built at one mode and described at another is a tool that lies about itself.
+  const nullBranches = shape.nullBranches ?? DEFAULT_NULL_BRANCHES;
   return {
     name,
     kind,
     title: humanize(field.name),
-    description: buildDescription(field, kind, selection, shape.nullBranches ?? 'always'),
-    inputSchema: argsToZodShape(field.args, shape),
+    description: buildDescription(field, kind, selection, nullBranches),
+    inputSchema: argsToZodShape(field.args, { ...shape, nullBranches }),
     // `nullBranches` is an *input* concern: it trades away the ability to send
     // an explicit null. An output schema only describes what comes back, where
     // a null is not a thing the caller chooses, so it keeps its null branches.
@@ -409,6 +466,7 @@ function toDescriptor(
     operationName,
     argNames,
     selectionDepth: selectionDepth ?? DEFAULT_SELECTION_DEPTH,
+    nullBranches,
     ...(pageHint ? { pageHint } : {}),
   };
 }
@@ -423,13 +481,23 @@ function depthFor(
   return typeof selectionDepth === 'function' ? selectionDepth(field, kind) : selectionDepth;
 }
 
+/** The null-branch mode for one field: a callback is asked, a string taken as-is. */
+function branchesFor(
+  nullBranches: NullBranchesOption | undefined,
+  // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
+  field: GraphQLField<any, any>,
+  kind: OperationKind,
+): NullBranches | undefined {
+  return typeof nullBranches === 'function' ? nullBranches(field, kind) : nullBranches;
+}
+
 /** Composes a tool description from the field's SDL: docstring, signature, args, and result. */
 function buildDescription(
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
   field: GraphQLField<any, any>,
   kind: OperationKind,
   selection: string,
-  nullBranches: NullBranches = 'always',
+  nullBranches: NullBranches = DEFAULT_NULL_BRANCHES,
 ): string {
   const lines: string[] = [];
   lines.push(field.description?.trim() || `The \`${field.name}\` ${kind}.`);
@@ -474,7 +542,7 @@ function buildDescription(
  */
 export function describeArgument(
   arg: GraphQLArgument,
-  nullBranches: NullBranches = 'always',
+  nullBranches: NullBranches = DEFAULT_NULL_BRANCHES,
 ): string {
   const parts = [`\`${arg.name}\`: \`${arg.type.toString()}\``];
   const fallback = defaultOf(arg);

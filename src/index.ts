@@ -110,6 +110,7 @@ export type {
   McpFieldExtensions,
   MutationHints,
   NameCase,
+  NullBranchesOption,
   SelectionDepth,
   ToolDescriptor,
 } from './tools.ts';

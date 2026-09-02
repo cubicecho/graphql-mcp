@@ -68,6 +68,9 @@ export type ScalarMapping = ScalarMap | ScalarResolver;
  */
 export type NullBranches = 'always' | 'never';
 
+/** The mode a nullable input position takes when nothing says otherwise. */
+export const DEFAULT_NULL_BRANCHES: NullBranches = 'always';
+
 /** Options shared by the arg→Zod conversion. */
 export interface ZodShapeOptions {
   /**

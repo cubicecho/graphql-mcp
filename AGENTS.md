@@ -211,6 +211,23 @@ src/
   breaks the mutation idiom of passing `null` to clear a field. **List elements
   are exempt under either setting** — an element can be null but never absent, so
   there `.nullable()` is the type, not a redundant restatement of it.
+  The setting is **per field** (option value or callback → `extensions.mcp` →
+  `decorate`, the `selectionDepth` pipeline exactly), because the trade splits by
+  kind far more often than by schema: reads never legitimately take an explicit
+  null, writes use one to clear a column. `toDescriptor` resolves it once and
+  passes the same value to the description and to `argsToZodShape`, so prose and
+  schema cannot be built at different modes; `buildTools`' rebuild branch fires
+  when a patch changes *either* `selectionDepth` or `nullBranches` and resolves
+  both before comparing, or a patch naming one silently resets the other.
+  **Per-argument is not offered, and the reason is measured, not stylistic.**
+  `withName` hoists each input type under a `.meta({ id })` keyed on its GraphQL
+  name, so rendering one named type at two modes inside a single field throws
+  from the conversion — verified on zod 4.5.4: `Duplicate schema id "F" detected
+  during JSON Schema conversion`. Making it work would mean inventing a second
+  `$defs` name in the one namespace `withName` exists to keep legible, with a
+  thrown `tools/list` as the failure mode. A safe widening, if it is ever asked
+  for, is a mode that is a pure function of the *containing input type*
+  (`(type: GraphQLInputObjectType) => NullBranches`): one type, one mode, one id.
 - **`connectServer(server, transport)` is how a server should be connected.**
   `params.arguments` is optional in the MCP schema, and a tool whose arguments
   are all optional gives a client nothing to put there — but the SDK hands that

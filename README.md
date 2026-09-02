@@ -387,8 +387,9 @@ The description is careful about one thing worth knowing:
 ```
 
 GraphQL does not read a passed `null` as a request for the default. Omitting the
-argument gets you `10`; sending `null` gets you `null`. (Under
-`nullBranches: 'never'` the caveat is dropped, since `null` can't be sent.)
+argument gets you `10`; sending `null` gets you `null`. (Where
+`nullBranches: 'never'` is in force for that field, the caveat is dropped, since
+`null` can't be sent.)
 
 On zod 3 the `default` keyword is absent — there is no metadata channel that
 doesn't also change parsing — and the prose carries it alone.
@@ -428,6 +429,51 @@ rather than a fix — only your schema knows which kind it is.
 **List elements are exempt** under either setting. `[String]` permits a null
 element, and an element can be null but never absent, so dropping the branch
 there would change the type rather than compress it.
+
+### Per field
+
+The trade above is rarely the same across a whole schema, because it usually
+splits by *kind*. On a generated CRUD surface a filter argument set to an
+explicit null is a caller mistake, while a mutation uses one to clear a column —
+so the reads can drop their branches and the writes must keep theirs. A callback
+says exactly that:
+
+```ts
+createMcpServer({
+  schema,
+  nullBranches: (field, kind) => (kind === 'query' ? 'never' : 'always'),
+});
+```
+
+The callback receives the GraphQL field and its kind, and runs once per field.
+The same decision is available everywhere a per-field decision already lives:
+
+```ts
+// on the schema, where it is defined
+field.extensions = { mcp: { nullBranches: 'never' } };
+
+// or last, from decorate
+decorate: (d) => (d.name === 'tasks' ? { nullBranches: 'never' } : undefined);
+```
+
+`decorate` rebuilds the input schema *and* the description at the new setting,
+because the per-argument advice about sending an explicit `null` is only true
+under `'always'` — advice describing a call the tool now rejects is worse than
+none. Each descriptor records what it was built at, as `descriptor.nullBranches`.
+
+**One caveat if you post-process the listing.** Splitting by kind means the same
+input type renders two ways across the surface — a `TaskFilters` with null
+branches under a mutation and without under a query. That is fine as MCP serves
+it: each tool's schema is converted on its own, so nothing collides. It stops
+being fine if you flatten every tool's `$defs` into one shared namespace
+downstream, where you get two definitions claiming one name. Split by kind when
+the read and write input families are disjoint (the generated-CRUD case), and
+key by `(tool, type)` if you merge.
+
+There is deliberately no per-*argument* setting. A named input type is hoisted
+once under its GraphQL name, so rendering one type at two modes inside a single
+tool asks for two definitions under one id — which is an error from the JSON
+Schema conversion, not a size trade.
 
 ## Write hints
 

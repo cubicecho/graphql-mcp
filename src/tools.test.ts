@@ -671,6 +671,144 @@ describe('buildTools per-field selection depth', () => {
   });
 });
 
+describe('buildTools per-field null branches', () => {
+  // The trade splits by kind on a generated CRUD surface: a filter set to an
+  // explicit null is a caller mistake, while a mutation uses one to clear a
+  // column. A single mode makes that one decision for both.
+  const sdl = `
+    input TaskFilters { name: String status: String }
+    input TaskInput { name: String status: String }
+    type Owner { id: ID! name: String! }
+    type Task { id: ID! name: String! owner: Owner! }
+    type Query { tasks(where: TaskFilters, limit: Int = 10): [Task!]! }
+    type Mutation { updateTask(where: TaskFilters!, values: TaskInput!): Task }
+  `;
+  const schema = buildSchema(sdl);
+
+  const byName = (tools: ReturnType<typeof buildTools>) => new Map(tools.map((t) => [t.name, t]));
+  const render = (tool?: ReturnType<typeof buildTools>[number]) =>
+    JSON.stringify(toJsonSchemaCompat(z.object(tool?.inputSchema ?? {})));
+
+  test('a descriptor records the setting it was built at', () => {
+    assert.equal(buildTools(schema)[0].nullBranches, 'always');
+    assert.equal(buildTools(schema, { nullBranches: 'never' })[0].nullBranches, 'never');
+  });
+
+  test('a callback sets the mode per kind', () => {
+    const tools = byName(
+      buildTools(schema, {
+        nullBranches: (_field, kind) => (kind === 'query' ? 'never' : 'always'),
+      }),
+    );
+    assert.equal(tools.get('tasks')?.nullBranches, 'never');
+    assert.equal(tools.get('update_task')?.nullBranches, 'always');
+    // Search the whole rendered schema: v4 hoists the input type into
+    // `definitions` and leaves a `$ref`, so `properties` alone would miss it.
+    assert.doesNotMatch(render(tools.get('tasks')), /"null"/);
+    assert.match(render(tools.get('update_task')), /"null"/);
+  });
+
+  test('the callback sees the field and its kind', () => {
+    const seen: Array<[string, string]> = [];
+    buildTools(schema, {
+      nullBranches: (field, kind) => {
+        seen.push([field.name, kind]);
+        return 'always';
+      },
+    });
+    assert.deepEqual(seen.sort(), [
+      ['tasks', 'query'],
+      ['updateTask', 'mutation'],
+    ]);
+  });
+
+  test('the prose moves with the schema', () => {
+    // `null` advice that describes an impossible call is worse than none: under
+    // `'never'` an explicit null is rejected outright. This is the guard that
+    // the description and the input schema cannot be built at different modes.
+    const always = byName(buildTools(schema)).get('tasks');
+    const never = byName(buildTools(schema, { nullBranches: 'never' })).get('tasks');
+    assert.match(always?.description ?? '', /an explicit `null` is sent as null/);
+    assert.doesNotMatch(never?.description ?? '', /explicit `null`/);
+    // The default itself is still advertised either way.
+    assert.match(never?.description ?? '', /omit for the default `10`/);
+  });
+
+  test('extensions.mcp.nullBranches beats the option', () => {
+    const annotated = buildSchema(sdl);
+    setMcpExtensions(annotated, 'Query', 'tasks', { nullBranches: 'never' });
+    const tools = byName(buildTools(annotated, { nullBranches: 'always' }));
+    assert.equal(tools.get('tasks')?.nullBranches, 'never');
+    assert.doesNotMatch(render(tools.get('tasks')), /"null"/);
+    assert.equal(tools.get('update_task')?.nullBranches, 'always');
+  });
+
+  test('decorate can set the mode, and both artifacts are rebuilt for it', () => {
+    const tools = byName(
+      buildTools(schema, {
+        decorate: (d) => (d.name === 'tasks' ? { nullBranches: 'never' } : undefined),
+      }),
+    );
+    const tasks = tools.get('tasks');
+    assert.equal(tasks?.nullBranches, 'never');
+    assert.doesNotMatch(render(tasks), /"null"/);
+    assert.doesNotMatch(tasks?.description ?? '', /explicit `null`/);
+    // The undecorated neighbour keeps the default.
+    assert.match(render(tools.get('update_task')), /"null"/);
+  });
+
+  test('a description in the same patch still wins over the rebuild', () => {
+    const [tool] = buildTools(schema, {
+      include: ['tasks'],
+      decorate: () => ({ nullBranches: 'never', description: 'Mine.' }),
+    });
+    assert.equal(tool.description, 'Mine.');
+    assert.equal(tool.nullBranches, 'never');
+    assert.doesNotMatch(render(tool), /"null"/);
+  });
+
+  test('a patch that repeats the current mode rebuilds nothing', () => {
+    const plain = buildTools(schema, { include: ['tasks'], nullBranches: 'never' })[0];
+    const patched = buildTools(schema, {
+      include: ['tasks'],
+      nullBranches: 'never',
+      decorate: () => ({ nullBranches: 'never', title: 'Kept' }),
+    })[0];
+    assert.equal(patched.query, plain.query);
+    assert.equal(patched.description, plain.description);
+    assert.equal(patched.title, 'Kept');
+  });
+
+  // The two rebuild triggers share one branch, so a patch naming one setting
+  // must forward the other rather than the value it was originally built from.
+  // Get this wrong and a tool's description describes a schema it no longer has.
+  test('a patch changing only the depth keeps the null-branch mode', () => {
+    const [tool] = buildTools(schema, {
+      include: ['tasks'],
+      nullBranches: 'never',
+      decorate: () => ({ selectionDepth: 1 }),
+    });
+    assert.equal(tool.selectionDepth, 1);
+    assert.doesNotMatch(tool.query, /owner \{/);
+    assert.equal(tool.nullBranches, 'never');
+    assert.doesNotMatch(render(tool), /"null"/);
+    assert.doesNotMatch(tool.description, /explicit `null`/);
+  });
+
+  test('a patch changing only the null-branch mode keeps the depth', () => {
+    const [tool] = buildTools(schema, {
+      include: ['tasks'],
+      selectionDepth: 1,
+      decorate: () => ({ nullBranches: 'never' }),
+    });
+    assert.equal(tool.nullBranches, 'never');
+    assert.doesNotMatch(render(tool), /"null"/);
+    assert.equal(tool.selectionDepth, 1);
+    assert.doesNotMatch(tool.query, /owner \{/);
+    assert.doesNotMatch(tool.description, /owner \{/);
+  });
+});
+
 describe('mutationHints', () => {
   const schema = buildSchema(`
     type Task { id: ID! name: String! }
