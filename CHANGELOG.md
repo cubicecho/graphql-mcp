@@ -1,3 +1,11 @@
+# [2.7.0](https://github.com/cubicecho/graphql-mcp/compare/v2.6.0...v2.7.0) (2026-09-02)
+
+
+### Features
+
+* **operations:** build tools from hand-written GraphQL documents ([555b8f4](https://github.com/cubicecho/graphql-mcp/commit/555b8f4939ff21c0587880180be2db779707f4f1)), closes [#15](https://github.com/cubicecho/graphql-mcp/issues/15) [#21](https://github.com/cubicecho/graphql-mcp/issues/21)
+* **server:** add the operations option ([cf6da4b](https://github.com/cubicecho/graphql-mcp/commit/cf6da4b8eb6148a45aa56f29ccb72d7a445cdaa7)), closes [#21](https://github.com/cubicecho/graphql-mcp/issues/21) [#21](https://github.com/cubicecho/graphql-mcp/issues/21)
+
 # [2.6.0](https://github.com/cubicecho/graphql-mcp/compare/v2.5.1...v2.6.0) (2026-09-02)
 
 
