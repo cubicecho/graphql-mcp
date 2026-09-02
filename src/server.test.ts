@@ -12,7 +12,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { buildSchema, type GraphQLSchema } from 'graphql';
 import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
-import { makeTodoSchema } from './fixtures.test.ts';
+import { makeTodoSchema, TODO_FRAGMENTS, TODO_OPERATIONS } from './fixtures.test.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './index.ts';
 import {
   type CreateMcpServerOptions,
@@ -1409,6 +1409,160 @@ describe('a rejected argument reads like every other failure', () => {
     const result = (await client.callTool({ name: 'no_such_tool', arguments: {} })) as TextResult;
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /no_such_tool/);
+    await client.close();
+  });
+});
+
+describe('operations', () => {
+  /** The todos fixture, its hand-written documents, and whatever else is asked for. */
+  function curated(options: Partial<CreateMcpServerOptions> = {}): McpServer {
+    const { schema, root } = makeTodoSchema();
+    return createMcpServer({
+      schema,
+      executor: createLocalExecutor(schema, { rootValue: root }),
+      operations: [TODO_OPERATIONS, TODO_FRAGMENTS],
+      ...options,
+    });
+  }
+
+  test('curated tools stand alongside the generated ones', async () => {
+    const client = await connect(curated());
+    const { tools } = await client.listTools();
+    assert.deepEqual(tools.map((t) => t.name).sort(), [
+      'add_todo',
+      'create_todo',
+      'list_todos',
+      'one_todo',
+      'set_completed',
+      'todo',
+      'todos',
+    ]);
+    await client.close();
+  });
+
+  test('include: [] leaves only the curated surface', async () => {
+    // The headline shape of #21's zero-failure arm: nothing generated, only
+    // documents someone wrote on purpose.
+    const client = await connect(curated({ include: [], includeMutations: false }));
+    const { tools } = await client.listTools();
+    assert.deepEqual(tools.map((t) => t.name).sort(), ['add_todo', 'list_todos', 'one_todo']);
+    await client.close();
+  });
+
+  test('an operation runs end to end, sending its variables', async () => {
+    const client = await connect(curated());
+    const result = parseResult(
+      await client.callTool({ name: 'one_todo', arguments: { id: 'todo-1' } }),
+    );
+    const data = result.data as { todo: { id: string; description: string } };
+    assert.equal(data.todo.id, 'todo-1');
+    // The hand-written selection, and only it: `completed` is spread in, and
+    // `createdBy` — which the generated tool would have descended into — is not.
+    assert.deepEqual(Object.keys(data.todo).sort(), ['completed', 'description', 'id']);
+    await client.close();
+  });
+
+  test('a curated tool replaces the generated one of the same name, keeping its slot', async () => {
+    const { schema, root } = makeTodoSchema();
+    const generatedOrder = (await (async () => {
+      const client = await connect(
+        createMcpServer({ schema, executor: createLocalExecutor(schema, { rootValue: root }) }),
+      );
+      const names = (await client.listTools()).tools.map((t) => t.name);
+      await client.close();
+      return names;
+    })()) as string[];
+
+    const client = await connect(
+      curated({
+        operations: [
+          `# Only the open ones, and only their ids.
+           query todos { todos(status: OPEN) { id } }`,
+        ],
+      }),
+    );
+    const { tools } = await client.listTools();
+    // One entry, not two, carrying the curated description — and in the place
+    // the generated tool held, because swapping an implementation should not
+    // reshuffle a listing an agent may already have read.
+    assert.equal(tools.filter((t) => t.name === 'todos').length, 1);
+    assert.deepEqual(
+      tools.map((t) => t.name),
+      generatedOrder,
+    );
+    assert.match(tools.find((t) => t.name === 'todos')?.description ?? '', /Only the open ones/);
+    await client.close();
+  });
+
+  test('a malformed argument comes back in the JSON envelope, not as -32602', async () => {
+    // Proves an operation descriptor lands in `validators` like a generated one:
+    // the guard answers above the handler, so one server shows one error shape.
+    const client = await connect(curated());
+    const result = parseResult(await client.callTool({ name: 'one_todo', arguments: { id: 42 } }));
+    assert.equal(result.isError, true);
+    const [error] = result.errors as Array<{ extensions: { code: string } }>;
+    assert.equal(error.extensions.code, 'BAD_INPUT');
+    await client.close();
+  });
+
+  test('a two-root-field operation returns both under data, unwrapped by nothing', async () => {
+    // The counter-result from #21: a bulk read is a natural multi-root-field
+    // operation. One result shape everywhere means the agent pays one hop.
+    const client = await connect(
+      curated({
+        operations: [`query board { open: todos(status: OPEN) { id } all: todos { id } }`],
+      }),
+    );
+    const result = parseResult(await client.callTool({ name: 'board', arguments: {} }));
+    const data = result.data as { open: unknown[]; all: unknown[] };
+    assert.equal(data.open.length, 1);
+    assert.equal(data.all.length, 2);
+    await client.close();
+  });
+
+  test('operations and metaTools coexist, and execute still enforces include', async () => {
+    const client = await connect(
+      curated({ include: ['todos'], includeMutations: false, metaTools: true }),
+    );
+    const { tools } = await client.listTools();
+    const names = tools.map((t) => t.name);
+    assert.ok(names.includes('list_todos'), 'the curated tool is missing');
+    assert.ok(names.includes('graphql_execute'), 'the meta tools are missing');
+    const denied = (await client.callTool({
+      name: 'graphql_execute',
+      arguments: { query: '{ todo(id: "todo-1") { id } }' },
+    })) as TextResult;
+    assert.equal(denied.isError, true);
+    assert.match(denied.content[0].text, /todo/);
+    await client.close();
+  });
+
+  test('a document that does not validate is a boot failure, not a call failure', async () => {
+    assert.throws(
+      () => curated({ operations: ['query listTodos { todos { titel } }'] }),
+      /failed to validate against the schema/,
+    );
+  });
+
+  test('an operation may select a field only `extend` added', async () => {
+    // Operations validate against the *post-extend* schema, so an MCP-only
+    // field is fair game.
+    const { schema } = makeTodoSchema();
+    const server = createMcpServer({
+      schema,
+      // No custom executor: the default one runs against the *extended* schema,
+      // which is the only schema that knows this field.
+      extend: {
+        typeDefs: 'extend type Query { todoCount: Int! }',
+        resolvers: { Query: { todoCount: () => 2 } },
+      },
+      include: [],
+      includeMutations: false,
+      operations: ['query howMany { todoCount }'],
+    });
+    const client = await connect(server);
+    const result = parseResult(await client.callTool({ name: 'how_many', arguments: {} }));
+    assert.deepEqual(result.data, { todoCount: 2 });
     await client.close();
   });
 });

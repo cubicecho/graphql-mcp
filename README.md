@@ -101,6 +101,7 @@ mutation createTodo($input: CreateTodoInput!) {
 | `createLocalExecutor(schema, opts?)` | Executor that runs operations in-process via graphql-js (the default). |
 | `createHttpExecutor(endpoint, opts?)` | Executor that forwards operations to a remote GraphQL HTTP endpoint. |
 | `buildTools(schema, opts?)` | The pure core: schema → `ToolDescriptor[]` (no SDK, no executor). |
+| `buildOperationTools(schema, docs, opts?)` | The same, from hand-written GraphQL documents — see [Hand-written operations as tools](#hand-written-operations-as-tools). |
 
 Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
 `registerGraphqlTools`, `compileRules`, `extendSchemaForMcp`, `stripRootTypes`,
@@ -766,6 +767,112 @@ not the types. Two consequences worth knowing:
 
 `stripRootTypes(schema)` is exported if you want the stripped schema on its own.
 
+`typesOnly` and [`operations`](#hand-written-operations-as-tools) chase the same
+goal from opposite ends of how much you reimplement: `typesOnly` drops the root
+types, so every field you expose needs a resolver you write, while `operations`
+reuses the real schema's resolvers untouched and only changes what is asked of
+them.
+
+## Hand-written operations as tools
+
+The generated surface is every root field, described from the SDL. Sometimes you
+want the opposite: a handful of operations you wrote deliberately, with the
+selection, the name, and the prose all chosen. Pass them as `operations`:
+
+```ts
+import { globSync, readFileSync } from 'node:fs';
+import { Source } from 'graphql';
+
+const handler = createHttpHandler({
+  schema,
+  operations: globSync('mcp/*.graphql').map(
+    (path) => new Source(readFileSync(path, 'utf8'), path),
+  ),
+});
+```
+
+```graphql
+# Every task on the board, newest first.
+# Use this instead of filtering the raw table.
+query openTasks(
+  # How many to return.
+  $limit: Int! = 20
+) {
+  tasks(where: { status: { eq: OPEN } }, orderBy: [{ startedAt: { direction: DESC } }], limit: $limit) {
+    id
+    title
+    assignee { name }
+  }
+}
+```
+
+That becomes a tool named `open_tasks`, taking one optional `limit`, described
+by the comments above the operation and above the variable — the only place
+GraphQL lets you write prose about either. Four mappings are worth knowing:
+
+- **The operation name is the tool name**, through `nameCase` (`openTasks` →
+  `open_tasks`). The document still runs under its own name.
+- **Variables are the arguments.** `$limit: Int! = 20` is advertised as
+  *optional* with a default of 20 — the non-null says it is never null, not
+  that you must send it. Defaults, deprecation, and the explicit-`null` caveat
+  render exactly as they do on a generated tool.
+- **Write hints come from the operation name** under `mutationHints: 'byName'`,
+  which is a better signal than a generated field name: you chose it.
+- **A `$limit`/`$offset` pair earns the same truncation advice** a paging field
+  gets, for free.
+
+**Fragments may live in their own file.** Every document is merged before
+validation, so an operation in one file can spread a fragment defined in
+another; each tool then carries only the fragments it actually reaches. A shared
+fragment file holding fragments this run doesn't use is fine.
+
+**Everything is checked at boot.** A syntax error, an unknown field, a mistyped
+variable, a duplicate operation name, an anonymous operation, a subscription, or
+a glob that matched nothing all throw when the handler is built — naming the
+file and position, which is why the option is worth passing a `Source`:
+
+```
+graphql-mcp: `operations` failed to validate against the schema:
+  - Cannot query field "titel" on type "Task". Did you mean "title"? (tasks.graphql:7:5)
+```
+
+**The option takes documents, never paths.** A server factory is synchronous, so
+it cannot `await import('node:fs')`, and importing `node:fs` at the top level
+would make this package unloadable on the fetch runtimes it also serves. Node 22
+ships `globSync`, so reading the files is the one line above and stays in your
+code, where your bundler can see it.
+
+### Composing with the generated surface
+
+An operation **replaces** a generated tool of the same name, exactly as a
+`tools` entry does. Final precedence is
+`generated < operations < meta < tools`. That is the incremental path: keep the
+sixteen generated tools that work and hand-write only the one whose argument
+shape an agent keeps getting wrong.
+
+```ts
+operations: [readFileSync('mcp/tasks.graphql', 'utf8')], // named `query tasks`
+```
+
+Go the other way with `include: []`, which leaves only what you wrote.
+
+`nameCase`, `scalars`, `nullBranches`, `mutationHints`, `exampleDepth`,
+`maxChars`, `context`, `executor` and `extend` all apply to operation tools —
+and because documents validate against the *extended* schema, an operation may
+select an MCP-only field. Their callback forms don't: a `nullBranches` callback
+is handed a `GraphQLField`, and an operation has none.
+
+**`include`/`exclude`/`filter` do not apply, and that is deliberate.** They match
+GraphQL *field* names and govern how the schema is projected; making them filter
+operation names would make the `include: []` example above expose nothing at all.
+So an operation may select a root field `exclude` denies. An operation is your
+own code, at the same trust level as a `tools` handler — and `exclude` still
+governs the generated surface and the agent-written documents `graphql_execute`
+runs, which is where it was ever protecting anything.
+
+`decorate` doesn't apply either. Its signature needs a `GraphQLField`, and you
+own this document: edit it.
+
 ## Schema-exploration tools (large schemas)
 
 One tool per root field stops scaling somewhere past a few dozen fields — the
@@ -790,7 +897,8 @@ const handler = createHttpHandler({
 
 The two modes compose — leave the generated tools on and add meta tools for the
 long tail. Names collide by design: a `tools` entry overrides a meta tool, which
-overrides a generated one.
+overrides an [operation](#hand-written-operations-as-tools), which overrides a
+generated one.
 
 **`execute` respects your allow-list.** It runs documents the *agent* wrote, so
 without a check it would be a way around `include`/`exclude`. Every root field

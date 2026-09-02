@@ -37,6 +37,7 @@ import {
   type ToolValidators,
 } from './handlers.ts';
 import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
+import { buildOperationTools, type OperationsInput } from './operations.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './result.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
 import type { GraphqlExecutor, ToolAnnotations } from './types.ts';
@@ -97,6 +98,36 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
   context?: unknown | ContextFactory;
   /** Custom tools to add or override generated (and meta) ones by name. */
   tools?: CustomTool[];
+  /**
+   * Hand-written GraphQL documents to expose as tools, alongside — or instead
+   * of — the generated ones ({@link buildOperationTools}).
+   *
+   * A generated surface is complete and impersonal; a curated one is a bet that
+   * you know the questions. They compose, and that is the point: an operation
+   * named `todos` *replaces* the generated `todos` tool, so you can keep the
+   * whole generated surface and hand-write only the tool whose argument shape
+   * an agent keeps getting wrong.
+   *
+   * Takes documents, never paths — a factory is synchronous, and a top-level
+   * `node:fs` import would make this package unloadable on a fetch runtime. On
+   * Node that is one line at the call site, and a `Source` is what puts the
+   * file name into every boot-time error:
+   *
+   * ```ts
+   * operations: globSync('mcp/*.graphql').map(
+   *   (path) => new Source(readFileSync(path, 'utf8'), path),
+   * ),
+   * ```
+   *
+   * Documents validate against the *extended* schema, so an operation may
+   * select an MCP-only field. `nameCase`, `scalars`, `mutationHints`,
+   * `nullBranches` and `exampleDepth` carry over in their plain forms; their
+   * callback forms take a `GraphQLField`, which an operation has no counterpart
+   * for, and are not applied here. `include`/`exclude`/`filter`,
+   * `selectionDepth`, `toolName` and `extensions.mcp` do not apply at all —
+   * they project a schema, and you wrote this document yourself.
+   */
+  operations?: OperationsInput;
   /**
    * Runs against each server this factory mints, before it is connected — the
    * hook for everything the MCP SDK offers that this package does not generate:
@@ -180,7 +211,7 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
   const schema = options.extend
     ? extendSchemaForMcp(options.schema, options.extend)
     : options.schema;
-  const descriptors = buildTools(schema, options);
+  const descriptors = withOperations(schema, buildTools(schema, options), options);
   const executor = options.executor ?? createLocalExecutor(schema);
   const customTools = options.tools ?? [];
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
@@ -238,6 +269,38 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
     guardToolArguments(server, validators satisfies ToolValidators, maxChars);
     return server;
   };
+}
+
+/**
+ * Folds any hand-written `operations` in over the generated descriptors.
+ *
+ * An operation replaces a generated tool of the same name and **keeps its
+ * slot**, because `Map.set` on an existing key does not reorder: swapping one
+ * tool's implementation should not shuffle the listing an agent may already
+ * have read. Meta and custom tools still win over both, which is handled where
+ * they are registered — final precedence is
+ * `generated < operations < meta < tools`.
+ *
+ * Only the plain forms of the shared options carry over: a `selectionDepth`- or
+ * `nullBranches`-style callback is handed a `GraphQLField`, and an operation
+ * has none to hand it.
+ */
+function withOperations(
+  schema: GraphQLSchema,
+  generated: ToolDescriptor[],
+  options: CreateMcpServerOptions,
+): ToolDescriptor[] {
+  if (!options.operations) return generated;
+  const curated = buildOperationTools(schema, options.operations, {
+    nameCase: options.nameCase,
+    scalars: options.scalars,
+    nullBranches: typeof options.nullBranches === 'function' ? undefined : options.nullBranches,
+    mutationHints: options.mutationHints,
+    exampleDepth: typeof options.exampleDepth === 'function' ? undefined : options.exampleDepth,
+  });
+  const byName = new Map(generated.map((descriptor) => [descriptor.name, descriptor]));
+  for (const descriptor of curated) byName.set(descriptor.name, descriptor);
+  return [...byName.values()];
 }
 
 /** Reads a key off the `metaTools` object form (absent for the `true` form). */

@@ -417,7 +417,11 @@ src/
   Node users who will never call it.
 - **Custom tools** (the `tools` option) add to — or override by name — generated
   tools. `registerTool` throws on duplicate names, so overrides are resolved
-  *before* registering.
+  *before* registering. Full precedence, four surfaces deep:
+  `generated < operations < meta < tools`. The `operations` fold (`withOperations`
+  in `server.ts`) is a `Map` keyed by name, so an operation replacing a generated
+  tool keeps that tool's **slot** in the listing — swapping an implementation
+  should not reshuffle a listing an agent may already have read.
 - **`decorateServer` runs in the only window that works.** Prompts and resources
   can declare their capabilities only while no transport is attached, so the
   hook is called between minting the server and connecting it — and *before*
