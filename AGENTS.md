@@ -477,7 +477,7 @@ src/
   hook is called between minting the server and connecting it — and *before*
   `shareToolListing`, because the SDK's `registerTool` calls
   `sendToolListChanged`, whose override latches `cache.off` unconditionally and
-  would retire issue #16's listing cache factory-wide. It is synchronous by
+  would retire the shared `ToolListingCache` (`handlers.ts`) factory-wide. It is synchronous by
   construction (a thenable return throws): `ServerFactory` is sync and both
   handlers mint-then-connect, so an await there is registration racing
   `initialize`. Two hazards live in the README rather than in code, because
