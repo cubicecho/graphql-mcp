@@ -413,3 +413,120 @@ function unwrap(schema: unknown): unknown {
 function shapeOf(schema: unknown): Record<string, unknown> {
   return (unwrap(schema) as { shape: Record<string, unknown> }).shape;
 }
+
+describe('inputField', () => {
+  // Two tables whose filters reference each other through relation filters —
+  // the shape that made a real listing 92% `definitions`.
+  const schema = buildSchema(/* GraphQL */ `
+    input StringFilter {
+      eq: String
+      contains: String
+    }
+    input TriggerListRelationFilter {
+      every: TriggerFilters
+      some: TriggerFilters
+    }
+    input TriggerFilters {
+      id: StringFilter
+      tasks: TaskListRelationFilter
+    }
+    input TaskListRelationFilter {
+      every: TaskFilters
+      some: TaskFilters
+    }
+    input TaskFilters {
+      id: StringFilter
+      triggers: TriggerListRelationFilter
+    }
+    input RequiredWhere {
+      id: StringFilter!
+      name: StringFilter
+    }
+    type Query {
+      tasks(where: TaskFilters): String
+      strict(where: RequiredWhere): String
+    }
+  `);
+  const argsOf = (fieldName: string, options?: ZodShapeOptions) =>
+    argsToZodShape(
+      (schema.getQueryType() as GraphQLObjectType).getFields()[fieldName].args,
+      options,
+    );
+  const render = (shape: Record<string, unknown>) =>
+    JSON.stringify(toJsonSchemaCompat(z.object(shape as Parameters<typeof z.object>[0])));
+
+  const noRelations: ZodShapeOptions = {
+    inputField: (field) => !/ListRelationFilter/.test(String(field.type)),
+  };
+
+  test('a pruned field is gone from the advertised schema', () => {
+    const rendered = render(argsOf('tasks', noRelations));
+    assert.doesNotMatch(rendered, /triggers/);
+    // The field that carries the actual capability survives untouched.
+    assert.match(rendered, /"eq"/);
+  });
+
+  test('nothing reached only through a pruned field survives in definitions', () => {
+    // The point of pruning at the walk rather than after it: the type is never
+    // visited, so it cannot be left behind as an orphan `definitions` entry
+    // that costs bytes while nothing references it.
+    const rendered = render(argsOf('tasks', noRelations));
+    for (const orphan of [
+      'TriggerListRelationFilter',
+      'TaskListRelationFilter',
+      'TriggerFilters',
+    ]) {
+      assert.doesNotMatch(rendered, new RegExp(orphan), `${orphan} survived the prune`);
+    }
+  });
+
+  test('pruning the relation closure is most of the schema on this shape', () => {
+    const before = render(argsOf('tasks')).length;
+    const after = render(argsOf('tasks', noRelations)).length;
+    assert.ok(after < before * 0.6, `expected a large cut, got ${before} → ${after}`);
+  });
+
+  test('pruning a non-null field throws rather than shipping a broken tool', () => {
+    // The server still requires it, so the tool would be advertised as callable
+    // and rejected on every call — a failure an agent cannot diagnose from the
+    // tool it was given.
+    assert.throws(
+      () => argsOf('strict', { inputField: (field) => field.name !== 'id' }),
+      /pruned `RequiredWhere.id`, which is non-null/,
+    );
+  });
+
+  test('a nullable sibling of a non-null field still prunes', () => {
+    const rendered = render(argsOf('strict', { inputField: (field) => field.name !== 'name' }));
+    assert.doesNotMatch(rendered, /"name"/);
+    assert.match(rendered, /"id"/);
+  });
+
+  test('the parent type is passed, so one type can be pruned and another spared', () => {
+    // `StringFilter.contains` goes only where it is reached through TaskFilters.
+    const rendered = render(
+      argsOf('tasks', {
+        inputField: (field, parent) => !(parent.name === 'StringFilter' && field.name === 'eq'),
+      }),
+    );
+    assert.doesNotMatch(rendered, /"eq"/);
+    assert.match(rendered, /"contains"/);
+  });
+
+  test('keeping every field is byte-identical to no callback at all', () => {
+    assert.equal(render(argsOf('tasks', { inputField: () => true })), render(argsOf('tasks')));
+  });
+
+  test('pruning every field of a type leaves an empty object, not a crash', () => {
+    // Degenerate but coherent: the argument survives and accepts `{}`. Better
+    // than a throw, which would punish a broad predicate for a type the caller
+    // may never have meant to reach.
+    const rendered = render(
+      argsOf('tasks', { inputField: (_field, parent) => parent.name !== 'StringFilter' }),
+    );
+    // Asserted as the empty shape rather than by name: `withName` is a no-op on
+    // zod 3, so the type has no `definitions` entry to point at there.
+    assert.match(rendered, /"properties":\{\}/);
+    assert.doesNotMatch(rendered, /"eq"/);
+  });
+});

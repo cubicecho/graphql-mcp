@@ -145,6 +145,7 @@ export type {
 export { VERSION } from './version.ts';
 export type { AnyZodType, ZodShape } from './zodCompat.ts';
 export type {
+  InputFieldFilter,
   NullBranches,
   ScalarMap,
   ScalarMapping,

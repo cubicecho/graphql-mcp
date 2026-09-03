@@ -121,7 +121,8 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
    *
    * Documents validate against the *extended* schema, so an operation may
    * select an MCP-only field. `nameCase`, `scalars`, `mutationHints`,
-   * `nullBranches` and `exampleDepth` carry over in their plain forms; their
+   * `inputField`, `nullBranches` and `exampleDepth` carry over in their plain
+   * forms (`inputField` whole, being type-keyed already); their
    * callback forms take a `GraphQLField`, which an operation has no counterpart
    * for, and are not applied here. `include`/`exclude`/`filter`,
    * `selectionDepth`, `toolName` and `extensions.mcp` do not apply at all —
@@ -295,6 +296,9 @@ function withOperations(
     nameCase: options.nameCase,
     scalars: options.scalars,
     nullBranches: typeof options.nullBranches === 'function' ? undefined : options.nullBranches,
+    // Carries over whole: it is already a pure function of the input type, so
+    // it has nothing to say about the root field an operation lacks.
+    inputField: options.inputField,
     mutationHints: options.mutationHints,
     exampleDepth: typeof options.exampleDepth === 'function' ? undefined : options.exampleDepth,
   });

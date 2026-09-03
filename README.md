@@ -570,6 +570,58 @@ once under its GraphQL name, so rendering one type at two modes inside a single
 tool asks for two definitions under one id — which is an error from the JSON
 Schema conversion, not a size trade.
 
+## Pruning input fields
+
+`nullBranches` compresses how each field is rendered. Sometimes the problem is
+that the field is there at all.
+
+Generated CRUD schemas emit a relation filter per foreign key, and those relation
+filters point at each other. A `TaskFilters` reaches `TriggerListRelationFilter`
+reaches `TriggerFilters` reaches `TaskListRelationFilter` — so one `where`
+argument on one tool drags in the filter type of every table it can reach through
+a join, transitively. On a schema of any size the closure is most of the
+advertised bytes, and an agent that only ever filters on a column never calls any
+of it.
+
+`include`/`exclude` cannot reach this: they choose *root fields*, and the cost is
+inside an argument of a field you want to keep. `inputField` chooses fields of
+input objects:
+
+```ts
+createMcpServer({
+  schema,
+  inputField: (field) => !/ListRelationFilter/.test(String(field.type)),
+});
+```
+
+The callback is handed the input field and the input object that contains it, and
+returns whether to advertise it. It runs during the walk, not after — so a type
+reached *only* through a pruned field is never visited, and never lands in
+`definitions` as an orphan nothing references. That is the whole point: pruning
+one field on `TaskFilters` deletes the closure behind it.
+
+```ts
+// keep a filter type's cheap operators and drop the rest
+inputField: (field, parent) =>
+  parent.name.endsWith('Filter') ? ['eq', 'in', 'contains'].includes(field.name) : true;
+```
+
+**Pruning a non-null field throws at build time.** The GraphQL server still
+requires it, so the tool would be advertised as callable and rejected on every
+call, for a reason an agent cannot see from the tool it was given. A broad
+predicate that catches one required field fails where a human is reading it
+rather than once per call in production. Make the field nullable in the schema,
+or spare it in the predicate.
+
+Pruning *every* field of a type is allowed, and leaves an object that accepts
+`{}`. It is degenerate but coherent — better than a throw for a type a broad
+predicate reached and the caller never meant to name.
+
+The callback must be a pure function of `(field, parent)`. Input types are
+hoisted once per GraphQL name and memoized, so a predicate that answered
+differently depending on which tool was being built would ask for two definitions
+under one id.
+
 ## Write hints
 
 Queries are annotated `readOnlyHint: true, idempotentHint: true`, which is
@@ -772,8 +824,8 @@ console.log(`${((prose / all) * 100).toFixed(1)}% prose across ${tools.length} t
 
 A surface that is a couple of percent prose is nearly all machine-readable
 schema an agent will skim past, and [`nullBranches`](#trimming-null-branches),
-[`selectionDepth`](#selection-depth) and `include`/`exclude` all still have
-leverage on it. A surface that is a third prose is done — spend the effort
+[`inputField`](#pruning-input-fields), [`selectionDepth`](#selection-depth) and
+`include`/`exclude` all still have leverage on it. A surface that is a third prose is done — spend the effort
 elsewhere.
 
 **Then read the descriptions the way an agent would.** A green test suite
@@ -937,11 +989,14 @@ operations: [readFileSync('mcp/tasks.graphql', 'utf8')], // named `query tasks`
 
 Go the other way with `include: []`, which leaves only what you wrote.
 
-`nameCase`, `scalars`, `nullBranches`, `mutationHints`, `exampleDepth`,
-`maxChars`, `context`, `executor` and `extend` all apply to operation tools —
-and because documents validate against the *extended* schema, an operation may
-select an MCP-only field. Their callback forms don't: a `nullBranches` callback
-is handed a `GraphQLField`, and an operation has none.
+`nameCase`, `scalars`, `nullBranches`, `inputField`, `mutationHints`,
+`exampleDepth`, `maxChars`, `context`, `executor` and `extend` all apply to
+operation tools — and because documents validate against the *extended* schema,
+an operation may select an MCP-only field. Their callback forms mostly don't: a
+`nullBranches` callback is handed a `GraphQLField`, and an operation has none.
+`inputField` is the exception, and carries over whole: it is already a pure
+function of the input type, so it has nothing to say about the root field an
+operation lacks.
 
 **`include`/`exclude`/`filter` do not apply, and that is deliberate.** They match
 GraphQL *field* names and govern how the schema is projected; making them filter

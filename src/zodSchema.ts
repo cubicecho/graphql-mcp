@@ -23,6 +23,7 @@
 import {
   type GraphQLArgument,
   type GraphQLInputField,
+  type GraphQLInputObjectType,
   type GraphQLInputType,
   type GraphQLScalarType,
   isEnumType,
@@ -102,7 +103,43 @@ export interface ZodShapeOptions {
    * a nullable element always renders its null branch.
    */
   nullBranches?: NullBranches;
+  /**
+   * Whether a field of an input object is advertised at all. Return `false` to
+   * prune it. Default: every field is kept.
+   *
+   * The knob every other option lacks: `include`, `filter`, `decorate` and the
+   * rest all address a *root field*, so the transitive closure behind a
+   * generated `where` was take-it-or-leave-it. On a generated CRUD surface that
+   * closure is most of the listing — relation filters pull in each other's
+   * whole filter type, measured at 92% of a 378 kB listing for capability that
+   * went unused across 100 logged calls.
+   *
+   * ```ts
+   * // drop relation filters from the MCP projection; the API keeps them
+   * inputField: (field) => !/ListRelationFilter/.test(String(field.type))
+   * ```
+   *
+   * **It must be a pure function of the type**, which is why it receives the
+   * field and its parent and *not* the root field it was reached through.
+   * Input objects are cached and named by GraphQL type name alone, so one name
+   * has to mean one schema; a prune that varied by route would put two bodies
+   * under one name and throw `Duplicate schema id` during JSON Schema
+   * conversion. Deciding per type keeps the cache key correct by construction.
+   *
+   * Pruning a **non-null** field throws instead: the server still requires it,
+   * so the tool would be advertised as callable and rejected on every call.
+   */
+  inputField?: InputFieldFilter;
 }
+
+/**
+ * Decides whether one field of an input object is advertised. See
+ * {@link ZodShapeOptions.inputField}.
+ */
+export type InputFieldFilter = (
+  field: GraphQLInputField,
+  parent: GraphQLInputObjectType,
+) => boolean;
 
 const SCALAR_BUILDERS: Record<string, () => AnyZodType> = {
   Int: () => z.number().int(),
@@ -158,6 +195,7 @@ interface Ctx {
   done: Map<string, AnyZodType>;
   scalar: ScalarResolver;
   nullBranches: NullBranches;
+  inputField: InputFieldFilter | undefined;
 }
 
 /** Normalizes either mapping form into a single lookup function. */
@@ -227,6 +265,23 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
     );
     const shape: ZodShape = {};
     for (const [name, field] of Object.entries(type.getFields())) {
+      if (ctx.inputField && !ctx.inputField(field, type)) {
+        // A pruned non-null field is not a smaller tool, it is a broken one:
+        // the schema stops advertising a field the server still requires, so
+        // every call is rejected for a reason the agent cannot see from the
+        // tool. Refusing at build time is the same bargain the operation
+        // refusals make — fail where a human is reading, not per call.
+        if (isNonNullType(field.type)) {
+          throw new Error(
+            `graphql-mcp: \`inputField\` pruned \`${type.name}.${name}\`, which is non-null. ` +
+              'The GraphQL server still requires it, so every call to a tool using this type ' +
+              'would fail. Keep the field, or make it nullable in the schema.',
+          );
+        }
+        // Never walked, so nothing it referenced is reachable either — a type
+        // reached only through a pruned field never enters `definitions`.
+        continue;
+      }
       shape[name] = withArgDefault(
         describe(fieldToZod(field.type, ctx, 'property'), field.description),
         field,
@@ -314,6 +369,7 @@ export function argsToZodShape(
     done: new Map(),
     scalar: toResolver(options.scalars),
     nullBranches: options.nullBranches ?? 'always',
+    inputField: options.inputField,
   };
   const shape: ZodShape = {};
   for (const arg of args) {

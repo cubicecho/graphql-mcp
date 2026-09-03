@@ -22,6 +22,7 @@ import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import {
   argsToZodShape,
   DEFAULT_NULL_BRANCHES,
+  type InputFieldFilter,
   type NullBranches,
   type ScalarMapping,
   type ZodShapeOptions,
@@ -275,6 +276,22 @@ export interface BuildToolsOptions {
    */
   scalars?: ScalarMapping;
   /**
+   * Prune fields from the input *types* a tool advertises — the one axis every
+   * other option here misses, since the rest all address a root field. Return
+   * `false` to drop a field.
+   *
+   * ```ts
+   * // drop relation filters from the MCP projection; the API keeps them
+   * inputField: (field) => !/ListRelationFilter/.test(String(field.type))
+   * ```
+   *
+   * Applies to every tool: it is a statement about the type, not about the
+   * field it was reached through, and it has to be — see
+   * {@link ZodShapeOptions.inputField} for why a per-root-field prune cannot
+   * work. Pruning a non-null field throws.
+   */
+  inputField?: InputFieldFilter;
+  /**
    * Whether a nullable argument advertises an explicit `null` branch alongside
    * being absent from `required`. Default `'always'`.
    *
@@ -412,6 +429,7 @@ export function buildTools(
         shape: {
           scalars: options.scalars,
           nullBranches: ext?.nullBranches ?? branchesFor(options.nullBranches, field, kind),
+          inputField: options.inputField,
         },
         mutationHints: options.mutationHints ?? 'uniform',
         exampleDepth: ext?.exampleDepth ?? depthFor(options.exampleDepth, field, kind),

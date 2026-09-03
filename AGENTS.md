@@ -288,6 +288,29 @@ src/
   thrown `tools/list` as the failure mode. A safe widening, if it is ever asked
   for, is a mode that is a pure function of the *containing input type*
   (`(type: GraphQLInputObjectType) => NullBranches`): one type, one mode, one id.
+- **`inputField` prunes during the walk, not after it (`zodSchema.ts`).** The
+  cost `nullBranches` compresses is sometimes a field that should not be
+  advertised at all: a generated CRUD schema emits a relation filter per foreign
+  key, and those point at each other, so one `where` argument drags in the filter
+  type of every table reachable through a join. `include`/`exclude` cannot reach
+  it — they choose root fields, and this is inside an argument of a field you are
+  keeping. The predicate is called in `baseToZod`'s input-object field loop and a
+  rejected field `continue`s **before** `fieldToZod` recurses, so a type reached
+  only through it is never visited and never lands in `definitions` as an orphan
+  nothing references. Pruning after the walk would have kept every one of those
+  entries, which is the whole cost. **A pruned non-null field throws at build
+  time**: the server still requires it, so the tool would be advertised as
+  callable and rejected on every call for a reason the agent cannot see from the
+  tool — the same bargain the operation refusals make, fail where a human is
+  reading. Pruning every field of a type is deliberately *not* an error; it
+  leaves an object accepting `{}`, which is coherent, where a throw would punish
+  a broad predicate for a type the caller never meant to reach. The signature is
+  `(field, parent) => boolean` and must be a pure function of those two: input
+  types are hoisted once per GraphQL name and memoized on `Ctx`, so a predicate
+  varying by tool asks for two definitions under one id — the same constraint
+  that keeps `nullBranches` off per-argument. Being type-keyed rather than
+  field-keyed is also why it carries into `buildOperationTools` whole, where the
+  `nullBranches` callback cannot go.
 - **`connectServer(server, transport)` is how a server should be connected.**
   `params.arguments` is optional in the MCP schema, and a tool whose arguments
   are all optional gives a client nothing to put there — but the SDK hands that

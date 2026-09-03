@@ -58,8 +58,10 @@ import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import {
   argsToZodShape,
   DEFAULT_NULL_BRANCHES,
+  type InputFieldFilter,
   type NullBranches,
   type ScalarMapping,
+  type ZodShapeOptions,
 } from './zodSchema.ts';
 
 /**
@@ -91,6 +93,17 @@ export interface BuildOperationToolsOptions {
   scalars?: ScalarMapping;
   /** Whether nullable variables advertise an explicit `null` branch. Default `'always'`. */
   nullBranches?: NullBranches;
+  /**
+   * Prune fields from the input types these tools advertise. Return `false` to
+   * drop a field; pruning a non-null field throws. See
+   * {@link ZodShapeOptions.inputField}.
+   *
+   * It applies here for the same reason it applies to generated tools: a
+   * hand-written document reaches the same `where` types, and a projection that
+   * pruned one surface but not the other would advertise one GraphQL type two
+   * ways across the listing.
+   */
+  inputField?: InputFieldFilter;
   /** How a mutation's write hints are derived. Default `'uniform'`. */
   mutationHints?: MutationHints;
   /**
@@ -275,7 +288,11 @@ function toInputSchema(
   options: BuildOperationToolsOptions,
   nullBranches: NullBranches,
 ): ZodShape {
-  const shape = argsToZodShape(args, { scalars: options.scalars, nullBranches });
+  const shape = argsToZodShape(args, {
+    scalars: options.scalars,
+    nullBranches,
+    inputField: options.inputField,
+  });
   variables.forEach((variable, index) => {
     if (!variable.defaultValue || variable.type.kind !== Kind.NON_NULL_TYPE) return;
     const name = args[index].name;
