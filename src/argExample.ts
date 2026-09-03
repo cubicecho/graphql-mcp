@@ -56,7 +56,7 @@ export function exampleForType(
 ): string | undefined {
   if (depth < 1) return undefined;
   if (!isInputObjectType(getNamedType(type))) return undefined;
-  const value = renderType(type, depth, new Set());
+  const value = renderType(type, depth, new Set(), true);
   if (value === ABANDON) return undefined;
   const json = JSON.stringify(value);
   // `{}` and `[{}]` are the shapes that teach nothing — an all-optional object
@@ -81,26 +81,33 @@ export function buildArgExample(
   return exampleForType(arg.type, depth);
 }
 
-/** One position's value: a list wraps a single element, everything else is itself. */
+/**
+ * One position's value: a list wraps a single element, everything else is
+ * itself. `top` marks the argument's own type — list wrappers included, since
+ * `[UpdateTaskInput]` is the same argument in a list — and only reaches the
+ * all-optional fallback in {@link renderNamed}, which is stricter there.
+ */
 function renderType(
   type: GraphQLInputType,
   depth: number,
   path: ReadonlySet<string>,
+  top = false,
 ): unknown | typeof ABANDON {
-  if (isNonNullType(type)) return renderType(type.ofType, depth, path);
+  if (isNonNullType(type)) return renderType(type.ofType, depth, path, top);
   // One element is the whole lesson: a second would only repeat it at double
   // the width, and the budget is spent on nesting instead.
   if (isListType(type)) {
-    const element = renderType(type.ofType, depth, path);
+    const element = renderType(type.ofType, depth, path, top);
     return element === ABANDON ? ABANDON : [element];
   }
-  return renderNamed(type, depth, path);
+  return renderNamed(type, depth, path, top);
 }
 
 function renderNamed(
   type: GraphQLNamedType,
   depth: number,
   path: ReadonlySet<string>,
+  top = false,
 ): unknown | typeof ABANDON {
   if (!isInputObjectType(type)) return leafValue(type);
   // A type that contains itself has no finite literal. Reached through a
@@ -134,9 +141,32 @@ function renderNamed(
     // budget ran out before the nesting the fallback exists to reveal. Dropping
     // it lets the emptiness propagate, so the example is suppressed outright
     // rather than shipped half-built.
-    if (value !== ABANDON && !isEmptyShape(value)) shape[first.name] = value;
+    //
+    // At the top level a *scalar* first field is dropped too, for the opposite
+    // reason: there was never any nesting to reveal, so the fallback just names
+    // one arbitrary optional key under a banner that says "required fields
+    // only". On an all-optional update input (`set: UpdateTaskInput`, every
+    // column nullable) the key it picks is the first column — usually `id` —
+    // and `set: {"id":"string"}` sitting above a `where` keyed on the same `id`
+    // reads as "id is how you address the row", which is what `where` is for.
+    // An agent that copies it writes the primary key.
+    //
+    // Only at the top level, because deeper down the scalar *is* the nesting:
+    // `where: TaskFilters` renders `{"name":{"eq":"string"}}` only because the
+    // inner all-optional `StringFilter` expands to its scalar `eq`. Applying
+    // the rule at every level collapses that to `{}` and suppresses the whole
+    // example — the `orderBy`/`where` win this fallback exists for.
+    const worthShowing = !top || isStructural(value);
+    if (value !== ABANDON && worthShowing && !isEmptyShape(value)) {
+      shape[first.name] = value;
+    }
   }
   return shape;
+}
+
+/** An object or a list — a value with an inside worth showing. */
+function isStructural(value: unknown): boolean {
+  return typeof value === 'object' && value !== null;
 }
 
 /** `{}` or `[{}]` — structurally present, informationally absent. */

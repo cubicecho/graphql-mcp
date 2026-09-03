@@ -45,6 +45,19 @@ const schema = buildSchema(/* GraphQL */ `
   input Empty {
     _unused: String
   }
+  # All-optional with a scalar first field, the shape every generated update
+  # input has: no nesting to reveal, and the first column is the primary key.
+  input UpdateTaskInput {
+    id: String
+    name: String
+    enabled: Boolean
+  }
+  # All-optional, but the first field is a list of objects — nesting the
+  # fallback exists to show, arriving wrapped rather than bare.
+  input ListFirst {
+    tags: [StringFilter!]
+    name: String
+  }
   input Narrow {
     a: StringFilter!
   }
@@ -77,6 +90,7 @@ const schema = buildSchema(/* GraphQL */ `
     filtered(where: TaskFilters, orderBy: [TaskOrderBy!], limit: Int, when: DateTime): [Task!]!
     created(input: TaskInput!, defaults: Defaults, cyclic: SelfNonNull, wide: Wide, narrow: Narrow): Task
     prefilled(where: TaskFilters = { name: { eq: "x" } }, tags: [String!] = ["a"]): Task
+    updated(set: UpdateTaskInput, where: TaskFilters, listFirst: ListFirst): Task
   }
 `);
 
@@ -103,6 +117,34 @@ describe('buildArgExample', () => {
     // object wrapping a required inner one.
     assert.equal(
       buildArgExample(args('filtered').get('where') as GraphQLArgument),
+      '{"name":{"eq":"string"}}',
+    );
+  });
+
+  test('an all-optional object whose first field is a scalar gets no example', () => {
+    // The fallback is for `orderBy` — an optional outer object wrapping a
+    // required inner one. A flat bag of scalars has no nesting to reveal, so
+    // showing one arbitrary optional key under a "required fields only" banner
+    // states something false about the one field it names. Worse, on an update
+    // input that key is the primary key, and `set: {"id":"string"}` above a
+    // `where` keyed on `id` reads as "this is how you address the row".
+    assert.equal(buildArgExample(args('updated').get('set') as GraphQLArgument), undefined);
+  });
+
+  test('the fallback survives when the first field is a list of objects', () => {
+    // Structural is the test, not "is an object" — a list wrapping an object
+    // shows the same nesting one field deeper.
+    assert.equal(
+      buildArgExample(args('updated').get('listFirst') as GraphQLArgument),
+      '{"tags":[{"eq":"string"}]}',
+    );
+  });
+
+  test('narrowing the fallback leaves the filter it was built for alone', () => {
+    // The `where` on the same field still renders: its first field is an
+    // object, so there is nesting to show.
+    assert.equal(
+      buildArgExample(args('updated').get('where') as GraphQLArgument),
       '{"name":{"eq":"string"}}',
     );
   });
