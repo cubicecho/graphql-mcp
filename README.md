@@ -119,7 +119,18 @@ Lower-level helpers (`buildOperation`, `buildSelectionSet`, `argsToZodShape`,
   humanized `title` (`Create Todo`) and the description still carry the real
   field name, and `include`/`exclude` patterns always match the GraphQL field
   name. Pass `nameCase: 'preserve'` for verbatim field names, or `toolName` for
-  full control.
+  full control — return `undefined` from it to decline and keep the default for
+  that field, so renaming two fields out of forty stays a two-line callback:
+
+  ```ts
+  // rename one field; every other tool keeps its default name
+  toolName: (field) => (field.name === 'listTodosSingle' ? 'get_todo' : undefined),
+  ```
+
+  `applyNameCase` is exported for the other case — transforming a name *and*
+  casing it the way the package does (`applyNameCase(base)`). Prefer either to
+  hand-rolling snake_case, which agrees with ours until a field like
+  `parseURLFilter` splits an acronym run.
 - **Arguments → input schema.** Each field's args are converted to a Zod schema
   (the MCP input-schema format): non-null args are required, scalars/enums/lists/
   input-objects map across, custom scalars fall back to an opaque value (see

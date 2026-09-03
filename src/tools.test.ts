@@ -4,7 +4,7 @@ import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-sc
 import { buildSchema, GraphQLInt, GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 import { z } from 'zod';
 import { makeTodoSchema, setMcpExtensions } from './fixtures.test.ts';
-import { buildTools } from './tools.ts';
+import { applyNameCase, buildTools } from './tools.ts';
 
 describe('buildTools', () => {
   test('creates one tool per query and mutation field', () => {
@@ -54,6 +54,41 @@ describe('buildTools', () => {
     const { schema } = makeTodoSchema();
     const tools = buildTools(schema, { toolName: (field) => `gqlDo_${field.name}` });
     assert.ok(tools.every((t) => t.name.startsWith('gqlDo_')));
+  });
+
+  test('toolName returning undefined falls back to the default name', () => {
+    // The point of the fallback: rename one field, leave the rest alone,
+    // without the caller reimplementing `nameCase` for the pass-through.
+    const { schema } = makeTodoSchema();
+    const tools = buildTools(schema, {
+      toolName: (field) => (field.name === 'todo' ? 'fetch_one_todo' : undefined),
+    });
+    const names = tools.map((t) => t.name);
+    assert.ok(names.includes('fetch_one_todo'));
+    assert.ok(
+      names.includes('create_todo'),
+      `expected the default casing, got ${names.join(', ')}`,
+    );
+  });
+
+  test('declining still respects nameCase, rather than the built-in default', () => {
+    const { schema } = makeTodoSchema();
+    const tools = buildTools(schema, { nameCase: 'preserve', toolName: () => undefined });
+    assert.ok(tools.map((t) => t.name).includes('createTodo'));
+  });
+
+  test('applyNameCase is the exported default a toolName callback can delegate to', () => {
+    // A hand-rolled snake_case agrees with this one until an acronym run:
+    // the naive `/[A-Z]/` replacement gives `parse_u_r_l_filter`.
+    assert.equal(applyNameCase('parseURLFilter'), 'parse_url_filter');
+    assert.equal(applyNameCase('createTodo'), 'create_todo');
+    assert.equal(applyNameCase('createTodo', 'preserve'), 'createTodo');
+    // Delegating reproduces the default exactly, transform included.
+    const { schema } = makeTodoSchema();
+    const tools = buildTools(schema, {
+      toolName: (field) => applyNameCase(field.name.replace(/Todo$/, 'TodoItem')),
+    });
+    assert.ok(tools.map((t) => t.name).includes('create_todo_item'));
   });
 
   test('two fields colliding under snake_case throw', () => {

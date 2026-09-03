@@ -133,7 +133,7 @@ export type {
   SelectionDepth,
   ToolDescriptor,
 } from './tools.ts';
-export { buildTools } from './tools.ts';
+export { applyNameCase, buildTools } from './tools.ts';
 export type {
   GraphqlError,
   GraphqlExecutor,

@@ -340,9 +340,16 @@ export interface BuildToolsOptions {
   /**
    * Map a field to a custom tool name. Default: the field name under `nameCase`.
    * A name returned here is used verbatim — `nameCase` is not applied on top.
+   *
+   * Return `undefined` to decline and keep the default, the way `decorate`
+   * does. Renaming two fields out of forty is then a two-line callback, and the
+   * forty keep whatever `nameCase` says without the caller reimplementing it —
+   * reimplementing is the trap, because a hand-rolled snake_case agrees with
+   * {@link applyNameCase} until a field like `parseURLFilter` splits an acronym
+   * run, and nothing reports the divergence.
    */
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to naming
-  toolName?: (field: GraphQLField<any, any>, kind: OperationKind) => string;
+  toolName?: (field: GraphQLField<any, any>, kind: OperationKind) => string | undefined;
   /**
    * Adjust a generated descriptor last, after `extensions.mcp` metadata. Return
    * a full or partial descriptor to merge, or nothing to keep it as-is. Keys set
@@ -396,9 +403,8 @@ export function buildTools(
       const ext = (field.extensions as { mcp?: McpFieldExtensions } | undefined)?.mcp;
       if (ext?.hidden) continue;
 
-      const baseName = options.toolName
-        ? options.toolName(field, kind)
-        : applyNameCase(field.name, options.nameCase);
+      const baseName =
+        options.toolName?.(field, kind) ?? applyNameCase(field.name, options.nameCase);
       const built: DescriptorOptions = {
         name: baseName,
         kind,
@@ -747,8 +753,14 @@ function toSnakeCase(fieldName: string): string {
 }
 
 /**
- * Applies the `nameCase` option to a field name. Exported for sibling modules
- * on the same terms as {@link describeArgument}.
+ * Applies the `nameCase` option to a field name — the naming a tool gets when
+ * nothing overrides it.
+ *
+ * Part of the public surface so a `toolName` callback can delegate to the
+ * default explicitly (`applyNameCase(base)`) rather than reimplement it. The
+ * `undefined` return on `toolName` covers the common case; this covers the one
+ * where the caller wants to transform the name *and* case it the way the
+ * package does.
  */
 export function applyNameCase(fieldName: string, nameCase: NameCase = 'snake'): string {
   return nameCase === 'preserve' ? fieldName : toSnakeCase(fieldName);

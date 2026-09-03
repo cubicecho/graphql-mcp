@@ -90,7 +90,12 @@ src/
   ecosystem — is snake_case, so that's what an agent has seen most. Only the
   name changes: `title`, the description, the operation, and `include`/`exclude`
   patterns all keep the real field name. `nameCase: 'preserve'` opts out;
-  `toolName` overrides entirely and is never re-cased.
+  `toolName` overrides entirely and is never re-cased — but it may return
+  `undefined` to decline, which keeps the default for that field, and
+  `applyNameCase` is exported so a callback that transforms a name can still
+  case it the way the package does. Both exist because reimplementing the
+  casing is the trap: a naive `/[A-Z]/` snake_case agrees with ours until an
+  acronym run (`parseURLFilter`), and the divergence is silent.
 - **Mutation write hints are a default, not a derivation** (`annotationsFor`).
   Queries get `readOnlyHint`/`idempotentHint`, which the schema genuinely knows.
   Mutations get `destructiveHint: true` uniformly, which it does not — the
