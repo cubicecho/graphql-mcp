@@ -5,7 +5,7 @@ on:
 
 jobs:
   test:
-    name: test (zod ${{ matrix.zod }})
+    name: test (zod ${{ matrix.zod }}, graphql ${{ matrix.graphql }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -15,6 +15,13 @@ jobs:
         # runs once per major rather than only against whatever the lockfile
         # happens to pin.
         zod: ['^3.25', '^4.0']
+        # graphql spans two majors for the same reason, and v17 is what `npm i
+        # graphql` now installs — so the untested leg was the one a new consumer
+        # gets by default. `toArgument` (src/operations.ts) hand-builds a
+        # `GraphQLArgument` with a synthetic `astNode`, and v17 reworks
+        # `defaultValue` on input values, so this leg is what says when that
+        # construction needs adapting.
+        graphql: ['^16', '^17']
     steps:
       - uses: actions/checkout@v5
 
@@ -25,8 +32,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install zod ${{ matrix.zod }}
-        run: npm install --no-save "zod@${{ matrix.zod }}"
+      - name: Install zod ${{ matrix.zod }} / graphql ${{ matrix.graphql }}
+        run: npm install --no-save "zod@${{ matrix.zod }}" "graphql@${{ matrix.graphql }}"
 
       - name: Lint
         run: npx biome check .

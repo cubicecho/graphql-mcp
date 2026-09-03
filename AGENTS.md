@@ -480,22 +480,34 @@ npm run typecheck && npm run typecheck:tests
 npm test && npm run coverage && npm run build
 ```
 
-**And run the suite against zod 3 as well**, because the lockfile pins zod 4 and
-only one of the two majors is exercised otherwise. The v4-only affordances
-(`.meta()`, and so the JSON Schema `default` keyword and `$ref` names — see
-`zodCompat.ts`) degrade to no-ops on v3, so a new assertion about rendered
-metadata passes locally and fails CI. Guard those with the `HAS_META` constant
-the test files already define, and assert the tool *prose* unconditionally.
+**And run the suite against the other peer majors**, because the lockfile pins
+zod 4 and graphql 16, so two of the four CI legs are never exercised locally:
 
 ```bash
-npm install --no-save zod@^3.25 && npm test   # then `npm ci` to restore zod 4
+npm install --no-save zod@^3.25 graphql@^17 && npm test   # `npm ci` to restore
 ```
+
+Two ways a change passes locally and fails CI:
+
+- **zod 3 has no `.meta()`.** The v4-only affordances that ride on it (the JSON
+  Schema `default` keyword and `$ref` names — see `zodCompat.ts`) degrade to
+  no-ops on v3, so an assertion about rendered metadata passes under the
+  lockfile and fails the v3 leg. Guard those with the `HAS_META` constant the
+  test files define, and assert the tool *prose* unconditionally.
+- **graphql 16 and 17 print differently.** `print` spaces an object literal
+  `{tag: "x"}` on v16 and `{ tag: "x" }` on v17, and `defaultOf` (`tools.ts`)
+  puts that straight into a tool description. Both are the literal a caller
+  would write, so assertions on printed GraphQL should tolerate either rather
+  than pin to one major.
 
 Two GitHub Actions workflows:
 
 - **`.github/workflows/test.yml`** — runs on every push: biome check, typecheck,
-  typecheck:tests, test, coverage, build — **once per zod major** (`^3.25` and
-  `^4.0`), installed over the lockfile with `npm install --no-save`.
+  typecheck:tests, test, coverage, build — as a **2×2 matrix over the two peer
+  majors that move**, zod (`^3.25`, `^4.0`) × graphql (`^16`, `^17`), installed
+  over the lockfile with `npm install --no-save`. graphql 17 is what `npm i
+  graphql` installs today, so it is the default a new consumer gets; the peer
+  range is `>=16 <18`.
 - **`.github/workflows/release.yml`** — runs after **Test** succeeds on `main`,
   then `npx semantic-release` ([`.releaserc.json`](./.releaserc.json)).
   `@semantic-release/npm` bumps `package.json`, updates `CHANGELOG.md`, and

@@ -461,7 +461,11 @@ describe('buildTools argument defaults', () => {
 
   test('list and object defaults are printed as GraphQL literals', () => {
     assert.match(description(), /`tags`: `\[String!\]` \(omit for the default `\[\]`/);
-    assert.match(description(), /`filter`: `Filter` \(omit for the default `\{tag: "x"\}`/);
+    // `print` spaces an object literal differently across graphql majors —
+    // `{tag: "x"}` on v16, `{ tag: "x" }` on v17. Both are the literal a caller
+    // would write, which is all `defaultOf` promises, so the assertion tolerates
+    // either rather than pinning prose to one major's printer.
+    assert.match(description(), /`filter`: `Filter` \(omit for the default `\{ ?tag: "x" ?\}`/);
   });
 
   test('a nullable default says that an explicit null is not a request for it', () => {
