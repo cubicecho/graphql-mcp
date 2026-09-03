@@ -1,3 +1,15 @@
+# [2.8.0](https://github.com/cubicecho/graphql-mcp/compare/v2.7.0...v2.8.0) (2026-09-03)
+
+
+### Bug Fixes
+
+* **argExample:** drop the all-optional fallback when it renders a scalar ([5715f61](https://github.com/cubicecho/graphql-mcp/commit/5715f61e001ff50d78c8942e571fd61bdc146635)), closes [#26](https://github.com/cubicecho/graphql-mcp/issues/26)
+
+
+### Features
+
+* **tools:** let toolName decline, and export applyNameCase ([d3b6338](https://github.com/cubicecho/graphql-mcp/commit/d3b63380e2249040c6ecc100c6afa49f1b09621a)), closes [#27](https://github.com/cubicecho/graphql-mcp/issues/27)
+
 # [2.7.0](https://github.com/cubicecho/graphql-mcp/compare/v2.6.0...v2.7.0) (2026-09-02)
 
 
