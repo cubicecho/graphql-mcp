@@ -1,3 +1,10 @@
+# [2.9.0](https://github.com/cubicecho/graphql-mcp/compare/v2.8.0...v2.9.0) (2026-09-03)
+
+
+### Features
+
+* **schema:** add inputField to prune input object fields ([1b4480c](https://github.com/cubicecho/graphql-mcp/commit/1b4480cfe3d045e4f43504e886a3c6eeffa2ad66)), closes [#28](https://github.com/cubicecho/graphql-mcp/issues/28)
+
 # [2.8.0](https://github.com/cubicecho/graphql-mcp/compare/v2.7.0...v2.8.0) (2026-09-03)
 
 
