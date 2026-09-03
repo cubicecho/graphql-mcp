@@ -1,3 +1,10 @@
+# [2.10.0](https://github.com/cubicecho/graphql-mcp/compare/v2.9.0...v2.10.0) (2026-09-03)
+
+
+### Features
+
+* **schema:** allow nullBranches to be keyed per input type ([04dc8f8](https://github.com/cubicecho/graphql-mcp/commit/04dc8f81e8530644ed95c8d8d3034f7ff906217b)), closes [#22](https://github.com/cubicecho/graphql-mcp/issues/22) [#23](https://github.com/cubicecho/graphql-mcp/issues/23)
+
 # [2.9.0](https://github.com/cubicecho/graphql-mcp/compare/v2.8.0...v2.9.0) (2026-09-03)
 
 
