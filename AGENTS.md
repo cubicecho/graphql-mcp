@@ -287,7 +287,29 @@ src/
   `$defs` name in the one namespace `withName` exists to keep legible, with a
   thrown `tools/list` as the failure mode. A safe widening, if it is ever asked
   for, is a mode that is a pure function of the *containing input type*
-  (`(type: GraphQLInputObjectType) => NullBranches`): one type, one mode, one id.
+  which is what `nullBranches: { byType }` now is — one type, one mode, one id.
+- **`{ byType }` keys on the type *in the position*, not the one containing it
+  (`branchesAt` in `zodSchema.ts`).** The container reading is the obvious one
+  and it is wrong: a top-level argument has no containing input type, so keying
+  by the container leaves `where: TaskFilters` — the exact position that renders
+  `anyOf: [{$ref}, {type: 'null'}]`, the shape with no draft-07 form — beyond
+  reach, which is the reporter's whole complaint. Keying by the position's named
+  type (`getNamedType`, so a list follows its element type) governs arguments
+  and input-object fields under one rule, with no fallback case. Both keyings
+  are memo-safe, so that is not the tiebreak: the null branch is applied in
+  `fieldToZod` *outside* `baseToZod`'s memo and outside the `withName` id, so
+  the wrapper never varies a hoisted type's body. What per-type buys over the
+  per-*field* callback is that every use of a named type now renders the same
+  wrapper as well as the same body — which is what makes it safe under a
+  downstream `$defs` flatten, and why it carries into `buildOperationTools`
+  where the field callback cannot. Scalars and enums are passed too
+  (`GraphQLNamedInputType`, not `GraphQLInputObjectType`), so a scalars-only
+  policy is expressible; it is only on hoisted types that the keying also buys
+  id safety. `NullBranchesOption`'s field callback may *return* a `{ byType }`,
+  which is how per-kind and per-type compose; `branchesFor` therefore resolves
+  only the *function* form and leaves the object for `branchesAt`, and
+  `withOperations`' `typeof === 'function'` test drops the field callback while
+  passing the object through on purpose.
 - **`inputField` prunes during the walk, not after it (`zodSchema.ts`).** The
   cost `nullBranches` compresses is sometimes a field that should not be
   advertised at all: a generated CRUD schema emits a relation filter per foreign

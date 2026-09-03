@@ -21,9 +21,10 @@ import type { OperationKind, ToolAnnotations } from './types.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import {
   argsToZodShape,
+  branchesAt,
   DEFAULT_NULL_BRANCHES,
   type InputFieldFilter,
-  type NullBranches,
+  type NullBranchesSetting,
   type ScalarMapping,
   type ZodShapeOptions,
 } from './zodSchema.ts';
@@ -117,7 +118,7 @@ export interface ToolDescriptor {
    * sending an explicit `null` is only true for one of the two modes, so the
    * prose and the schema have to move together.
    */
-  nullBranches?: NullBranches;
+  nullBranches?: NullBranchesSetting;
   /**
    * Advice naming the field's pagination argument, appended to a result's
    * truncation note. Absent when the field takes no recognised paging argument.
@@ -145,7 +146,7 @@ export interface McpFieldExtensions {
   /** Per-field selection depth (overrides the `selectionDepth` option). */
   selectionDepth?: number;
   /** Per-field null-branch handling (overrides the `nullBranches` option). */
-  nullBranches?: NullBranches;
+  nullBranches?: NullBranchesSetting;
   /** Per-field argument-example depth, `0` to omit them (overrides the option). */
   exampleDepth?: number;
 }
@@ -184,11 +185,25 @@ export type SelectionDepth =
  * listing. Safe as the SDK converts it (one tool at a time, so no `$defs` id
  * collides), but see the README before flattening every tool's `$defs` into a
  * single downstream namespace.
+ *
+ * `{ byType }` is the keying that does not have that property, and is usually
+ * the closer fit anyway: it is the *filter types* that never legitimately take
+ * an explicit null, wherever they appear, rather than the fields that happen to
+ * use them.
+ *
+ * ```ts
+ * nullBranches: { byType: (type) => (type.name.endsWith('Filter') ? 'never' : 'always') }
+ * ```
+ *
+ * One named type, one mode, one rendered body — so it stays safe under a
+ * flattened `$defs`, and it carries into `operations` where the field callback
+ * cannot. A field callback may also *return* `{ byType }`, which is how a
+ * per-kind decision and a per-type one compose.
  */
 export type NullBranchesOption =
-  | NullBranches
+  | NullBranchesSetting
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
-  | ((field: GraphQLField<any, any>, kind: OperationKind) => NullBranches);
+  | ((field: GraphQLField<any, any>, kind: OperationKind) => NullBranchesSetting);
 
 /**
  * How deep an argument's `shape:` example expands, or a callback deciding per
@@ -304,7 +319,10 @@ export interface BuildToolsOptions {
    *
    * A callback sets it per field — `(_, kind) => kind === 'query' ? 'never' : 'always'`
    * — which is the usual shape of the trade: reads never need an explicit null,
-   * writes use one to clear a column. See {@link NullBranchesOption}.
+   * writes use one to clear a column. `{ byType: (type) => ... }` sets it per
+   * *named input type* instead, which is what a mutation taking both a filter
+   * and a patch needs: `where` never wants an explicit null and `set` does, and
+   * a per-field mode has to choose one for both. See {@link NullBranchesOption}.
    */
   nullBranches?: NullBranchesOption;
   /**
@@ -606,13 +624,17 @@ function depthFor(
   return typeof depth === 'function' ? depth(field, kind) : depth;
 }
 
-/** The null-branch mode for one field: a callback is asked, a string taken as-is. */
+/**
+ * The null-branch setting for one field: a callback is asked, anything else
+ * taken as-is. A `{ byType }` object is *not* a callback — it is resolved later,
+ * per input position, by {@link branchesAt}.
+ */
 function branchesFor(
   nullBranches: NullBranchesOption | undefined,
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
   field: GraphQLField<any, any>,
   kind: OperationKind,
-): NullBranches | undefined {
+): NullBranchesSetting | undefined {
   return typeof nullBranches === 'function' ? nullBranches(field, kind) : nullBranches;
 }
 
@@ -622,7 +644,7 @@ function buildDescription(
   field: GraphQLField<any, any>,
   kind: OperationKind,
   selection: string,
-  nullBranches: NullBranches = DEFAULT_NULL_BRANCHES,
+  nullBranches: NullBranchesSetting = DEFAULT_NULL_BRANCHES,
   exampleDepth: number = DEFAULT_EXAMPLE_DEPTH,
 ): string {
   const lines: string[] = [];
@@ -679,7 +701,7 @@ function buildDescription(
  */
 export function describeArgument(
   arg: GraphQLArgument,
-  nullBranches: NullBranches = DEFAULT_NULL_BRANCHES,
+  nullBranches: NullBranchesSetting = DEFAULT_NULL_BRANCHES,
 ): string {
   const parts = [`\`${arg.name}\`: \`${arg.type.toString()}\``];
   const fallback = defaultOf(arg);
@@ -690,7 +712,7 @@ export function describeArgument(
   // only warn about null where null can still be sent (`nullBranches: 'never'`
   // rejects it outright, so the warning would describe an impossible call).
   if (fallback) {
-    const nullable = !isNonNullType(arg.type) && nullBranches !== 'never';
+    const nullable = !isNonNullType(arg.type) && branchesAt(nullBranches, arg.type) !== 'never';
     parts.push(
       nullable
         ? `(omit for the default \`${fallback}\`; an explicit \`null\` is sent as null)`

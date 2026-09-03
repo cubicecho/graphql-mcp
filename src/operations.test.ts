@@ -191,6 +191,23 @@ describe('buildOperationTools', () => {
     assert.doesNotMatch(never.description, /explicit `null`/);
   });
 
+  test('a per-type mode carries over, unlike a per-field callback', () => {
+    // The whole reason `{ byType }` survives the trip into `buildOperationTools`
+    // where `(field, kind) => ...` cannot: it is keyed on the input type, so it
+    // has nothing to ask about the root field an operation lacks.
+    const document = `query listTasks($status: Status = OPEN, $limit: Int) {
+      tasks(status: $status, limit: $limit) { id }
+    }`;
+    const [tool] = tasks(document, {
+      nullBranches: { byType: (type) => (type.name === 'Status' ? 'never' : 'always') },
+    });
+    const rendered = JSON.stringify(toJsonSchemaCompat(z.object(tool.inputSchema)));
+    assert.doesNotMatch(rendered, /"status":\{"anyOf"/);
+    assert.match(rendered, /"limit":\{"anyOf"/);
+    // The prose is resolved per argument from the same setting.
+    assert.doesNotMatch(tool.description, /`OPEN`; an explicit `null`/);
+  });
+
   test('a paging operation gets the same truncation hint a field would', () => {
     const [tool] = tasks(`query listTasks($limit: Int, $offset: Int) {
       tasks(limit: $limit, offset: $offset) { id }

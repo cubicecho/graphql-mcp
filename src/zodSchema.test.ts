@@ -530,3 +530,121 @@ describe('inputField', () => {
     assert.doesNotMatch(rendered, /"eq"/);
   });
 });
+
+describe('nullBranches byType', () => {
+  // A mutation taking both a filter and a patch: the case a per-field mode
+  // cannot express, because both arguments sit on the same field.
+  const schema = buildSchema(/* GraphQL */ `
+    input StringFilter {
+      eq: String
+      contains: String
+    }
+    input TaskFilters {
+      id: StringFilter
+      name: StringFilter
+    }
+    input TaskUpdate {
+      name: String
+      notes: String
+    }
+    type Task {
+      id: ID!
+    }
+    type Mutation {
+      updateTask(where: TaskFilters, set: TaskUpdate, dryRun: Boolean): Task
+    }
+  `);
+  const args = (schema.getType('Mutation') as GraphQLObjectType).getFields().updateTask.args;
+  const render = (options?: ZodShapeOptions) =>
+    JSON.stringify(
+      toJsonSchemaCompat(z.object(argsToZodShape(args, options) as Parameters<typeof z.object>[0])),
+    );
+  /** The null branches surviving anywhere in the rendered schema. */
+  const branches = (rendered: string) => (rendered.match(/"null"/g) ?? []).length;
+
+  test('a filter family drops its branches while the patch keeps its own', () => {
+    const rendered = render({
+      nullBranches: { byType: (type) => (/Filter/.test(type.name) ? 'never' : 'always') },
+    });
+    // `where` is a `TaskFilters`, so the argument itself loses its branch too —
+    // "wherever it appears" includes the top-level position, which is the one
+    // rendering the `anyOf: [{$ref}, {type: 'null'}]` that has no legal draft-07
+    // form. Keying by the *containing* type could never have reached it.
+    assert.doesNotMatch(rendered, /"where":\{"anyOf"/);
+    // `TaskUpdate` is untouched, so clearing a column still type-checks.
+    assert.match(rendered, /"set":\{"anyOf"/);
+  });
+
+  test('the type in the position governs, not the type containing it', () => {
+    // `TaskFilters.name` is a `StringFilter`, so sparing `TaskFilters` and
+    // pruning `StringFilter` still drops the branch on that field.
+    const rendered = render({
+      nullBranches: { byType: (type) => (type.name === 'StringFilter' ? 'never' : 'always') },
+    });
+    assert.match(rendered, /"where":\{"anyOf"/);
+    assert.doesNotMatch(rendered, /"name":\{"anyOf"/);
+  });
+
+  test('scalars and enums are governed too', () => {
+    const all = render();
+    const noScalars = render({
+      nullBranches: { byType: (type) => (type.name === 'Boolean' ? 'never' : 'always') },
+    });
+    assert.match(all, /"dryRun":\{"type":\["boolean","null"\]/);
+    assert.match(noScalars, /"dryRun":\{"type":"boolean"\}/);
+  });
+
+  test("'never' everywhere matches the plain string form exactly", () => {
+    // The object form is a widening, not a second implementation.
+    assert.equal(
+      render({ nullBranches: { byType: () => 'never' } }),
+      render({ nullBranches: 'never' }),
+    );
+    assert.equal(render({ nullBranches: { byType: () => 'always' } }), render());
+  });
+
+  test('the type keying is what makes the rendered body unambiguous', () => {
+    // Every use of a named type resolves to the same mode, so a type cannot
+    // render one way here and another way there — the property that keeps it
+    // safe under a downstream `$defs` flatten, where the per-field callback is
+    // not.
+    const byType = render({
+      nullBranches: { byType: (type) => (/Filter/.test(type.name) ? 'never' : 'always') },
+    });
+    assert.ok(branches(byType) < branches(render()), 'expected the filter branches to be gone');
+    // The `$ref`-plus-null combinator — the shape with no legal draft-07 form —
+    // is gone from every filter position. It survives on `set`, and that is the
+    // trade being made rather than a leak: `TaskUpdate` was asked for `'always'`.
+    assert.doesNotMatch(
+      byType,
+      /\{"\$ref":"[^"]*(?:TaskFilters|StringFilter)"\},\{"type":"null"\}/,
+    );
+  });
+
+  test('a list of a governed type follows that type', () => {
+    // The named type is what is asked about, so the wrapper does not change the
+    // answer — but a nullable *element* is exempt either way, since an element
+    // can be null and never absent.
+    const listSchema = buildSchema(/* GraphQL */ `
+      input F {
+        eq: String
+      }
+      type Query {
+        q(a: [F], b: [F]): String
+      }
+    `);
+    const listArgs = (listSchema.getQueryType() as GraphQLObjectType).getFields().q.args;
+    const rendered = JSON.stringify(
+      toJsonSchemaCompat(
+        z.object(
+          argsToZodShape(listArgs, {
+            nullBranches: { byType: () => 'never' },
+          }) as Parameters<typeof z.object>[0],
+        ),
+      ),
+    );
+    assert.doesNotMatch(rendered, /"a":\{"anyOf"/);
+    // The element keeps its branch: `[F]` permits a null element.
+    assert.match(rendered, /"items":\{"anyOf"/);
+  });
+});

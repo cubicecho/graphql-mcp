@@ -565,10 +565,51 @@ downstream, where you get two definitions claiming one name. Split by kind when
 the read and write input families are disjoint (the generated-CRUD case), and
 key by `(tool, type)` if you merge.
 
+### Per input type
+
+Splitting by kind is the common case, not the accurate one. What is actually
+true of a generated CRUD surface is that the *filter types* never legitimately
+take an explicit null, wherever they appear — and "wherever" includes arguments
+the per-field form cannot separate, because a mutation like
+`updateTask(where: TaskFilters, set: TaskUpdate)` takes both a filter and a
+patch on the same field. One mode has to serve both, and neither answer is
+right: `'never'` breaks clearing a column, `'always'` keeps every filter branch.
+
+`{ byType }` keys the mode on the named input type instead:
+
+```ts
+createMcpServer({
+  schema,
+  nullBranches: { byType: (type) => (type.name.endsWith('Filter') ? 'never' : 'always') },
+});
+```
+
+`where` loses its branches, `set` keeps its own, in the same tool.
+
+The type handed to the callback is **the type in the position** — what is left
+after stripping `!` and list wrappers — not the input object containing it. That
+is what makes it reach the top-level `where` argument, which has no containing
+type at all and is exactly the position rendering
+`anyOf: [{"$ref": ...}, {"type": "null"}]`, the shape with no legal draft-07
+form. Scalars and enums are passed too, so "objects keep their branch, scalars
+don't" is expressible.
+
+Because the mode is a property of the type, every use of a named type renders
+the same body — so unlike the per-field callback, this form is safe to flatten
+into one downstream `$defs` namespace, and it carries into
+[`operations`](#hand-written-operations-as-tools) whole. The two compose: a
+per-field callback may *return* a `{ byType }`, which picks a policy by kind and
+then lets the policy pick by type.
+
+```ts
+nullBranches: (_field, kind) => (kind === 'query' ? 'never' : { byType: filtersOnly });
+```
+
 There is deliberately no per-*argument* setting. A named input type is hoisted
 once under its GraphQL name, so rendering one type at two modes inside a single
 tool asks for two definitions under one id — which is an error from the JSON
-Schema conversion, not a size trade.
+Schema conversion, not a size trade. Per-type has none of that: one type, one
+mode, one id, by construction.
 
 ## Pruning input fields
 
@@ -994,9 +1035,9 @@ Go the other way with `include: []`, which leaves only what you wrote.
 operation tools — and because documents validate against the *extended* schema,
 an operation may select an MCP-only field. Their callback forms mostly don't: a
 `nullBranches` callback is handed a `GraphQLField`, and an operation has none.
-`inputField` is the exception, and carries over whole: it is already a pure
-function of the input type, so it has nothing to say about the root field an
-operation lacks.
+`inputField` is the exception, and so is a `nullBranches: { byType }` — both are
+already pure functions of the input type, so they have nothing to say about the
+root field an operation lacks, and both carry over whole.
 
 **`include`/`exclude`/`filter` do not apply, and that is deliberate.** They match
 GraphQL *field* names and govern how the schema is projected; making them filter

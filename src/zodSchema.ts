@@ -25,7 +25,9 @@ import {
   type GraphQLInputField,
   type GraphQLInputObjectType,
   type GraphQLInputType,
+  type GraphQLNamedInputType,
   type GraphQLScalarType,
+  getNamedType,
   isEnumType,
   isInputObjectType,
   isListType,
@@ -72,6 +74,45 @@ export type NullBranches = 'always' | 'never';
 /** The mode a nullable input position takes when nothing says otherwise. */
 export const DEFAULT_NULL_BRANCHES: NullBranches = 'always';
 
+/**
+ * A null-branch mode chosen per *named type*, rather than one mode for a whole
+ * field. See {@link ZodShapeOptions.nullBranches}.
+ *
+ * The type handed to `byType` is the one **in the position** — the named type
+ * left after stripping non-null and list wrappers — not the input object that
+ * contains it. That is the keying the option is for: on a generated CRUD
+ * surface it is the *filter types* that never legitimately take an explicit
+ * null, wherever they appear, and "wherever" includes the top-level `where`
+ * argument, which has no containing input type at all. Keying by the container
+ * would leave exactly that position — the one rendering `anyOf: [{$ref}, {type:
+ * 'null'}]`, the shape with no legal draft-07 rendering — ungovernable.
+ *
+ * Scalars and enums are passed too, so "objects keep their branch, scalars
+ * don't" is expressible; it is only the *hoisted* types where the keying also
+ * buys id safety.
+ */
+export interface NullBranchesByType {
+  byType: (type: GraphQLNamedInputType) => NullBranches;
+}
+
+/** Either spelling of the null-branch mode. See {@link NullBranchesByType}. */
+export type NullBranchesSetting = NullBranches | NullBranchesByType;
+
+/**
+ * The mode governing one input position.
+ *
+ * Exported so the description renderer resolves it the same way the schema
+ * builder does — prose that warns about sending an explicit `null` where the
+ * schema now rejects one is a tool that lies about itself.
+ */
+export function branchesAt(
+  setting: NullBranchesSetting | undefined,
+  type: GraphQLInputType,
+): NullBranches {
+  if (setting === undefined) return DEFAULT_NULL_BRANCHES;
+  return typeof setting === 'string' ? setting : setting.byType(getNamedType(type));
+}
+
 /** Options shared by the arg→Zod conversion. */
 export interface ZodShapeOptions {
   /**
@@ -102,7 +143,7 @@ export interface ZodShapeOptions {
    * List *elements* are unaffected either way: an element cannot be absent, so
    * a nullable element always renders its null branch.
    */
-  nullBranches?: NullBranches;
+  nullBranches?: NullBranchesSetting;
   /**
    * Whether a field of an input object is advertised at all. Return `false` to
    * prune it. Default: every field is kept.
@@ -194,7 +235,7 @@ interface Ctx {
    */
   done: Map<string, AnyZodType>;
   scalar: ScalarResolver;
-  nullBranches: NullBranches;
+  nullBranches: NullBranchesSetting;
   inputField: InputFieldFilter | undefined;
 }
 
@@ -228,7 +269,7 @@ function fieldToZod(
   }
   const base = baseToZod(type, ctx);
   if (position === 'element') return base.nullable();
-  return ctx.nullBranches === 'never' ? base.optional() : base.nullish();
+  return branchesAt(ctx.nullBranches, type) === 'never' ? base.optional() : base.nullish();
 }
 
 /** Builds the Zod type for a (already nullability-stripped) list/named GraphQL type. */
@@ -368,7 +409,7 @@ export function argsToZodShape(
     pending: new Map(),
     done: new Map(),
     scalar: toResolver(options.scalars),
-    nullBranches: options.nullBranches ?? 'always',
+    nullBranches: options.nullBranches ?? DEFAULT_NULL_BRANCHES,
     inputField: options.inputField,
   };
   const shape: ZodShape = {};

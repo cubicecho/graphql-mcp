@@ -122,9 +122,10 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
    * Documents validate against the *extended* schema, so an operation may
    * select an MCP-only field. `nameCase`, `scalars`, `mutationHints`,
    * `inputField`, `nullBranches` and `exampleDepth` carry over in their plain
-   * forms (`inputField` whole, being type-keyed already); their
-   * callback forms take a `GraphQLField`, which an operation has no counterpart
-   * for, and are not applied here. `include`/`exclude`/`filter`,
+   * forms — and `inputField`, plus a `nullBranches: { byType }`, carry over
+   * whole, being type-keyed already; their *field* callback forms take a
+   * `GraphQLField`, which an operation has no counterpart for, and are not
+   * applied here. `include`/`exclude`/`filter`,
    * `selectionDepth`, `toolName` and `extensions.mcp` do not apply at all —
    * they project a schema, and you wrote this document yourself.
    */
@@ -295,6 +296,10 @@ function withOperations(
   const curated = buildOperationTools(schema, options.operations, {
     nameCase: options.nameCase,
     scalars: options.scalars,
+    // A `{ byType }` object is not a function, so it survives this test and
+    // carries over on purpose: like `inputField`, it is keyed on the input type
+    // and has nothing to say about the root field an operation lacks. Only the
+    // per-*field* callback is dropped.
     nullBranches: typeof options.nullBranches === 'function' ? undefined : options.nullBranches,
     // Carries over whole: it is already a pure function of the input type, so
     // it has nothing to say about the root field an operation lacks.

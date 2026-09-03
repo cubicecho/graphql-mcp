@@ -5,6 +5,7 @@ import { buildSchema, GraphQLInt, GraphQLObjectType, GraphQLSchema, GraphQLStrin
 import { z } from 'zod';
 import { makeTodoSchema, setMcpExtensions } from './fixtures.test.ts';
 import { applyNameCase, buildTools } from './tools.ts';
+import type { NullBranchesByType } from './zodSchema.ts';
 
 describe('buildTools', () => {
   test('creates one tool per query and mutation field', () => {
@@ -1055,5 +1056,83 @@ describe('mutationHints', () => {
     // The rest of the derived annotations survive the override.
     assert.equal(tools.get('delete_task')?.annotations.destructiveHint, true);
     assert.equal(tools.get('create_task')?.annotations.title, 'Create Task');
+  });
+});
+
+describe('buildTools per-type null branches', () => {
+  // The split a per-field mode cannot make: this mutation takes a filter *and*
+  // a patch, so one decision has to serve both arguments.
+  const sdl = `
+    input TaskFilters { name: String status: String }
+    input TaskInput { name: String notes: String }
+    type Task { id: ID! name: String! }
+    type Query { tasks(where: TaskFilters, limit: Int = 10): [Task!]! }
+    type Mutation { updateTask(where: TaskFilters, set: TaskInput): Task }
+  `;
+  const schema = buildSchema(sdl);
+  const byName = (tools: ReturnType<typeof buildTools>) => new Map(tools.map((t) => [t.name, t]));
+  const render = (tool?: ReturnType<typeof buildTools>[number]) =>
+    JSON.stringify(toJsonSchemaCompat(z.object(tool?.inputSchema ?? {})));
+  const filtersOnly: NullBranchesByType = {
+    byType: (type) => (type.name === 'TaskFilters' ? 'never' : 'always'),
+  };
+
+  test('one mutation drops the filter branch and keeps the patch branch', () => {
+    const update = byName(buildTools(schema, { nullBranches: filtersOnly })).get('update_task');
+    const rendered = render(update);
+    assert.doesNotMatch(rendered, /"where":\{"anyOf"/);
+    // `set: TaskInput` still takes an explicit null, which is how a column is
+    // cleared — the whole reason `'never'` is not simply the default.
+    assert.match(rendered, /"set":\{"anyOf"/);
+  });
+
+  test('the same type renders the same way in every tool it appears in', () => {
+    // What the per-field callback cannot promise, and what makes this form safe
+    // to flatten into one downstream `$defs` namespace.
+    const tools = byName(buildTools(schema, { nullBranches: filtersOnly }));
+    for (const name of ['tasks', 'update_task']) {
+      assert.doesNotMatch(render(tools.get(name)), /"where":\{"anyOf"/, `${name} disagreed`);
+    }
+  });
+
+  test('the prose follows per argument, not per tool', () => {
+    // `describeArgument` resolves the same setting the schema was built from,
+    // so an argument whose branch is gone stops being advertised as taking one.
+    const [tasks] = buildTools(schema, {
+      include: ['tasks'],
+      nullBranches: { byType: (type) => (type.name === 'Int' ? 'never' : 'always') },
+    });
+    // `limit: Int = 10` is the argument carrying the null caveat.
+    assert.match(tasks.description, /omit for the default `10`/);
+    assert.doesNotMatch(tasks.description, /explicit `null`/);
+  });
+
+  test('the descriptor records the object it was built at', () => {
+    const [tasks] = buildTools(schema, { include: ['tasks'], nullBranches: filtersOnly });
+    assert.equal(tasks.nullBranches, filtersOnly);
+  });
+
+  test('a per-field callback may return a per-type setting', () => {
+    // How the two compose: pick a policy by kind, then let the policy pick by
+    // type.
+    const tools = byName(
+      buildTools(schema, {
+        nullBranches: (_field, kind) => (kind === 'query' ? 'never' : filtersOnly),
+      }),
+    );
+    assert.doesNotMatch(render(tools.get('tasks')), /"null"/);
+    assert.doesNotMatch(render(tools.get('update_task')), /"where":\{"anyOf"/);
+    assert.match(render(tools.get('update_task')), /"set":\{"anyOf"/);
+  });
+
+  test('decorate can set it, and rebuilds both artifacts for it', () => {
+    const tools = byName(
+      buildTools(schema, {
+        decorate: (d) => (d.name === 'tasks' ? { nullBranches: filtersOnly } : undefined),
+      }),
+    );
+    assert.doesNotMatch(render(tools.get('tasks')), /"where":\{"anyOf"/);
+    // The undecorated neighbour keeps the default everywhere.
+    assert.match(render(tools.get('update_task')), /"where":\{"anyOf"/);
   });
 });

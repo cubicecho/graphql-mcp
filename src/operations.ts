@@ -59,7 +59,7 @@ import {
   argsToZodShape,
   DEFAULT_NULL_BRANCHES,
   type InputFieldFilter,
-  type NullBranches,
+  type NullBranchesSetting,
   type ScalarMapping,
   type ZodShapeOptions,
 } from './zodSchema.ts';
@@ -92,7 +92,7 @@ export interface BuildOperationToolsOptions {
   /** Zod schemas for GraphQL scalars, keyed by scalar name (or a resolver). */
   scalars?: ScalarMapping;
   /** Whether nullable variables advertise an explicit `null` branch. Default `'always'`. */
-  nullBranches?: NullBranches;
+  nullBranches?: NullBranchesSetting;
   /**
    * Prune fields from the input types these tools advertise. Return `false` to
    * drop a field; pruning a non-null field throws. See
@@ -286,7 +286,7 @@ function toInputSchema(
   args: ReadonlyArray<GraphQLArgument>,
   variables: ReadonlyArray<VariableDefinitionNode>,
   options: BuildOperationToolsOptions,
-  nullBranches: NullBranches,
+  nullBranches: NullBranchesSetting,
 ): ZodShape {
   const shape = argsToZodShape(args, {
     scalars: options.scalars,
@@ -351,7 +351,7 @@ function buildDescription(
   kind: OperationKind,
   definition: OperationDefinitionNode,
   args: ReadonlyArray<GraphQLArgument>,
-  nullBranches: NullBranches,
+  nullBranches: NullBranchesSetting,
   exampleDepth: number,
   query: string,
 ): string {

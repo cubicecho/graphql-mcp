@@ -147,6 +147,8 @@ export type { AnyZodType, ZodShape } from './zodCompat.ts';
 export type {
   InputFieldFilter,
   NullBranches,
+  NullBranchesByType,
+  NullBranchesSetting,
   ScalarMap,
   ScalarMapping,
   ScalarResolver,
