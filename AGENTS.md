@@ -24,7 +24,7 @@ process and forward to a remote GraphQL endpoint.
 - **Formatting/linting:** [Biome](https://biomejs.dev/) (`npm run check`). Every `if`/loop body is a
   braced block (`useBlockStatements`), and a logic check is negated with `=== false`, not `!`
   (`no-negation.grit`; `!` stays for null guards).
-- **File names:** kebab-case (`zod-schema.ts`, `event-store.ts`).
+- **File names:** kebab-case (`zod-schema.ts`, `event-store.ts`). A new module goes in the folder whose phrase below covers it, never in a `utils` or `helpers` folder.
 - **Dependencies:** `@graphql-tools/schema` (schema merging for the `extend`
   option) is the only runtime dependency. `@modelcontextprotocol/sdk`
   (`>=1.12`), `graphql` (`>=16`) and `zod` (`^3.25 || ^4.0`) are **peer deps** —
@@ -59,35 +59,46 @@ gate that catches type errors in test files.
 
 ```
 src/
-  index.ts        — public API entry point (re-exports + package overview)
-  types.ts        — GraphqlExecutor / GraphqlRequest / GraphqlResult, the execution seam
-  zod-schema.ts    — GraphQL args → Zod input schema (argsToZodShape)
-  selection.ts    — auto-built selection sets for return types (buildSelectionSet)
-  output-schema.ts — return type → Zod schema for results (buildOutputSchema)
-  operation.ts    — per-field operation documents (buildOperation)
-  rules.ts        — include/exclude pattern matching (compileRules)
-  extend.ts       — MCP-only schema additions via mergeSchemas (extendSchemaForMcp, stripRootTypes)
-  tools.ts        — schema → ToolDescriptor[] (buildTools): names, descriptions, annotations
-  operations.ts   — hand-written documents → ToolDescriptor[] (buildOperationTools)
-  meta.ts         — opt-in schema-exploration tools (buildMetaTools): introspect/search/validate/execute
-  result.ts       — GraphqlResult → CallToolResult (toCallToolResult): isError, error condensing, clamping
-  executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
-  server.ts       — createMcpServer / createServerFactory / connectServer / registerGraphqlTools (+ custom tools)
-  handlers.ts     — the SDK request handlers this package wraps (shareToolListing, guardToolArguments)
-  zod-compat.ts    — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
-  defaults.ts     — every tunable default (depths, budgets, session and replay limits), values only
-  errors.ts       — packageError (the `graphql-mcp: ` prefix) and messageOf (a caught value's text)
-  version.ts      — VERSION, read from package.json (the version servers advertise)
-  pagination.ts   — paging-argument detection for truncation hints (paginationHint)
-  arg-example.ts   — a literal JSON example of one argument's shape (buildArgExample)
-  sessions.ts     — the bounded session table behind stateful HTTP (SessionStore) and the
-                    lifecycle both HTTP handlers drive it through (SessionHost)
-                    plus SessionDirectory, which reports session ownership across instances
-  event-store.ts   — the bounded SSE replay buffer behind resumability (MemoryEventStore)
-  http.ts         — createHttpHandler for Node (IncomingMessage/ServerResponse)
-  fetch.ts        — createFetchHandler for Request/Response runtimes
-  *.test.ts       — co-located tests; fixtures.test.ts holds the shared "todos" schema
+  index.ts          — public API entry point; the only file that re-exports
+  core/             — what every other folder shares and no one concept owns
+    types.ts        — GraphqlExecutor / GraphqlRequest / GraphqlResult, the execution seam
+    defaults.ts     — every tunable default (depths, budgets, session and replay limits), values only
+    errors.ts       — packageError (the `graphql-mcp: ` prefix) and messageOf (a caught value's text)
+    version.ts      — VERSION, read from package.json (the version servers advertise)
+    zod-compat.ts   — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
+    fixtures.test.ts — the "todos" schema and helpers every test shares
+  input/            — the arguments a tool takes
+    zod-schema.ts   — GraphQL args → Zod input schema (argsToZodShape)
+    arg-example.ts  — a literal JSON example of one argument's shape (buildArgExample)
+  output/           — what a tool returns
+    selection.ts    — auto-built selection sets for return types (buildSelectionSet)
+    output-schema.ts — return type → Zod schema for results (buildOutputSchema)
+    pagination.ts   — paging-argument detection for truncation hints (paginationHint)
+    result.ts       — GraphqlResult → CallToolResult (toCallToolResult): isError, error condensing, clamping
+  catalog/          — which tools exist and what each one says
+    tools.ts        — schema → ToolDescriptor[] (buildTools): names, descriptions, annotations
+    operations.ts   — hand-written documents → ToolDescriptor[] (buildOperationTools)
+    operation.ts    — per-field operation documents (buildOperation)
+    rules.ts        — include/exclude pattern matching (compileRules)
+    extend.ts       — MCP-only schema additions via mergeSchemas (extendSchemaForMcp, stripRootTypes)
+  runtime/          — registering tools on a server and running their calls
+    server.ts       — createMcpServer / createServerFactory / connectServer / registerGraphqlTools (+ custom tools)
+    handlers.ts     — the SDK request handlers this package wraps (shareToolListing, guardToolArguments)
+    executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
+    meta.ts         — opt-in schema-exploration tools (buildMetaTools): introspect/search/validate/execute
+  transport/        — serving a server over HTTP
+    http.ts         — createHttpHandler for Node (IncomingMessage/ServerResponse)
+    fetch.ts        — createFetchHandler for Request/Response runtimes
+    sessions.ts     — the bounded session table behind stateful HTTP (SessionStore), the
+                      lifecycle both handlers drive it through (SessionHost), and
+                      SessionDirectory, which reports session ownership across instances
+    event-store.ts  — the bounded SSE replay buffer behind resumability (MemoryEventStore)
+  **/*.test.ts      — each test sits beside the module it tests
 ```
+
+Folders import downward only: `transport` → `runtime` → `catalog` → `output` → `input` → `core`. The one
+exception is type-only: `core/defaults.ts` reads the `NullBranches` type from `input`.
+No folder has an index file; a module imports the file it needs.
 
 ## Architecture & conventions
 

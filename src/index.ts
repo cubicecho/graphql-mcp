@@ -45,79 +45,18 @@
  * @packageDocumentation
  */
 
-export {
-  DEFAULT_CLAIM_TTL_MS,
-  DEFAULT_IDLE_TIMEOUT_MS,
-  DEFAULT_MAX_CHARS,
-  DEFAULT_MAX_EVENTS_PER_STREAM,
-  DEFAULT_MAX_SESSIONS,
-  DEFAULT_MAX_STREAMS,
-} from './defaults.ts';
-export type {
-  EventId,
-  EventStore,
-  ReplayOption,
-  ReplayOptions,
-  StreamId,
-} from './event-store.ts';
-export { eventStoreFactory, MemoryEventStore } from './event-store.ts';
-export type { HttpExecutorOptions, LocalExecutorOptions } from './executor.ts';
-export { createHttpExecutor, createLocalExecutor } from './executor.ts';
-export type { SchemaExtension } from './extend.ts';
-export { extendSchemaForMcp, stripRootTypes } from './extend.ts';
-export type { FetchHandlerOptions, McpFetchHandler } from './fetch.ts';
-export { createFetchHandler } from './fetch.ts';
-export {
-  /**
-   * `extensions.code` on an argument-validation error. Exported so a custom tool
-   * can answer a bad call with the same code the generated ones do — a client
-   * that branches on it should not have to know which kind of tool it called.
-   */
-  BAD_INPUT,
-  /** `extensions.code` on a failure caused by the server's own configuration. */
-  BAD_TOOL_CONFIG,
-} from './handlers.ts';
-export type { HttpHandlerOptions, McpHttpHandler, McpHttpRequest } from './http.ts';
-export { createHttpHandler } from './http.ts';
-export type { MetaToolDeps, MetaToolName, MetaToolsOptions } from './meta.ts';
-export { buildMetaTools } from './meta.ts';
-export type { BuiltOperation } from './operation.ts';
-export { buildOperation } from './operation.ts';
+export type { SchemaExtension } from './catalog/extend.ts';
+export { extendSchemaForMcp, stripRootTypes } from './catalog/extend.ts';
+export type { BuiltOperation } from './catalog/operation.ts';
+export { buildOperation } from './catalog/operation.ts';
 export type {
   BuildOperationToolsOptions,
   OperationSource,
   OperationsInput,
-} from './operations.ts';
-export { buildOperationTools } from './operations.ts';
-export { buildOutputSchema } from './output-schema.ts';
-export type { Pagination, PaginationStyle } from './pagination.ts';
-export { detectPagination, paginationHint } from './pagination.ts';
-export type { ExecutorRequest } from './result.ts';
-export { clamp, runExecutor, text, toCallToolResult } from './result.ts';
-export type { RuleMatcher } from './rules.ts';
-export { compileRules } from './rules.ts';
-export { buildSelectionSet } from './selection.ts';
-export type {
-  ContextFactory,
-  CreateMcpServerOptions,
-  CustomTool,
-  ServerDecorator,
-  ServerFactory,
-  ToolHandler,
-} from './server.ts';
-export {
-  connectServer,
-  createMcpServer,
-  createServerFactory,
-  registerGraphqlTools,
-} from './server.ts';
-export type {
-  ClosableTransport,
-  Session,
-  SessionDirectory,
-  SessionOptions,
-} from './sessions.ts';
-export { MemorySessionDirectory, SESSION_OWNER_HEADER, SessionStore } from './sessions.ts';
+} from './catalog/operations.ts';
+export { buildOperationTools } from './catalog/operations.ts';
+export type { RuleMatcher } from './catalog/rules.ts';
+export { compileRules } from './catalog/rules.ts';
 export type {
   ArgMapper,
   BuildToolsOptions,
@@ -128,8 +67,16 @@ export type {
   NullBranchesOption,
   SelectionDepth,
   ToolDescriptor,
-} from './tools.ts';
-export { applyNameCase, buildTools } from './tools.ts';
+} from './catalog/tools.ts';
+export { applyNameCase, buildTools } from './catalog/tools.ts';
+export {
+  DEFAULT_CLAIM_TTL_MS,
+  DEFAULT_IDLE_TIMEOUT_MS,
+  DEFAULT_MAX_CHARS,
+  DEFAULT_MAX_EVENTS_PER_STREAM,
+  DEFAULT_MAX_SESSIONS,
+  DEFAULT_MAX_STREAMS,
+} from './core/defaults.ts';
 export type {
   GraphqlError,
   GraphqlExecutor,
@@ -137,9 +84,9 @@ export type {
   GraphqlResult,
   OperationKind,
   ToolAnnotations,
-} from './types.ts';
-export { VERSION } from './version.ts';
-export type { AnyZodType, ZodShape } from './zod-compat.ts';
+} from './core/types.ts';
+export { VERSION } from './core/version.ts';
+export type { AnyZodType, ZodShape } from './core/zod-compat.ts';
 export type {
   InputFieldFilter,
   NullBranches,
@@ -149,5 +96,58 @@ export type {
   ScalarMapping,
   ScalarResolver,
   ZodShapeOptions,
-} from './zod-schema.ts';
-export { argsToZodShape } from './zod-schema.ts';
+} from './input/zod-schema.ts';
+export { argsToZodShape } from './input/zod-schema.ts';
+export { buildOutputSchema } from './output/output-schema.ts';
+export type { Pagination, PaginationStyle } from './output/pagination.ts';
+export { detectPagination, paginationHint } from './output/pagination.ts';
+export type { ExecutorRequest } from './output/result.ts';
+export { clamp, runExecutor, text, toCallToolResult } from './output/result.ts';
+export { buildSelectionSet } from './output/selection.ts';
+export type { HttpExecutorOptions, LocalExecutorOptions } from './runtime/executor.ts';
+export { createHttpExecutor, createLocalExecutor } from './runtime/executor.ts';
+export {
+  /**
+   * `extensions.code` on an argument-validation error. Exported so a custom tool
+   * can answer a bad call with the same code the generated ones do — a client
+   * that branches on it should not have to know which kind of tool it called.
+   */
+  BAD_INPUT,
+  /** `extensions.code` on a failure caused by the server's own configuration. */
+  BAD_TOOL_CONFIG,
+} from './runtime/handlers.ts';
+export type { MetaToolDeps, MetaToolName, MetaToolsOptions } from './runtime/meta.ts';
+export { buildMetaTools } from './runtime/meta.ts';
+export type {
+  ContextFactory,
+  CreateMcpServerOptions,
+  CustomTool,
+  ServerDecorator,
+  ServerFactory,
+  ToolHandler,
+} from './runtime/server.ts';
+export {
+  connectServer,
+  createMcpServer,
+  createServerFactory,
+  registerGraphqlTools,
+} from './runtime/server.ts';
+export type {
+  EventId,
+  EventStore,
+  ReplayOption,
+  ReplayOptions,
+  StreamId,
+} from './transport/event-store.ts';
+export { eventStoreFactory, MemoryEventStore } from './transport/event-store.ts';
+export type { FetchHandlerOptions, McpFetchHandler } from './transport/fetch.ts';
+export { createFetchHandler } from './transport/fetch.ts';
+export type { HttpHandlerOptions, McpHttpHandler, McpHttpRequest } from './transport/http.ts';
+export { createHttpHandler } from './transport/http.ts';
+export type {
+  ClosableTransport,
+  Session,
+  SessionDirectory,
+  SessionOptions,
+} from './transport/sessions.ts';
+export { MemorySessionDirectory, SESSION_OWNER_HEADER, SessionStore } from './transport/sessions.ts';

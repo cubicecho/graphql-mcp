@@ -71,7 +71,7 @@ what it returns; one session lifecycle serves both transports."
 | R15 | Refactor [consistency] · low value | Groups the eight scattered `DEFAULT_*` tunables in one `defaults.ts`, keeping every exported name. | P22 | — | done |
 | R16 | Refactor [consistency] · low value | Renames nine camelCase files to kebab-case and updates AGENTS.md's module list. | House file naming | — | done |
 | R17 | Refactor [consistency] · low value | Reformats to line width 120. | House formatter setting; touches every file | — | done |
-| R18 | Refactor [structure] · low value | Groups the flat 23-module `src/` into folders by concept. | P21; AGENTS.md documents the flat layout today | decision | open |
+| R18 | Refactor [structure] · low value | Groups the flat 23-module `src/` into folders by concept. | P21; AGENTS.md documents the flat layout today | decision | done |
 | A3 | API change · low value | Exports named objects for the closed sets (`NameCase`, `NullBranches`, `MutationHints`, operation kind). | P16 for consumers | decision | open |
 
 Status is `open`, `approved`, `declined` or `done`.
@@ -82,7 +82,7 @@ Status is `open`, `approved`, `declined` or `done`.
   error envelope through `toCallToolResult` instead of throwing.
 - Tests are co-located as `src/**/*.test.ts` on `node --test` (AGENTS.md; overrides P21's
   separate test folders).
-- Shared test fixtures live in `src/fixtures.test.ts`.
+- Shared test fixtures live in `src/core/fixtures.test.ts`.
 - `index.ts` is the only re-exporter; anything exported there is public API.
 - Generated files: `CHANGELOG.md` (semantic-release), `dist/` (`npm run build`, ignored).
 - Every change runs the AGENTS.md gate, including the `zod@^3.25` + `graphql@^17` leg.
