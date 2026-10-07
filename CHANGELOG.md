@@ -1,3 +1,10 @@
+## [2.10.2](https://github.com/cubicecho/graphql-mcp/compare/v2.10.1...v2.10.2) (2026-10-07)
+
+
+### Bug Fixes
+
+* give every caught error a readable message ([f901a94](https://github.com/cubicecho/graphql-mcp/commit/f901a94bd2fd83dd0c7412b2f6cf4f6058713752))
+
 ## [2.10.1](https://github.com/cubicecho/graphql-mcp/compare/v2.10.0...v2.10.1) (2026-10-07)
 
 
