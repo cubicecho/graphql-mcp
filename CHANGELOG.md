@@ -1,3 +1,10 @@
+## [2.10.1](https://github.com/cubicecho/graphql-mcp/compare/v2.10.0...v2.10.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* **sessions:** swallow a failing directory claim ([7748f55](https://github.com/cubicecho/graphql-mcp/commit/7748f5528e89f9e996836ee63ce03b7729c34c54))
+
 # [2.10.0](https://github.com/cubicecho/graphql-mcp/compare/v2.9.0...v2.10.0) (2026-09-03)
 
 
