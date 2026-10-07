@@ -27,16 +27,7 @@ import {
   isScalarType,
   isUnionType,
 } from 'graphql';
-
-/**
- * How many object levels a selection descends when nothing says otherwise.
- *
- * Lives here because three things have to agree on it — the selection set, the
- * operation built around it, and the output schema describing what comes back —
- * and a descriptor now reports the depth it was built at, which would be a lie
- * if any of them defaulted differently.
- */
-export const DEFAULT_SELECTION_DEPTH = 2;
+import { DEFAULT_SELECTION_DEPTH } from './defaults.ts';
 
 /**
  * Builds a selection set string (e.g. `{ id name author { id __typename } }`)

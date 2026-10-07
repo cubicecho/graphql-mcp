@@ -45,6 +45,14 @@
  * @packageDocumentation
  */
 
+export {
+  DEFAULT_CLAIM_TTL_MS,
+  DEFAULT_IDLE_TIMEOUT_MS,
+  DEFAULT_MAX_CHARS,
+  DEFAULT_MAX_EVENTS_PER_STREAM,
+  DEFAULT_MAX_SESSIONS,
+  DEFAULT_MAX_STREAMS,
+} from './defaults.ts';
 export type {
   EventId,
   EventStore,
@@ -52,12 +60,7 @@ export type {
   ReplayOptions,
   StreamId,
 } from './eventStore.ts';
-export {
-  DEFAULT_MAX_EVENTS_PER_STREAM,
-  DEFAULT_MAX_STREAMS,
-  eventStoreFactory,
-  MemoryEventStore,
-} from './eventStore.ts';
+export { eventStoreFactory, MemoryEventStore } from './eventStore.ts';
 export type { HttpExecutorOptions, LocalExecutorOptions } from './executor.ts';
 export { createHttpExecutor, createLocalExecutor } from './executor.ts';
 export type { SchemaExtension } from './extend.ts';
@@ -90,7 +93,7 @@ export { buildOutputSchema } from './outputSchema.ts';
 export type { Pagination, PaginationStyle } from './pagination.ts';
 export { detectPagination, paginationHint } from './pagination.ts';
 export type { ExecutorRequest } from './result.ts';
-export { clamp, DEFAULT_MAX_CHARS, runExecutor, text, toCallToolResult } from './result.ts';
+export { clamp, runExecutor, text, toCallToolResult } from './result.ts';
 export type { RuleMatcher } from './rules.ts';
 export { compileRules } from './rules.ts';
 export { buildSelectionSet } from './selection.ts';
@@ -114,14 +117,7 @@ export type {
   SessionDirectory,
   SessionOptions,
 } from './sessions.ts';
-export {
-  DEFAULT_CLAIM_TTL_MS,
-  DEFAULT_IDLE_TIMEOUT_MS,
-  DEFAULT_MAX_SESSIONS,
-  MemorySessionDirectory,
-  SESSION_OWNER_HEADER,
-  SessionStore,
-} from './sessions.ts';
+export { MemorySessionDirectory, SESSION_OWNER_HEADER, SessionStore } from './sessions.ts';
 export type {
   ArgMapper,
   BuildToolsOptions,

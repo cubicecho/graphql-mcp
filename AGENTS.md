@@ -74,6 +74,7 @@ src/
   server.ts       — createMcpServer / createServerFactory / connectServer / registerGraphqlTools (+ custom tools)
   handlers.ts     — the SDK request handlers this package wraps (shareToolListing, guardToolArguments)
   zodCompat.ts    — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
+  defaults.ts     — every tunable default (depths, budgets, session and replay limits), values only
   errors.ts       — packageError (the `graphql-mcp: ` prefix) and messageOf (a caught value's text)
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
@@ -374,7 +375,7 @@ src/
   would mean walking zod across the v3/v4 split; the throw is the cheaper guard.
 - **Selection sets are auto-generated** (`buildSelectionSet`): all scalar/enum
   leaves at each level, descending into nested objects up to `selectionDepth`
-  (default `DEFAULT_SELECTION_DEPTH`, exported from `selection.ts` so the depth a
+  (default `DEFAULT_SELECTION_DEPTH`, in `defaults.ts` so the depth a
   descriptor reports and the depth it was built at cannot drift), always
   including `__typename`. Fields requiring arguments and cyclic types are
   skipped. Because the agent can't choose the selection, each

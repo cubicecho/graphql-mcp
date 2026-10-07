@@ -37,6 +37,7 @@ import {
   valueFromASTUntyped,
 } from 'graphql';
 import { z } from 'zod';
+import { DEFAULT_NULL_BRANCHES } from './defaults.ts';
 import { packageError } from './errors.ts';
 import { type AnyZodType, withDefault, withName, type ZodShape } from './zodCompat.ts';
 
@@ -72,9 +73,6 @@ export type ScalarMapping = ScalarMap | ScalarResolver;
  * See {@link ZodShapeOptions.nullBranches}.
  */
 export type NullBranches = 'always' | 'never';
-
-/** The mode a nullable input position takes when nothing says otherwise. */
-export const DEFAULT_NULL_BRANCHES: NullBranches = 'always';
 
 /**
  * A null-branch mode chosen per *named type*, rather than one mode for a whole

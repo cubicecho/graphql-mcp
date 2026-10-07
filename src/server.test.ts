@@ -11,6 +11,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { buildSchema } from 'graphql';
 import { z } from 'zod';
+import { DEFAULT_MAX_CHARS } from './defaults.ts';
 import { createLocalExecutor } from './executor.ts';
 import {
   bodyOf,
@@ -19,7 +20,7 @@ import {
   TODO_FRAGMENTS,
   TODO_OPERATIONS,
 } from './fixtures.test.ts';
-import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './index.ts';
+import { runExecutor, toCallToolResult } from './index.ts';
 import {
   type CreateMcpServerOptions,
   connectServer,

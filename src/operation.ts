@@ -13,7 +13,8 @@
  */
 
 import type { GraphQLField, OperationDefinitionNode } from 'graphql';
-import { buildSelectionSet, DEFAULT_SELECTION_DEPTH } from './selection.ts';
+import { DEFAULT_SELECTION_DEPTH } from './defaults.ts';
+import { buildSelectionSet } from './selection.ts';
 import type { OperationKind } from './types.ts';
 
 /** A built operation: the document plus the metadata needed to invoke it. */

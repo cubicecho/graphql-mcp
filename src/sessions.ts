@@ -36,6 +36,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { DEFAULT_CLAIM_TTL_MS, DEFAULT_IDLE_TIMEOUT_MS, DEFAULT_MAX_SESSIONS } from './defaults.ts';
 import { type EventStore, eventStoreFactory, type ReplayOption } from './eventStore.ts';
 
 /**
@@ -171,14 +172,6 @@ export function sessionNotFound(owner?: string): string {
 export function headersFor(owner?: string): Record<string, string> {
   return owner === undefined ? {} : { [SESSION_OWNER_HEADER]: owner };
 }
-
-/** Default lifetime of a {@link MemorySessionDirectory} claim without a refresh. */
-export const DEFAULT_CLAIM_TTL_MS = 10 * 60 * 1000;
-
-/** Default idle window before an unused session is evicted. */
-export const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-/** Default cap on concurrent sessions. */
-export const DEFAULT_MAX_SESSIONS = 1000;
 
 /**
  * A bounded map of session id → live server/transport pair.

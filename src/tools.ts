@@ -11,19 +11,22 @@
 
 import type { GraphQLArgument, GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
 import { isNonNullType, print } from 'graphql';
-import { buildArgExample, DEFAULT_EXAMPLE_DEPTH } from './argExample.ts';
+import { buildArgExample } from './argExample.ts';
+import {
+  DEFAULT_EXAMPLE_DEPTH,
+  DEFAULT_NULL_BRANCHES,
+  DEFAULT_SELECTION_DEPTH,
+} from './defaults.ts';
 import { packageError } from './errors.ts';
 import { buildOperation } from './operation.ts';
 import { buildOutputSchema } from './outputSchema.ts';
 import { paginationHint } from './pagination.ts';
 import { compileRules } from './rules.ts';
-import { DEFAULT_SELECTION_DEPTH } from './selection.ts';
 import type { OperationKind, ToolAnnotations } from './types.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import {
   argsToZodShape,
   branchesAt,
-  DEFAULT_NULL_BRANCHES,
   type InputFieldFilter,
   type NullBranchesSetting,
   type ScalarMapping,

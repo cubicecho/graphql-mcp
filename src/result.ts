@@ -44,11 +44,9 @@
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { DEFAULT_MAX_CHARS } from './defaults.ts';
 import { messageOf } from './errors.ts';
 import type { GraphqlError, GraphqlExecutor, GraphqlRequest, GraphqlResult } from './types.ts';
-
-/** Default character budget for a tool result before truncation. */
-export const DEFAULT_MAX_CHARS = 50_000;
 
 /** Spaces per level in the JSON a result is printed as. */
 const JSON_INDENT = 2;

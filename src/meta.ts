@@ -33,18 +33,16 @@ import {
 } from 'graphql';
 import { z } from 'zod';
 import { exampleForType } from './argExample.ts';
+import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_LIMIT } from './defaults.ts';
 import { messageOf } from './errors.ts';
 import { kindOf } from './operation.ts';
-import { DEFAULT_MAX_CHARS, runExecutor, text, toCallToolResult } from './result.ts';
+import { runExecutor, text, toCallToolResult } from './result.ts';
 import { compileRules, type RuleMatcher } from './rules.ts';
 import type { CustomTool } from './server.ts';
 import type { GraphqlExecutor, OperationKind } from './types.ts';
 
 /** Prefix for a meta tool's name when the caller gives none. */
 const META_TOOL_PREFIX = 'graphql_';
-
-/** How many matches `search` returns when the caller gives no limit. */
-const SEARCH_LIMIT = 50;
 
 const META_TOOL_NAMES = ['introspect', 'search', 'validate', 'execute'] as const;
 
@@ -206,12 +204,12 @@ function searchTool({ prefix, deps, allows, maxChars }: MetaToolContext): Custom
         .int()
         .positive()
         .optional()
-        .describe(`Maximum matches to return. Default ${SEARCH_LIMIT}.`),
+        .describe(`Maximum matches to return. Default ${DEFAULT_SEARCH_LIMIT}.`),
     },
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     handler: (args) => {
       const needle = String(args.query).toLowerCase();
-      const limit = typeof args.limit === 'number' ? args.limit : SEARCH_LIMIT;
+      const limit = typeof args.limit === 'number' ? args.limit : DEFAULT_SEARCH_LIMIT;
       const hits = search(schema, needle, limit, allows);
       if (!hits.length) {
         return text(`No type or field matches '${args.query}'.`, maxChars);

@@ -27,14 +27,8 @@ import type {
   GraphQLNamedType,
 } from 'graphql';
 import { getNamedType, isEnumType, isInputObjectType, isListType, isNonNullType } from 'graphql';
+import { DEFAULT_EXAMPLE_DEPTH } from './defaults.ts';
 import { defaultJsonOf } from './zodSchema.ts';
-
-/**
- * How many levels of *optional* expansion an example may use. Three is enough
- * for the shape that motivated this (`orderBy: [{ column: { direction } }]`)
- * without inviting a walk of a filter type's whole neighbourhood.
- */
-export const DEFAULT_EXAMPLE_DEPTH = 3;
 
 /**
  * Longest example that still earns its place in a description. Past this an

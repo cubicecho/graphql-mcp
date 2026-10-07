@@ -1,15 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { DEFAULT_MAX_CHARS } from './defaults.ts';
 import { bodyOf } from './fixtures.test.ts';
-import {
-  clamp,
-  DEFAULT_MAX_CHARS,
-  runExecutor,
-  type TruncationRecord,
-  text,
-  toCallToolResult,
-} from './result.ts';
+import { clamp, runExecutor, type TruncationRecord, text, toCallToolResult } from './result.ts';
 
 function payloadOf(result: CallToolResult) {
   return JSON.parse(bodyOf(result));

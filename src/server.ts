@@ -26,6 +26,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { GraphQLSchema } from 'graphql';
 import { z } from 'zod';
+import { DEFAULT_MAX_CHARS } from './defaults.ts';
 import { packageError } from './errors.ts';
 import { createLocalExecutor } from './executor.ts';
 import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
@@ -39,7 +40,7 @@ import {
 } from './handlers.ts';
 import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
 import { buildOperationTools, type OperationsInput } from './operations.ts';
-import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './result.ts';
+import { runExecutor, toCallToolResult } from './result.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
 import type { GraphqlExecutor, ToolAnnotations } from './types.ts';
 import { VERSION } from './version.ts';

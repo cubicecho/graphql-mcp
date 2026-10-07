@@ -43,7 +43,7 @@ import {
   validate,
 } from 'graphql';
 import { z } from 'zod';
-import { DEFAULT_EXAMPLE_DEPTH } from './argExample.ts';
+import { DEFAULT_EXAMPLE_DEPTH, DEFAULT_NULL_BRANCHES } from './defaults.ts';
 import { messageOf, packageError } from './errors.ts';
 import { kindOf } from './operation.ts';
 import { paginationHint } from './pagination.ts';
@@ -60,7 +60,6 @@ import type { OperationKind } from './types.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import {
   argsToZodShape,
-  DEFAULT_NULL_BRANCHES,
   type InputFieldFilter,
   type NullBranchesSetting,
   type ScalarMapping,

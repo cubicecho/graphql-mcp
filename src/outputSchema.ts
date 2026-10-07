@@ -31,7 +31,8 @@ import {
   isUnionType,
 } from 'graphql';
 import { z } from 'zod';
-import { DEFAULT_SELECTION_DEPTH, returnedFields } from './selection.ts';
+import { DEFAULT_SELECTION_DEPTH } from './defaults.ts';
+import { returnedFields } from './selection.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import {
   describe,

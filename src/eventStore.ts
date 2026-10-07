@@ -40,6 +40,7 @@
  */
 
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
+import { DEFAULT_MAX_EVENTS_PER_STREAM, DEFAULT_MAX_STREAMS } from './defaults.ts';
 import { packageError } from './errors.ts';
 
 /** Identifies one SSE stream within a session. Minted by the transport. */
@@ -101,11 +102,6 @@ export interface ReplayOptions {
  * factory hands back a store of your own, called once per session.
  */
 export type ReplayOption = boolean | ReplayOptions | (() => EventStore);
-
-/** Events one stream keeps by default. */
-export const DEFAULT_MAX_EVENTS_PER_STREAM = 64;
-/** Streams one session keeps buffers for by default. */
-export const DEFAULT_MAX_STREAMS = 4;
 
 /**
  * A bounded, in-process replay buffer: one array of events per stream, oldest
