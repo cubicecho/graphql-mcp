@@ -369,7 +369,9 @@ describe('resuming a dropped stream', () => {
       const req = http.request(url, { method, headers }, (res) => {
         let settled = false;
         const done = (first: string) => {
-          if (settled) return;
+          if (settled) {
+            return;
+          }
           settled = true;
           const sessionId = res.headers['mcp-session-id'];
           resolve({

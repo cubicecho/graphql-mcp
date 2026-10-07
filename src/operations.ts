@@ -137,7 +137,9 @@ export function buildOperationTools(
   const sources = Array.isArray(operations)
     ? (operations as ReadonlyArray<OperationSource>)
     : [operations as OperationSource];
-  if (!sources.length) return [];
+  if (!sources.length) {
+    return [];
+  }
 
   const merged = mergeDocuments(sources);
   assertValid(schema, merged);
@@ -146,7 +148,9 @@ export function buildOperationTools(
   // keys as `''` — so the check has to run over the definitions, before the
   // split silently collapses two anonymous operations into one entry.
   const definitions = merged.definitions.filter(isOperation);
-  for (const definition of definitions) assertUsable(definition);
+  for (const definition of definitions) {
+    assertUsable(definition);
+  }
   if (!definitions.length) {
     throw new Error(
       'graphql-mcp: `operations` was given sources but none of them defined an operation. ' +
@@ -202,7 +206,9 @@ function toDocument(source: OperationSource): DocumentNode {
 function assertValid(schema: GraphQLSchema, document: DocumentNode): void {
   const rules = specifiedRules.filter((rule) => rule !== NoUnusedFragmentsRule);
   const errors = validate(schema, document, rules);
-  if (!errors.length) return;
+  if (!errors.length) {
+    return;
+  }
   throw new Error(
     `graphql-mcp: \`operations\` failed to validate against the schema:\n${errors
       .map((error) => `  - ${error.message}${locationOf(error.locations?.[0], error.source?.name)}`)
@@ -295,7 +301,9 @@ function toInputSchema(
     inputField: options.inputField,
   });
   variables.forEach((variable, index) => {
-    if (!variable.defaultValue || variable.type.kind !== Kind.NON_NULL_TYPE) return;
+    if (!variable.defaultValue || variable.type.kind !== Kind.NON_NULL_TYPE) {
+      return;
+    }
     const name = args[index].name;
     shape[name] = (shape[name] as AnyZodType & { optional(): AnyZodType }).optional();
   });
@@ -391,10 +399,16 @@ function leadingComments(node: { loc?: OperationDefinitionNode['loc'] }): string
   let next = node.loc?.startToken;
   let token = next?.prev;
   while (next && token && token.kind === 'Comment') {
-    if (next.line - token.line > 1) break;
-    if (token.prev && token.prev.line === token.line) break;
+    if (next.line - token.line > 1) {
+      break;
+    }
+    if (token.prev && token.prev.line === token.line) {
+      break;
+    }
     const value = token.value?.trim();
-    if (value) out.unshift(value);
+    if (value) {
+      out.unshift(value);
+    }
     next = token;
     token = token.prev;
   }
@@ -410,7 +424,9 @@ function isOperation(
 
 /** ` (ops.graphql:4:3)`, or nothing when the source was unnamed or absent. */
 function locationOf(at: { line: number; column: number } | undefined, name?: string): string {
-  if (!at) return '';
+  if (!at) {
+    return '';
+  }
   return ` (${name ?? 'operation'}:${at.line}:${at.column})`;
 }
 

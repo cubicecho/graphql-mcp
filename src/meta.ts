@@ -90,7 +90,9 @@ export function buildMetaTools(deps: MetaToolDeps, options: MetaToolsOptions = {
   const excluded = options.exclude ? compileRules(options.exclude) : null;
   const allowMutations = options.allowMutations ?? true;
   const allows = (name: string, kind: OperationKind) => {
-    if (excluded?.(name, kind)) return false;
+    if (excluded?.(name, kind)) {
+      return false;
+    }
     return !included || included(name, kind);
   };
 
@@ -139,7 +141,9 @@ function introspectTool(
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     handler: (args) => {
       const typeName = args.type as string | undefined;
-      if (!typeName) return text(overview(schema, allows), maxChars);
+      if (!typeName) {
+        return text(overview(schema, allows), maxChars);
+      }
       const type = schema.getType(typeName);
       if (!type || isIntrospectionType(type)) {
         return errorText(
@@ -165,7 +169,9 @@ function introspectTool(
  */
 function withShapeExample(type: GraphQLNamedType): string {
   const sdl = printType(type);
-  if (!isInputObjectType(type)) return sdl;
+  if (!isInputObjectType(type)) {
+    return sdl;
+  }
   const example = exampleForType(type);
   return example ? `${sdl}\n\n# Minimal JSON example (required fields only):\n# ${example}` : sdl;
 }
@@ -197,7 +203,9 @@ function searchTool(
       const needle = String(args.query).toLowerCase();
       const limit = (args.limit as number | undefined) ?? 50;
       const hits = search(schema, needle, limit, allows);
-      if (!hits.length) return text(`No type or field matches '${args.query}'.`, maxChars);
+      if (!hits.length) {
+        return text(`No type or field matches '${args.query}'.`, maxChars);
+      }
       return text(hits.join('\n'), maxChars);
     },
   };
@@ -217,7 +225,9 @@ function validateTool(prefix: string, schema: GraphQLSchema): CustomTool {
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     handler: (args) => {
       const parsed = tryParse(String(args.query));
-      if ('error' in parsed) return errorText(parsed.error);
+      if ('error' in parsed) {
+        return errorText(parsed.error);
+      }
       const errors = validate(schema, parsed.document);
       if (errors.length) {
         return invalidDocument(errors);
@@ -260,7 +270,9 @@ function executeTool(
     handler: async (args, extra) => {
       const query = String(args.query);
       const parsed = tryParse(query);
-      if ('error' in parsed) return errorText(parsed.error);
+      if ('error' in parsed) {
+        return errorText(parsed.error);
+      }
 
       const errors = validate(deps.schema, parsed.document);
       if (errors.length) {
@@ -269,7 +281,9 @@ function executeTool(
 
       const operationName = args.operationName as string | undefined;
       const picked = pickOperation(parsed.document, operationName);
-      if ('error' in picked) return errorText(picked.error);
+      if ('error' in picked) {
+        return errorText(picked.error);
+      }
       const { operation } = picked;
 
       if (operation.operation === 'subscription') {
@@ -310,7 +324,9 @@ function executeTool(
 function rootFieldNames(document: DocumentNode, operation: OperationDefinitionNode): string[] {
   const fragments = new Map<string, SelectionSetNode>();
   for (const def of document.definitions) {
-    if (def.kind === Kind.FRAGMENT_DEFINITION) fragments.set(def.name.value, def.selectionSet);
+    if (def.kind === Kind.FRAGMENT_DEFINITION) {
+      fragments.set(def.name.value, def.selectionSet);
+    }
   }
   const names: string[] = [];
   const visited = new Set<string>();
@@ -324,10 +340,14 @@ function rootFieldNames(document: DocumentNode, operation: OperationDefinitionNo
       } else {
         // A fragment spread at the root would otherwise hide the fields it selects.
         const name = selection.name.value;
-        if (visited.has(name)) continue;
+        if (visited.has(name)) {
+          continue;
+        }
         visited.add(name);
         const set = fragments.get(name);
-        if (set) walk(set);
+        if (set) {
+          walk(set);
+        }
       }
     }
   };
@@ -344,7 +364,9 @@ function pickOperation(
   const operations = document.definitions.filter(
     (def): def is OperationDefinitionNode => def.kind === Kind.OPERATION_DEFINITION,
   );
-  if (!operations.length) return { error: 'The document defines no operation.' };
+  if (!operations.length) {
+    return { error: 'The document defines no operation.' };
+  }
   if (operationName) {
     const found = operations.find((op) => op.name?.value === operationName);
     return found ? { operation: found } : { error: `No operation named '${operationName}'.` };
@@ -372,11 +394,17 @@ function overview(schema: GraphQLSchema, allows: RuleMatcher): string {
     [schema.getQueryType(), 'query'],
     [schema.getMutationType(), 'mutation'],
   ] as const) {
-    if (!root) continue;
+    if (!root) {
+      continue;
+    }
     const fields = Object.values(root.getFields()).filter((field) => allows(field.name, kind));
-    if (!fields.length) continue;
+    if (!fields.length) {
+      continue;
+    }
     lines.push(`type ${root.name} {`);
-    for (const field of fields) lines.push(`  ${signature(field)}`);
+    for (const field of fields) {
+      lines.push(`  ${signature(field)}`);
+    }
     lines.push('}', '');
   }
   const names = typeNames(schema);
@@ -393,26 +421,42 @@ function search(
   const rootKinds = new Map<string, OperationKind>();
   const queryType = schema.getQueryType();
   const mutationType = schema.getMutationType();
-  if (queryType) rootKinds.set(queryType.name, 'query');
-  if (mutationType) rootKinds.set(mutationType.name, 'mutation');
+  if (queryType) {
+    rootKinds.set(queryType.name, 'query');
+  }
+  if (mutationType) {
+    rootKinds.set(mutationType.name, 'mutation');
+  }
 
   const hits: string[] = [];
   const matches = (...values: (string | null | undefined)[]) =>
     values.some((value) => value?.toLowerCase().includes(needle));
 
   for (const type of Object.values(schema.getTypeMap())) {
-    if (isHiddenType(type)) continue;
-    if (hits.length >= limit) break;
+    if (isHiddenType(type)) {
+      continue;
+    }
+    if (hits.length >= limit) {
+      break;
+    }
     if (matches(type.name, type.description)) {
       hits.push(`${kindWord(type)} ${type.name}${describeSuffix(type.description)}`);
     }
-    if (!isObjectType(type) && !isInterfaceType(type) && !isInputObjectType(type)) continue;
+    if (!isObjectType(type) && !isInterfaceType(type) && !isInputObjectType(type)) {
+      continue;
+    }
     const kind = rootKinds.get(type.name);
     for (const field of Object.values(type.getFields())) {
-      if (hits.length >= limit) break;
+      if (hits.length >= limit) {
+        break;
+      }
       // Don't advertise a root field the execute tool would refuse.
-      if (kind && !allows(field.name, kind)) continue;
-      if (!matches(field.name, field.description)) continue;
+      if (kind && !allows(field.name, kind)) {
+        continue;
+      }
+      if (!matches(field.name, field.description)) {
+        continue;
+      }
       const shown = 'args' in field ? signature(field) : `${field.name}: ${field.type}`;
       hits.push(`${type.name}.${shown}${describeSuffix(field.description)}`);
     }
@@ -436,9 +480,15 @@ function signature(field: GraphQLField<any, any>): string {
 }
 
 function kindWord(type: GraphQLNamedType): string {
-  if (isObjectType(type)) return 'type';
-  if (isInterfaceType(type)) return 'interface';
-  if (isInputObjectType(type)) return 'input';
+  if (isObjectType(type)) {
+    return 'type';
+  }
+  if (isInterfaceType(type)) {
+    return 'interface';
+  }
+  if (isInputObjectType(type)) {
+    return 'input';
+  }
   return 'type';
 }
 

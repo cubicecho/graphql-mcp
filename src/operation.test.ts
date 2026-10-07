@@ -8,7 +8,9 @@ function field(sdl: string, root: 'Query' | 'Mutation', name: string) {
   const type = (root === 'Query' ? schema.getQueryType() : schema.getMutationType()) as
     | GraphQLObjectType
     | undefined;
-  if (!type) throw new Error('missing root type');
+  if (!type) {
+    throw new Error('missing root type');
+  }
   return type.getFields()[name];
 }
 

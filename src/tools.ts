@@ -619,9 +619,13 @@ function applyPatch(
   }
   const merged: ToolDescriptor = { ...descriptor };
   for (const [key, value] of Object.entries(patch)) {
-    if (value !== undefined) (merged as unknown as Record<string, unknown>)[key] = value;
+    if (value !== undefined) {
+      (merged as unknown as Record<string, unknown>)[key] = value;
+    }
   }
-  if (patch.annotations) merged.annotations = { ...descriptor.annotations, ...patch.annotations };
+  if (patch.annotations) {
+    merged.annotations = { ...descriptor.annotations, ...patch.annotations };
+  }
   if (patch.title !== undefined && patch.annotations?.title === undefined) {
     merged.annotations = { ...merged.annotations, title: patch.title };
   }
@@ -634,8 +638,9 @@ function applyExtensions(
   extensions: McpFieldExtensions,
 ): ToolDescriptor {
   let description = extensions.description ?? descriptor.description;
-  if (extensions.appendDescription)
+  if (extensions.appendDescription) {
     description = `${description}\n\n${extensions.appendDescription}`;
+  }
   return {
     ...descriptor,
     name: extensions.name ?? descriptor.name,
@@ -829,7 +834,9 @@ export function describeArgument(
         : `(omit for the default \`${fallback}\`)`,
     );
   }
-  if (arg.deprecationReason) parts.push(`(deprecated: ${arg.deprecationReason.trim()})`);
+  if (arg.deprecationReason) {
+    parts.push(`(deprecated: ${arg.deprecationReason.trim()})`);
+  }
   const description = arg.description?.trim();
   const suffix = description ? ` — ${description}` : '';
   return `${parts.join(' ')}${suffix}`;
@@ -843,7 +850,9 @@ export function describeArgument(
  */
 function defaultOf(arg: GraphQLArgument): string | undefined {
   const node = arg.astNode?.defaultValue;
-  if (node) return print(node);
+  if (node) {
+    return print(node);
+  }
   // Schemas built programmatically carry no AST; fall back to the coerced value.
   return arg.defaultValue === undefined ? undefined : JSON.stringify(arg.defaultValue);
 }

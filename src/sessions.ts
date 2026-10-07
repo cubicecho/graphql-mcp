@@ -220,7 +220,9 @@ export class SessionStore<T extends ClosableTransport> {
   take(id: string): Session<T> | undefined {
     this.sweep();
     const session = this.sessions.get(id);
-    if (!session) return undefined;
+    if (!session) {
+      return undefined;
+    }
     session.lastSeen = Date.now();
     // Re-insert so Map iteration order tracks recency, which is what makes the
     // first entry the LRU victim when the table is full.
@@ -246,9 +248,13 @@ export class SessionStore<T extends ClosableTransport> {
    *   genuinely gone.
    */
   async elsewhere(id: string): Promise<string | undefined> {
-    if (!this.directory) return undefined;
+    if (!this.directory) {
+      return undefined;
+    }
     const owner = await this.directory.owner(id);
-    if (owner === undefined) return undefined;
+    if (owner === undefined) {
+      return undefined;
+    }
     if (owner === this.instanceId) {
       await this.directory.release(id);
       return undefined;
@@ -267,7 +273,9 @@ export class SessionStore<T extends ClosableTransport> {
     this.sweep();
     while (this.sessions.size >= this.maxSessions) {
       const oldest = this.sessions.keys().next();
-      if (oldest.done) break;
+      if (oldest.done) {
+        break;
+      }
       void this.drop(oldest.value);
     }
     session.lastSeen = Date.now();
@@ -284,7 +292,9 @@ export class SessionStore<T extends ClosableTransport> {
    */
   async drop(id: string): Promise<void> {
     const session = this.sessions.get(id);
-    if (!session) return;
+    if (!session) {
+      return;
+    }
     this.sessions.delete(id);
     // Started together rather than in sequence: a real directory is a network
     // hop, and nothing about closing the session waits on giving the claim back.
@@ -389,7 +399,11 @@ export class MemorySessionDirectory implements SessionDirectory {
   get size(): number {
     const now = Date.now();
     let live = 0;
-    for (const claim of this.claims.values()) if (claim.expires > now) live++;
+    for (const claim of this.claims.values()) {
+      if (claim.expires > now) {
+        live++;
+      }
+    }
     return live;
   }
 
@@ -399,7 +413,9 @@ export class MemorySessionDirectory implements SessionDirectory {
 
   owner(sessionId: string): string | undefined {
     const claim = this.claims.get(sessionId);
-    if (!claim) return undefined;
+    if (!claim) {
+      return undefined;
+    }
     if (claim.expires <= Date.now()) {
       this.claims.delete(sessionId);
       return undefined;

@@ -129,7 +129,9 @@ export class MemoryEventStore implements EventStore {
   /** Events currently buffered across every stream. */
   get size(): number {
     let total = 0;
-    for (const events of this.streams.values()) total += events.length;
+    for (const events of this.streams.values()) {
+      total += events.length;
+    }
     return total;
   }
 
@@ -145,7 +147,9 @@ export class MemoryEventStore implements EventStore {
     this.streamOf.set(id, streamId);
     while (events.length > this.maxEventsPerStream) {
       const dropped = events.shift();
-      if (dropped) this.streamOf.delete(dropped.id);
+      if (dropped) {
+        this.streamOf.delete(dropped.id);
+      }
     }
     return id;
   }
@@ -163,10 +167,14 @@ export class MemoryEventStore implements EventStore {
     // reaching here with an unknown id means a caller drove the store directly.
     // Returning a made-up stream id would map the client's new connection to a
     // stream nothing writes to, so say so instead.
-    if (streamId === undefined) throw new Error(`graphql-mcp: unknown event id '${lastEventId}'`);
+    if (streamId === undefined) {
+      throw new Error(`graphql-mcp: unknown event id '${lastEventId}'`);
+    }
     const events = this.streams.get(streamId) ?? [];
     const after = events.findIndex((event) => event.id === lastEventId) + 1;
-    for (const event of events.slice(after)) await send(event.id, event.message);
+    for (const event of events.slice(after)) {
+      await send(event.id, event.message);
+    }
     return streamId;
   }
 
@@ -190,7 +198,9 @@ export class MemoryEventStore implements EventStore {
     }
     while (this.streams.size >= this.maxStreams) {
       const oldest = this.streams.keys().next();
-      if (oldest.done) break;
+      if (oldest.done) {
+        break;
+      }
       this.forget(oldest.value);
     }
     const events: Array<{ id: EventId; message: JSONRPCMessage }> = [];
@@ -200,7 +210,9 @@ export class MemoryEventStore implements EventStore {
 
   /** Drops a stream's buffer and every id that pointed into it. */
   private forget(streamId: StreamId): void {
-    for (const event of this.streams.get(streamId) ?? []) this.streamOf.delete(event.id);
+    for (const event of this.streams.get(streamId) ?? []) {
+      this.streamOf.delete(event.id);
+    }
     this.streams.delete(streamId);
   }
 }
@@ -214,8 +226,12 @@ export class MemoryEventStore implements EventStore {
  * free to hand back the same store each time if its own keying makes that safe.
  */
 export function eventStoreFactory(option: ReplayOption = true): () => EventStore | undefined {
-  if (option === false) return () => undefined;
-  if (typeof option === 'function') return option;
+  if (option === false) {
+    return () => undefined;
+  }
+  if (typeof option === 'function') {
+    return option;
+  }
   const bounds = option === true ? {} : option;
   return () => new MemoryEventStore(bounds);
 }

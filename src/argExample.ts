@@ -54,14 +54,22 @@ export function exampleForType(
   type: GraphQLInputType,
   depth: number = DEFAULT_EXAMPLE_DEPTH,
 ): string | undefined {
-  if (depth < 1) return undefined;
-  if (!isInputObjectType(getNamedType(type))) return undefined;
+  if (depth < 1) {
+    return undefined;
+  }
+  if (!isInputObjectType(getNamedType(type))) {
+    return undefined;
+  }
   const value = renderType(type, depth, new Set(), true);
-  if (value === ABANDON) return undefined;
+  if (value === ABANDON) {
+    return undefined;
+  }
   const json = JSON.stringify(value);
   // `{}` and `[{}]` are the shapes that teach nothing — an all-optional object
   // whose budget ran out before its first field.
-  if (json === undefined || json === '{}' || json === '[{}]') return undefined;
+  if (json === undefined || json === '{}' || json === '[{}]') {
+    return undefined;
+  }
   return json.length > MAX_EXAMPLE_CHARS ? undefined : json;
 }
 
@@ -77,7 +85,9 @@ export function buildArgExample(
   depth: number = DEFAULT_EXAMPLE_DEPTH,
 ): string | undefined {
   const fallback = defaultJsonOf(arg);
-  if (fallback !== null && typeof fallback === 'object') return undefined;
+  if (fallback !== null && typeof fallback === 'object') {
+    return undefined;
+  }
   return exampleForType(arg.type, depth);
 }
 
@@ -93,7 +103,9 @@ function renderType(
   path: ReadonlySet<string>,
   top = false,
 ): unknown | typeof ABANDON {
-  if (isNonNullType(type)) return renderType(type.ofType, depth, path, top);
+  if (isNonNullType(type)) {
+    return renderType(type.ofType, depth, path, top);
+  }
   // One element is the whole lesson: a second would only repeat it at double
   // the width, and the budget is spent on nesting instead.
   if (isListType(type)) {
@@ -109,23 +121,31 @@ function renderNamed(
   path: ReadonlySet<string>,
   top = false,
 ): unknown | typeof ABANDON {
-  if (!isInputObjectType(type)) return leafValue(type);
+  if (!isInputObjectType(type)) {
+    return leafValue(type);
+  }
   // A type that contains itself has no finite literal. Reached through a
   // non-null field this abandons the example; through the optional fallback
   // below it merely drops that field.
-  if (path.has(type.name)) return ABANDON;
+  if (path.has(type.name)) {
+    return ABANDON;
+  }
   const nextPath = new Set(path).add(type.name);
   const fields = Object.values(type.getFields());
   const shape: Record<string, unknown> = {};
   let required = 0;
 
   for (const field of fields) {
-    if (!isNonNullType(field.type)) continue;
+    if (!isNonNullType(field.type)) {
+      continue;
+    }
     required += 1;
     const value = renderField(field, depth, nextPath);
     // A required field we cannot render means the example would be rejected on
     // arrival. Better to print nothing than to teach a call that fails.
-    if (value === ABANDON) return ABANDON;
+    if (value === ABANDON) {
+      return ABANDON;
+    }
     shape[field.name] = value;
   }
 
@@ -171,8 +191,12 @@ function isStructural(value: unknown): boolean {
 
 /** `{}` or `[{}]` — structurally present, informationally absent. */
 function isEmptyShape(value: unknown): boolean {
-  if (Array.isArray(value)) return value.length === 1 && isEmptyShape(value[0]);
-  if (typeof value !== 'object' || value === null) return false;
+  if (Array.isArray(value)) {
+    return value.length === 1 && isEmptyShape(value[0]);
+  }
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
   return Object.keys(value).length === 0;
 }
 
@@ -183,7 +207,9 @@ function renderField(
   path: ReadonlySet<string>,
 ): unknown | typeof ABANDON {
   const fallback = defaultJsonOf(field);
-  if (fallback !== undefined) return fallback;
+  if (fallback !== undefined) {
+    return fallback;
+  }
   return renderType(field.type, depth, path);
 }
 
@@ -195,7 +221,9 @@ function renderField(
  * chosen for meaning — it is there so the *spelling* is unambiguous.
  */
 function leafValue(type: GraphQLNamedType): unknown {
-  if (isEnumType(type)) return type.getValues()[0]?.name ?? 'string';
+  if (isEnumType(type)) {
+    return type.getValues()[0]?.name ?? 'string';
+  }
   switch (type.name) {
     case 'Int':
     case 'Float':

@@ -21,7 +21,8 @@ process and forward to a remote GraphQL endpoint.
   TypeScript ≥ 5.7.
 - **Tests:** Node's built-in test runner (`node --test`) with type stripping —
   **no test framework dependency**. Test files are `src/**/*.test.ts`.
-- **Formatting/linting:** [Biome](https://biomejs.dev/) (`npm run check`).
+- **Formatting/linting:** [Biome](https://biomejs.dev/) (`npm run check`). Every `if`/loop body is a
+  braced block (`useBlockStatements`).
 - **Dependencies:** `@graphql-tools/schema` (schema merging for the `extend`
   option) is the only runtime dependency. `@modelcontextprotocol/sdk`
   (`>=1.12`), `graphql` (`>=16`) and `zod` (`^3.25 || ^4.0`) are **peer deps** —

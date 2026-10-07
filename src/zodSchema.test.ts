@@ -402,9 +402,13 @@ describe('nullBranches', () => {
 function unwrap(schema: unknown): unknown {
   let current = schema as { unwrap?: () => unknown; schema?: unknown };
   for (let i = 0; i < 8; i++) {
-    if (typeof current?.unwrap === 'function') current = current.unwrap() as typeof current;
-    else if (current?.schema) current = current.schema as typeof current;
-    else break;
+    if (typeof current?.unwrap === 'function') {
+      current = current.unwrap() as typeof current;
+    } else if (current?.schema) {
+      current = current.schema as typeof current;
+    } else {
+      break;
+    }
   }
   return current;
 }

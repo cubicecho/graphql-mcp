@@ -106,7 +106,9 @@ export function makeTodoSchema(seed: TodoRecord[] = defaultSeed()): {
     },
     setCompleted: ({ id, completed }: { id: string; completed: boolean }) => {
       const found = store.find((t) => t.id === id);
-      if (!found) return null;
+      if (!found) {
+        return null;
+      }
       found.completed = completed;
       return present(found);
     },
@@ -128,7 +130,9 @@ export function setMcpExtensions(
 ): void {
   const type = root === 'Query' ? schema.getQueryType() : schema.getMutationType();
   const field = type?.getFields()[fieldName];
-  if (!field) throw new Error(`fixture: no ${root}.${fieldName} field`);
+  if (!field) {
+    throw new Error(`fixture: no ${root}.${fieldName} field`);
+  }
   (field as { extensions: Record<string, unknown> }).extensions = {
     ...field.extensions,
     mcp,

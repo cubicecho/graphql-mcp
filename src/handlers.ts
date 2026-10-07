@@ -84,10 +84,14 @@ export interface ToolListingCache {
 export function shareToolListing(server: McpServer, cache: ToolListingCache): void {
   const handlers = requestHandlers(server);
   const render = handlers?.get(TOOLS_LIST);
-  if (!handlers || !render) return;
+  if (!handlers || !render) {
+    return;
+  }
 
   handlers.set(TOOLS_LIST, (request, extra) => {
-    if (cache.off) return render(request, extra);
+    if (cache.off) {
+      return render(request, extra);
+    }
     // Stored as the promise, not the value: two listings arriving together on a
     // cold cache should share one rendering rather than both paying for it.
     cache.rendering ??= render(request, extra).catch((error: unknown) => {
@@ -145,16 +149,22 @@ export function guardToolArguments(
 ): void {
   const handlers = requestHandlers(server);
   const call = handlers?.get(TOOLS_CALL);
-  if (!handlers || !call) return;
+  if (!handlers || !call) {
+    return;
+  }
 
   handlers.set(TOOLS_CALL, async (request, extra) => {
     const params = (request as { params?: { name?: unknown; arguments?: unknown } }).params;
     const schema = typeof params?.name === 'string' ? validators.get(params.name) : undefined;
-    if (!schema) return call(request, extra);
+    if (!schema) {
+      return call(request, extra);
+    }
     // Async to match the SDK's own `safeParseAsync`: a schema with an async
     // refinement must not be accepted here and rejected there.
     const parsed = await schema.safeParseAsync(params?.arguments);
-    if (parsed.success) return call(request, extra);
+    if (parsed.success) {
+      return call(request, extra);
+    }
     return toCallToolResult({ errors: inputErrors(parsed.error) }, maxChars);
   });
 }
@@ -186,9 +196,13 @@ function inputErrors(error: unknown): GraphqlError[] {
 
 /** A Zod issue path as an agent would write it: `steps[0].order`. */
 function argumentPath(path: ReadonlyArray<PropertyKey> | undefined): string {
-  if (!path?.length) return '';
+  if (!path?.length) {
+    return '';
+  }
   return path.reduce<string>((rendered, key) => {
-    if (typeof key === 'number') return `${rendered}[${key}]`;
+    if (typeof key === 'number') {
+      return `${rendered}[${key}]`;
+    }
     return rendered ? `${rendered}.${String(key)}` : String(key);
   }, '');
 }

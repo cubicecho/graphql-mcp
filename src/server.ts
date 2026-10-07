@@ -246,14 +246,18 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
       : [];
     // Later wins by name: user `tools` override meta tools, both override generated ones.
     const byName = new Map<string, CustomTool>();
-    for (const tool of [...metaTools, ...customTools]) byName.set(tool.name, tool);
+    for (const tool of [...metaTools, ...customTools]) {
+      byName.set(tool.name, tool);
+    }
 
     // The schema each tool's arguments are checked against, collected as they
     // are registered — the same objects the SDK will validate with.
     const validators = new Map<string, AnyZodType>();
 
     for (const descriptor of descriptors) {
-      if (byName.has(descriptor.name)) continue;
+      if (byName.has(descriptor.name)) {
+        continue;
+      }
       const input = strictInput(descriptor.inputSchema);
       validators.set(descriptor.name, input);
       registerGeneratedTool(server, descriptor, input, executor, context, maxChars);
@@ -262,7 +266,9 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
       registerCustomTool(server, tool);
       // Non-strict, because that is how the SDK wraps a raw shape: the check
       // here must not reject what the SDK would have accepted.
-      if (tool.inputSchema) validators.set(tool.name, z.object(tool.inputSchema));
+      if (tool.inputSchema) {
+        validators.set(tool.name, z.object(tool.inputSchema));
+      }
     }
     // Before the wrappers, and before `connect`: prompts and resources can only
     // declare their capabilities while no transport is attached.
@@ -292,7 +298,9 @@ function withOperations(
   generated: ToolDescriptor[],
   options: CreateMcpServerOptions,
 ): ToolDescriptor[] {
-  if (!options.operations) return generated;
+  if (!options.operations) {
+    return generated;
+  }
   const curated = buildOperationTools(schema, options.operations, {
     nameCase: options.nameCase,
     scalars: options.scalars,
@@ -308,7 +316,9 @@ function withOperations(
     exampleDepth: typeof options.exampleDepth === 'function' ? undefined : options.exampleDepth,
   });
   const byName = new Map(generated.map((descriptor) => [descriptor.name, descriptor]));
-  for (const descriptor of curated) byName.set(descriptor.name, descriptor);
+  for (const descriptor of curated) {
+    byName.set(descriptor.name, descriptor);
+  }
   return [...byName.values()];
 }
 
@@ -333,7 +343,9 @@ function pickMeta<K extends keyof MetaToolsOptions>(
  * under load, far from its cause.
  */
 function runServerDecorator(server: McpServer, hook: ServerDecorator | undefined): void {
-  if (!hook) return;
+  if (!hook) {
+    return;
+  }
   let result: unknown;
   try {
     result = hook(server);
@@ -388,7 +400,9 @@ function runServerDecorator(server: McpServer, hook: ServerDecorator | undefined
 export async function connectServer(server: McpServer, transport: Transport): Promise<void> {
   await server.connect(transport);
   const handler = transport.onmessage;
-  if (!handler) return;
+  if (!handler) {
+    return;
+  }
   transport.onmessage = (message, extra) => handler(withArguments(message), extra);
 }
 
@@ -409,11 +423,19 @@ const OPTIONAL_ARGUMENTS = new Set(['tools/call', 'prompts/get']);
  * this rewrites in place would be seen changed by anything reading it after.
  */
 function withArguments<T>(message: T): T {
-  if (!message || typeof message !== 'object') return message;
+  if (!message || typeof message !== 'object') {
+    return message;
+  }
   const request = message as { method?: unknown; params?: Record<string, unknown> };
-  if (typeof request.method !== 'string' || !OPTIONAL_ARGUMENTS.has(request.method)) return message;
-  if (!request.params || typeof request.params !== 'object') return message;
-  if (request.params.arguments !== undefined) return message;
+  if (typeof request.method !== 'string' || !OPTIONAL_ARGUMENTS.has(request.method)) {
+    return message;
+  }
+  if (!request.params || typeof request.params !== 'object') {
+    return message;
+  }
+  if (request.params.arguments !== undefined) {
+    return message;
+  }
   return { ...request, params: { ...request.params, arguments: {} } } as T;
 }
 
@@ -465,7 +487,9 @@ function registerGeneratedTool(
     },
     async (args: Record<string, unknown>, extra: unknown) => {
       const mapped = await toVariables(descriptor, args, extra, maxChars);
-      if ('failure' in mapped) return mapped.failure;
+      if ('failure' in mapped) {
+        return mapped.failure;
+      }
       const { variables } = mapped;
       const resolvedContext = await resolveContext(context, extra);
       const result = await runExecutor(executor, {
@@ -518,7 +542,9 @@ async function toVariables(
   }
   const variables: Record<string, unknown> = {};
   for (const argName of descriptor.argNames) {
-    if (source[argName] !== undefined) variables[argName] = source[argName];
+    if (source[argName] !== undefined) {
+      variables[argName] = source[argName];
+    }
   }
   return { variables };
 }
@@ -560,7 +586,9 @@ function buildStrictInput(shape: ZodShape) {
 
 function strictInput(shape: ZodShape): ReturnType<typeof buildStrictInput> {
   const cached = strictInputs.get(shape);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
   const schema = buildStrictInput(shape);
   strictInputs.set(shape, schema);
   return schema;

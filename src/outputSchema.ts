@@ -84,8 +84,12 @@ function schemaFor(
       .getTypes()
       .map((member) => z.object(compositeFields(member, depth, path, scalar)));
     const [first, second, ...rest] = members;
-    if (!first) return undefined;
-    if (!second) return first;
+    if (!first) {
+      return undefined;
+    }
+    if (!second) {
+      return first;
+    }
     return z.union([first, second, ...rest]);
   }
   if (isObjectType(named) || isInterfaceType(named)) {

@@ -278,7 +278,9 @@ describe('buildTools decorate', () => {
     let seenName = '';
     const tools = buildTools(schema, {
       decorate: (descriptor) => {
-        if (descriptor.name !== 'fetchTodo') return;
+        if (descriptor.name !== 'fetchTodo') {
+          return;
+        }
         seenName = descriptor.name;
         return { title: 'From Decorate' };
       },
@@ -738,7 +740,9 @@ describe('buildTools argument shape examples', () => {
     const found: Array<[string, string]> = [];
     lines.forEach((line, index) => {
       const shape = /^ {2}shape: (.+)$/.exec(line);
-      if (!shape) return;
+      if (!shape) {
+        return;
+      }
       const arg = /^- `([^`]+)`/.exec(lines[index - 1] ?? '');
       assert.ok(arg, `a shape line with no argument above it: ${line}`);
       found.push([arg[1], shape[1]]);

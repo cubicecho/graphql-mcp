@@ -33,7 +33,9 @@ const PREFIX_KINDS: Record<string, OperationKind> = {
 export function compileRules(patterns: readonly string[]): RuleMatcher {
   const compiled = patterns.map((pattern) => {
     const dot = pattern.indexOf('.');
-    if (dot === -1) return { kind: undefined, regex: globToRegex(pattern) };
+    if (dot === -1) {
+      return { kind: undefined, regex: globToRegex(pattern) };
+    }
     const prefix = pattern.slice(0, dot);
     const kind = PREFIX_KINDS[prefix];
     if (!kind) {

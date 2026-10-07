@@ -63,7 +63,9 @@ export const DEFAULT_MAX_CHARS = 50_000;
  *   supplies one naming the field's paging argument.
  */
 export function clamp(value: string, maxChars: number, hint?: string): string {
-  if (value.length <= maxChars) return value;
+  if (value.length <= maxChars) {
+    return value;
+  }
   const advice = adviceFor(hint);
   return `${value.slice(0, maxChars)}\n\n[truncated ${value.length - maxChars} of ${value.length} characters — ${advice}]`;
 }
@@ -132,10 +134,18 @@ export function toCallToolResult(
   /** The envelope around whatever `data` survived, serialized. */
   const envelope = (data: unknown, truncated?: TruncationRecord): string => {
     const payload: Record<string, unknown> = {};
-    if (data !== undefined) payload.data = data;
-    if (errors.length) payload.errors = errors.map(condense);
-    if (errors.length && hasData) payload.note = PARTIAL_NOTE;
-    if (truncated) payload.truncated = truncated;
+    if (data !== undefined) {
+      payload.data = data;
+    }
+    if (errors.length) {
+      payload.errors = errors.map(condense);
+    }
+    if (errors.length && hasData) {
+      payload.note = PARTIAL_NOTE;
+    }
+    if (truncated) {
+      payload.truncated = truncated;
+    }
     return JSON.stringify(payload, null, 2);
   };
 
@@ -286,7 +296,9 @@ export async function runExecutor(
 
 /** A thrown value's message, falling back to its string form. */
 function messageOf(cause: unknown): string {
-  if (cause instanceof Error && cause.message) return cause.message;
+  if (cause instanceof Error && cause.message) {
+    return cause.message;
+  }
   const text = String(cause);
   return text === '[object Object]' ? 'The GraphQL executor failed.' : text;
 }
@@ -298,7 +310,9 @@ function messageOf(cause: unknown): string {
  * — is just as empty despite being a present object.
  */
 function hasUsableData(data: Record<string, unknown> | null | undefined): boolean {
-  if (data === null || data === undefined) return false;
+  if (data === null || data === undefined) {
+    return false;
+  }
   return Object.values(data).some((value) => value !== null);
 }
 
@@ -312,7 +326,9 @@ function hasUsableData(data: Record<string, unknown> | null | undefined): boolea
  */
 function condense(error: GraphqlError): GraphqlError {
   const condensed: GraphqlError = { message: error.message };
-  if (error.path?.length) condensed.path = error.path;
+  if (error.path?.length) {
+    condensed.path = error.path;
+  }
   if (error.extensions && Object.keys(error.extensions).length) {
     condensed.extensions = error.extensions;
   }

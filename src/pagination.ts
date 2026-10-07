@@ -59,7 +59,9 @@ const CONVENTIONS: ReadonlyArray<{ limit?: string; next?: string; style: Paginat
  * @returns The matched convention, holding only the arguments actually present.
  */
 export function detectPagination(args: readonly GraphQLArgument[]): Pagination | undefined {
-  if (!args.length) return undefined;
+  if (!args.length) {
+    return undefined;
+  }
   // Lower-cased lookup so `pageSize`, `pagesize`, and `PageSize` all match, with
   // the original spelling kept — the hint has to name the argument as written.
   const byLower = new Map(args.map((arg) => [arg.name.toLowerCase(), arg.name]));
@@ -68,7 +70,9 @@ export function detectPagination(args: readonly GraphQLArgument[]): Pagination |
   const matched =
     CONVENTIONS.find((c) => has(c.limit) && has(c.next)) ??
     CONVENTIONS.find((c) => has(c.limit) || has(c.next));
-  if (!matched) return undefined;
+  if (!matched) {
+    return undefined;
+  }
 
   const limit = matched.limit ? byLower.get(matched.limit) : undefined;
   const next = matched.next ? byLower.get(matched.next) : undefined;
@@ -90,10 +94,16 @@ const ADVANCE: Record<PaginationStyle, string> = {
  */
 export function paginationHint(args: readonly GraphQLArgument[]): string | undefined {
   const pagination = detectPagination(args);
-  if (!pagination) return undefined;
+  if (!pagination) {
+    return undefined;
+  }
   const { limit, next, style } = pagination;
   const clauses: string[] = [];
-  if (limit) clauses.push(`\`${limit}\` to cap the page size`);
-  if (next) clauses.push(`\`${next}\` ${ADVANCE[style]}`);
+  if (limit) {
+    clauses.push(`\`${limit}\` to cap the page size`);
+  }
+  if (next) {
+    clauses.push(`\`${next}\` ${ADVANCE[style]}`);
+  }
   return `This field paginates: pass ${clauses.join(', then ')}.`;
 }

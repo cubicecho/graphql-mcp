@@ -1205,7 +1205,9 @@ describe('the tool listing is rendered once per factory', () => {
     const client = await connect(factory());
     await client.listTools();
     const started = performance.now();
-    for (let i = 0; i < times; i++) await client.listTools();
+    for (let i = 0; i < times; i++) {
+      await client.listTools();
+    }
     const elapsed = performance.now() - started;
     await client.close();
     return elapsed;

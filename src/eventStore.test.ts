@@ -40,7 +40,9 @@ describe('MemoryEventStore', () => {
   test('replays only what came after the given id', async () => {
     const store = new MemoryEventStore();
     const ids = [];
-    for (let n = 0; n < 4; n++) ids.push(await store.storeEvent('s', note(n)));
+    for (let n = 0; n < 4; n++) {
+      ids.push(await store.storeEvent('s', note(n)));
+    }
 
     const { streamId, sent } = await replay(store, ids[1]);
     assert.equal(streamId, 's');
@@ -87,7 +89,9 @@ describe('MemoryEventStore', () => {
   test('drops the oldest events past the per-stream cap', async () => {
     const store = new MemoryEventStore({ maxEventsPerStream: 3 });
     const ids = [];
-    for (let n = 0; n < 5; n++) ids.push(await store.storeEvent('s', note(n)));
+    for (let n = 0; n < 5; n++) {
+      ids.push(await store.storeEvent('s', note(n)));
+    }
 
     assert.equal(store.size, 3);
     const { sent } = await replay(store, ids[2]);
@@ -100,7 +104,9 @@ describe('MemoryEventStore', () => {
   test('an aged-out id reads as unknown rather than as a partial stream', async () => {
     const store = new MemoryEventStore({ maxEventsPerStream: 2 });
     const first = await store.storeEvent('s', note(0));
-    for (let n = 1; n < 4; n++) await store.storeEvent('s', note(n));
+    for (let n = 1; n < 4; n++) {
+      await store.storeEvent('s', note(n));
+    }
 
     // The transport asks this before replaying, and answers a miss with a 400 —
     // which is the honest answer, because the events between `first` and the
@@ -126,7 +132,9 @@ describe('MemoryEventStore', () => {
   test('event ids are unique across streams', async () => {
     const store = new MemoryEventStore();
     const ids = new Set<string>();
-    for (let n = 0; n < 20; n++) ids.add(await store.storeEvent(n % 3 === 0 ? 'a' : 'b', note(n)));
+    for (let n = 0; n < 20; n++) {
+      ids.add(await store.storeEvent(n % 3 === 0 ? 'a' : 'b', note(n)));
+    }
     assert.equal(ids.size, 20);
   });
 
@@ -141,12 +149,15 @@ describe('MemoryEventStore', () => {
 
   test('the defaults are the documented bounds', async () => {
     const store = new MemoryEventStore();
-    for (let n = 0; n < DEFAULT_MAX_EVENTS_PER_STREAM + 5; n++)
+    for (let n = 0; n < DEFAULT_MAX_EVENTS_PER_STREAM + 5; n++) {
       await store.storeEvent('s', note(n));
+    }
     assert.equal(store.size, DEFAULT_MAX_EVENTS_PER_STREAM);
 
     const streams = new MemoryEventStore();
-    for (let n = 0; n < DEFAULT_MAX_STREAMS + 3; n++) await streams.storeEvent(`s${n}`, note(n));
+    for (let n = 0; n < DEFAULT_MAX_STREAMS + 3; n++) {
+      await streams.storeEvent(`s${n}`, note(n));
+    }
     assert.equal(streams.streamCount, DEFAULT_MAX_STREAMS);
   });
 });

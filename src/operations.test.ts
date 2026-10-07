@@ -156,7 +156,9 @@ describe('buildOperationTools', () => {
     assert.match(tool.description, /omit for the default `10`/);
     const rendered = JSON.stringify(toJsonSchemaCompat(z.object(tool.inputSchema)));
     assert.doesNotMatch(rendered, /"required"/);
-    if (HAS_META) assert.match(rendered, /"default":10/);
+    if (HAS_META) {
+      assert.match(rendered, /"default":10/);
+    }
   });
 
   test('a non-null variable without a default stays required', () => {

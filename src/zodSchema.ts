@@ -110,7 +110,9 @@ export function branchesAt(
   setting: NullBranchesSetting | undefined,
   type: GraphQLInputType,
 ): NullBranches {
-  if (setting === undefined) return DEFAULT_NULL_BRANCHES;
+  if (setting === undefined) {
+    return DEFAULT_NULL_BRANCHES;
+  }
   return typeof setting === 'string' ? setting : setting.byType(getNamedType(type));
 }
 
@@ -205,7 +207,9 @@ const SCALAR_BUILDERS: Record<string, () => AnyZodType> = {
  */
 export function builtinScalar(type: GraphQLScalarType): AnyZodType {
   const builder = SCALAR_BUILDERS[type.name];
-  if (builder) return builder();
+  if (builder) {
+    return builder();
+  }
   const hint = type.description?.trim();
   return z
     .any()
@@ -242,8 +246,12 @@ interface Ctx {
 
 /** Normalizes either mapping form into a single lookup function. */
 export function toResolver(mapping: ScalarMapping | undefined): ScalarResolver {
-  if (!mapping) return () => undefined;
-  if (typeof mapping === 'function') return mapping;
+  if (!mapping) {
+    return () => undefined;
+  }
+  if (typeof mapping === 'function') {
+    return mapping;
+  }
   return (scalar) => mapping[scalar.name];
 }
 
@@ -269,7 +277,9 @@ function fieldToZod(
     return baseToZod(type.ofType, ctx);
   }
   const base = baseToZod(type, ctx);
-  if (position === 'element') return base.nullable();
+  if (position === 'element') {
+    return base.nullable();
+  }
   return branchesAt(ctx.nullBranches, type) === 'never' ? base.optional() : base.nullish();
 }
 
@@ -291,9 +301,13 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
     // A type already finished is reused outright; one still on the stack resolves
     // to its `z.lazy` placeholder, which is what makes a cycle terminate.
     const built = ctx.done.get(type.name);
-    if (built) return built;
+    if (built) {
+      return built;
+    }
     const pending = ctx.pending.get(type.name);
-    if (pending) return pending;
+    if (pending) {
+      return pending;
+    }
     const holder: { schema?: AnyZodType } = {};
     // `z.lazy` defers its getter until parse time, which is always after this
     // call returns and sets `holder.schema` — so the cast can't observe undefined.
@@ -399,7 +413,9 @@ export function enumSchema(type: GraphQLEnumType): AnyZodType {
  */
 export function defaultJsonOf(source: GraphQLArgument | GraphQLInputField): unknown {
   const node = source.astNode?.defaultValue;
-  if (node) return valueFromASTUntyped(node);
+  if (node) {
+    return valueFromASTUntyped(node);
+  }
   return source.defaultValue;
 }
 
