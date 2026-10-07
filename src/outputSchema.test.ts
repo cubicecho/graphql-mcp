@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { buildSchema, type GraphQLObjectType, type GraphQLOutputType } from 'graphql';
+import {
+  buildSchema,
+  type GraphQLObjectType,
+  type GraphQLOutputType,
+  Kind,
+  parse,
+  type SelectionSetNode,
+} from 'graphql';
 import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { makeTodoSchema } from './fixtures.test.ts';
 import { buildOutputSchema } from './outputSchema.ts';
+import { buildSelectionSet } from './selection.ts';
 import { buildTools } from './tools.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
 
@@ -228,4 +236,75 @@ describe('buildOutputSchema scalar descriptions', () => {
     const schema = buildOutputSchema(fieldType('scalar Blob type Query { b: Blob! }', 'b'));
     assert.equal(schema.description, 'Custom scalar Blob');
   });
+});
+
+/** Dotted paths of every field a selection set asks for, fragments flattened into their parent. */
+function selectedPaths(selectionSet: SelectionSetNode, prefix = ''): string[] {
+  return selectionSet.selections.flatMap((selection) => {
+    if (selection.kind === Kind.INLINE_FRAGMENT) {
+      return selectedPaths(selection.selectionSet, prefix);
+    }
+    if (selection.kind !== Kind.FIELD) {
+      return [];
+    }
+    const path = `${prefix}${selection.name.value}`;
+    const nested = selection.selectionSet ? selectedPaths(selection.selectionSet, `${path}.`) : [];
+    return [path, ...nested];
+  });
+}
+
+/** Dotted paths of every key an output schema describes, union members flattened into their parent. */
+function describedPaths(schema: AnyZodType, prefix = ''): string[] {
+  let current: AnyZodType = schema;
+  while (
+    current instanceof z.ZodNullable ||
+    current instanceof z.ZodOptional ||
+    current instanceof z.ZodArray
+  ) {
+    current = (current instanceof z.ZodArray ? current.element : current.unwrap()) as AnyZodType;
+  }
+  if (current instanceof z.ZodUnion) {
+    return (current.options as AnyZodType[]).flatMap((member) => describedPaths(member, prefix));
+  }
+  if (current instanceof z.ZodObject) {
+    return Object.entries(current.shape as ZodShape).flatMap(([name, field]) => [
+      `${prefix}${name}`,
+      ...describedPaths(field, `${prefix}${name}.`),
+    ]);
+  }
+  return [];
+}
+
+describe('buildOutputSchema agrees with buildSelectionSet', () => {
+  const sdl = /* GraphQL */ `
+    interface Node { id: ID! }
+    enum Status { DRAFT LIVE }
+    type Tag implements Node { id: ID! label: String owner: User }
+    type Post implements Node { id: ID! author: User! status: Status }
+    type User implements Node {
+      id: ID!
+      name: String
+      tags: [Tag!]!
+      friend: User
+      avatar(size: Int!): String
+      posts(first: Int = 2): [Post]
+    }
+    union Hit = User | Post | Tag
+    type Query { user: User node: Node hits: [Hit!]! }
+  `;
+  const depths = [1, 2, 3, 4];
+
+  for (const field of ['user', 'node', 'hits']) {
+    for (const depth of depths) {
+      test(`${field} at depth ${depth} describes exactly the fields it selects`, () => {
+        const type = fieldType(sdl, field);
+        const selection = parse(buildSelectionSet(type, depth)).definitions[0];
+        assert.equal(selection.kind, Kind.OPERATION_DEFINITION);
+        const selected = new Set(selectedPaths(selection.selectionSet));
+        const described = new Set(describedPaths(buildOutputSchema(type, depth)));
+        assert.deepEqual([...described].sort(), [...selected].sort());
+        assert.ok(selected.size > 0);
+      });
+    }
+  }
 });
