@@ -9,7 +9,7 @@ import { describe, test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { buildSchema, type GraphQLSchema } from 'graphql';
+import { buildSchema } from 'graphql';
 import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import {
@@ -26,7 +26,6 @@ import {
   createMcpServer,
   createServerFactory,
   registerGraphqlTools,
-  type ServerFactory,
 } from './server.ts';
 
 async function connect(server: McpServer): Promise<Client> {
@@ -1180,39 +1179,20 @@ describe('the tool listing is rendered once per factory', () => {
   // The SDK converts every tool's Zod schema to JSON Schema inside its
   // `tools/list` handler, so a stateless server pays for it on every request.
   // See `shareToolListing`.
-  const COLUMNS = Array.from({ length: 12 }, (_, i) => `col${i}`);
-  /** Enough listings that per-call scheduling noise averages out. */
-  const LISTINGS = 25;
-  const TABLES = ['users', 'posts', 'orders', 'teams', 'invoices', 'products'];
-
-  function filterHeavySchema(): GraphQLSchema {
-    const parts = [
-      `input Filters { eq: String ne: String lt: String gt: String like: String inArray: [String!] isNull: Boolean }`,
-    ];
-    for (const table of TABLES) {
-      const type = table[0].toUpperCase() + table.slice(1);
-      parts.push(`type ${type} { ${COLUMNS.map((c) => `${c}: String`).join(' ')} }`);
-      parts.push(`input ${type}Where { ${COLUMNS.map((c) => `${c}: Filters`).join(' ')} }`);
-    }
-    parts.push(
-      `type Query { ${TABLES.map((table) => {
-        const type = table[0].toUpperCase() + table.slice(1);
-        return `${table}(where: ${type}Where, limit: Int): [${type}!]!`;
-      }).join(' ')} }`,
-    );
-    return buildSchema(parts.join('\n'));
-  }
-
-  async function listMany(factory: ServerFactory, times: number): Promise<number> {
-    const client = await connect(factory());
-    await client.listTools();
-    const started = performance.now();
-    for (let i = 0; i < times; i++) {
-      await client.listTools();
-    }
-    const elapsed = performance.now() - started;
-    await client.close();
-    return elapsed;
+  /**
+   * One `tools/list` answer straight from the server's handler table, skipping
+   * the client: a client parses every response into a new object, which hides
+   * whether two answers were the same rendering.
+   */
+  function rawListing(server: McpServer): Promise<unknown> {
+    const handlers = (
+      server.server as unknown as {
+        _requestHandlers: Map<string, (request: unknown, extra: unknown) => Promise<unknown>>;
+      }
+    )._requestHandlers;
+    const list = handlers.get('tools/list');
+    assert.ok(list, 'the SDK registered no tools/list handler');
+    return list({ method: 'tools/list', params: {} }, {});
   }
 
   test('two servers from one factory list identically', async () => {
@@ -1230,27 +1210,29 @@ describe('the tool listing is rendered once per factory', () => {
     await second.close();
   });
 
-  test('the second listing costs a fraction of the first', async () => {
-    const schema = filterHeavySchema();
-    const cached = createServerFactory({ schema, selectionDepth: 1 });
-    const uncached = createServerFactory({ schema, selectionDepth: 1 });
-    // Any change to a tool set retires the shared listing, which is exactly the
-    // behaviour to compare against: the SDK rendering every response.
-    uncached().sendToolListChanged();
+  test('every listing after the first reuses its rendering', async () => {
+    const { schema } = makeTodoSchema();
+    const factory = createServerFactory({ schema, selectionDepth: 1 });
+    const first = factory();
 
-    const withCache = await listMany(cached, LISTINGS);
-    const withoutCache = await listMany(uncached, LISTINGS);
+    const rendered = await rawListing(first);
+    // Identity, not equality: the same object means the SDK was not asked again.
+    assert.equal(await rawListing(first), rendered);
+    assert.equal(await rawListing(factory()), rendered);
+  });
 
-    // Deliberately loose. Both runs pay the same in-memory round trip per
-    // listing, and that floor caps the ratio at whatever the render costs
-    // relative to it — around 20x on zod 4, but only ~4x on zod 3, whose
-    // conversion is far cheaper. A tighter bound would be asserting the peer's
-    // performance rather than this package's behaviour. Without the cache the
-    // ratio is 1, so the claim still fails loudly if the sharing goes away.
-    assert.ok(
-      withCache * 2 < withoutCache,
-      `expected the cached listings to be far cheaper, got ${withCache.toFixed(1)}ms vs ${withoutCache.toFixed(1)}ms`,
-    );
+  test('without the shared listing every request renders again', async () => {
+    const { schema } = makeTodoSchema();
+    const factory = createServerFactory({ schema, selectionDepth: 1 });
+    const server = factory();
+    // Any change to a tool set retires the shared listing, which leaves the
+    // SDK rendering every response.
+    server.sendToolListChanged();
+
+    const rendered = await rawListing(server);
+    const again = await rawListing(server);
+    assert.notEqual(again, rendered);
+    assert.deepEqual(again, rendered);
   });
 
   test('changing one server’s tools retires the listing for all of them', async () => {
