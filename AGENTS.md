@@ -45,7 +45,9 @@ npm run coverage       # node --test with built-in coverage + thresholds
 npm run typecheck      # tsc --noEmit (src)
 npm run typecheck:tests # tsc -p tsconfig.tests.json (src + *.test.ts)
 npm run build          # tsc → dist/
-npm run check          # biome lint + format check
+npm run check          # check:biome, then check:types
+npm run check:biome    # biome lint + format check
+npm run check:types    # typecheck + typecheck:tests
 npm run format         # biome format --write
 ```
 

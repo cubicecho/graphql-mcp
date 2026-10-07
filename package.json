@@ -38,7 +38,9 @@
     "coverage": "node --test --experimental-strip-types --experimental-test-coverage --test-coverage-exclude=\"**/*.test.ts\" --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=85 \"src/**/*.test.ts\"",
     "format": "biome format --write .",
     "lint": "biome lint .",
-    "check": "biome check ."
+    "check": "npm run check:biome && npm run check:types",
+    "check:biome": "biome check .",
+    "check:types": "npm run typecheck && npm run typecheck:tests"
   },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": ">=1.12",

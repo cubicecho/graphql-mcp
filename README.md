@@ -1410,7 +1410,9 @@ npm run coverage        # node --test with built-in coverage + thresholds
 npm run typecheck       # tsc --noEmit
 npm run typecheck:tests # type-check the test files too
 npm run build           # compile to dist/
-npm run check           # biome lint + format check
+npm run check           # check:biome, then check:types
+npm run check:biome     # biome lint + format check
+npm run check:types     # typecheck + typecheck:tests
 ```
 
 The source uses `.ts` import specifiers so it runs unbuilt under Node's type
