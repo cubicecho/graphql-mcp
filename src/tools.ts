@@ -696,7 +696,7 @@ function toDescriptor(field: RootField, options: DescriptorOptions): ToolDescrip
     name,
     kind,
     title: humanize(field.name),
-    description: buildDescription(field, kind, selection, nullBranches, exampleDepth),
+    description: buildDescription({ field, kind, selection, nullBranches, exampleDepth }),
     inputSchema: argsToZodShape(field.args, { ...shape, nullBranches }),
     // `nullBranches` is an *input* concern: it trades away the ability to send
     // an explicit null. An output schema only describes what comes back, where
@@ -734,14 +734,24 @@ function branchesFor(
   return typeof nullBranches === 'function' ? nullBranches(field, kind) : nullBranches;
 }
 
+/** What a generated tool's description is written from. */
+interface FieldProse {
+  field: RootField;
+  kind: OperationKind;
+  /** The selection set the tool's operation requests. */
+  selection: string;
+  nullBranches?: NullBranchesSetting;
+  exampleDepth?: number;
+}
+
 /** Composes a tool description from the field's SDL: docstring, signature, args, and result. */
-function buildDescription(
-  field: RootField,
-  kind: OperationKind,
-  selection: string,
-  nullBranches: NullBranchesSetting = DEFAULT_NULL_BRANCHES,
-  exampleDepth: number = DEFAULT_EXAMPLE_DEPTH,
-): string {
+function buildDescription({
+  field,
+  kind,
+  selection,
+  nullBranches = DEFAULT_NULL_BRANCHES,
+  exampleDepth = DEFAULT_EXAMPLE_DEPTH,
+}: FieldProse): string {
   const lines: string[] = [];
   lines.push(field.description?.trim() || `The \`${field.name}\` ${kind}.`);
   // Directly under the summary, where it can't be missed: a tool that reads as

@@ -262,15 +262,15 @@ function toDescriptor(
     name: applyNameCase(operationName, options.nameCase),
     kind,
     title,
-    description: buildDescription(
+    description: buildDescription({
       operationName,
       kind,
       definition,
       args,
       nullBranches,
-      options.exampleDepth ?? DEFAULT_EXAMPLE_DEPTH,
+      exampleDepth: options.exampleDepth ?? DEFAULT_EXAMPLE_DEPTH,
       query,
-    ),
+    }),
     inputSchema: toInputSchema(args, variables, options, nullBranches),
     // Deferred, deliberately: a schema derived from the document's selection set
     // (aliases, spreads, inline fragments, type conditions) is its own walker,
@@ -357,6 +357,18 @@ function toArgument(schema: GraphQLSchema, variable: VariableDefinitionNode): Gr
   } as GraphQLArgument;
 }
 
+/** What an operation's description is written from. */
+interface OperationProse {
+  operationName: string;
+  kind: OperationKind;
+  definition: OperationDefinitionNode;
+  args: ReadonlyArray<GraphQLArgument>;
+  nullBranches: NullBranchesSetting;
+  exampleDepth: number;
+  /** The printed document the tool runs. */
+  query: string;
+}
+
 /**
  * The tool's prose: the operation's own `#` comments, its variables through the
  * shared renderer, and the document it will run.
@@ -366,15 +378,15 @@ function toArgument(schema: GraphQLSchema, variable: VariableDefinitionNode): Gr
  * the full return type and plan around fields that never arrive. Here it is
  * also the only place the selection is written down at all.
  */
-function buildDescription(
-  operationName: string,
-  kind: OperationKind,
-  definition: OperationDefinitionNode,
-  args: ReadonlyArray<GraphQLArgument>,
-  nullBranches: NullBranchesSetting,
-  exampleDepth: number,
-  query: string,
-): string {
+function buildDescription({
+  operationName,
+  kind,
+  definition,
+  args,
+  nullBranches,
+  exampleDepth,
+  query,
+}: OperationProse): string {
   const lines: string[] = [];
   const comments = leadingComments(definition);
   lines.push(comments.join('\n') || `The \`${operationName}\` ${kind}.`);

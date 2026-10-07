@@ -261,7 +261,7 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
       }
       const input = strictInput(descriptor.inputSchema);
       validators.set(descriptor.name, input);
-      registerGeneratedTool(server, descriptor, input, executor, context, maxChars);
+      registerGeneratedTool(server, { descriptor, input, executor, context, maxChars });
     }
     for (const tool of byName.values()) {
       registerCustomTool(server, tool);
@@ -465,24 +465,24 @@ export function registerGraphqlTools(
   maxChars = DEFAULT_MAX_CHARS,
 ): void {
   for (const descriptor of descriptors) {
-    registerGeneratedTool(
-      server,
-      descriptor,
-      strictInput(descriptor.inputSchema),
-      executor,
-      context,
-      maxChars,
-    );
+    const input = strictInput(descriptor.inputSchema);
+    registerGeneratedTool(server, { descriptor, input, executor, context, maxChars });
   }
+}
+
+/** One generated tool and what its handler runs against. */
+interface GeneratedTool {
+  descriptor: ToolDescriptor;
+  /** The descriptor's input shape, made strict. */
+  input: ReturnType<typeof buildStrictInput>;
+  executor: GraphqlExecutor;
+  context: unknown | ContextFactory;
+  maxChars: number;
 }
 
 function registerGeneratedTool(
   server: McpServer,
-  descriptor: ToolDescriptor,
-  input: ReturnType<typeof buildStrictInput>,
-  executor: GraphqlExecutor,
-  context: unknown | ContextFactory,
-  maxChars: number,
+  { descriptor, input, executor, context, maxChars }: GeneratedTool,
 ): void {
   server.registerTool(
     descriptor.name,

@@ -128,22 +128,16 @@ type MetaToolBuilder = (context: MetaToolContext) => CustomTool;
 
 /** One entry per meta tool; adding a tool is a name above and a builder here. */
 const META_TOOL_BUILDERS: Record<MetaToolName, MetaToolBuilder> = {
-  introspect: ({ prefix, deps, allows, maxChars }) =>
-    introspectTool(prefix, deps.schema, allows, maxChars),
-  search: ({ prefix, deps, allows, maxChars }) => searchTool(prefix, deps.schema, allows, maxChars),
-  validate: ({ prefix, deps }) => validateTool(prefix, deps.schema),
-  execute: ({ prefix, deps, allows, allowMutations, maxChars }) =>
-    executeTool(prefix, deps, allows, allowMutations, maxChars),
+  introspect: introspectTool,
+  search: searchTool,
+  validate: validateTool,
+  execute: executeTool,
 };
 
 /* ------------------------------------------------------------------ tools -- */
 
-function introspectTool(
-  prefix: string,
-  schema: GraphQLSchema,
-  allows: RuleMatcher,
-  maxChars: number,
-): CustomTool {
+function introspectTool({ prefix, deps, allows, maxChars }: MetaToolContext): CustomTool {
+  const { schema } = deps;
   return {
     name: `${prefix}introspect`,
     title: 'Introspect GraphQL Schema',
@@ -196,12 +190,8 @@ function withShapeExample(type: GraphQLNamedType): string {
   return example ? `${sdl}\n\n# Minimal JSON example (required fields only):\n# ${example}` : sdl;
 }
 
-function searchTool(
-  prefix: string,
-  schema: GraphQLSchema,
-  allows: RuleMatcher,
-  maxChars: number,
-): CustomTool {
+function searchTool({ prefix, deps, allows, maxChars }: MetaToolContext): CustomTool {
+  const { schema } = deps;
   return {
     name: `${prefix}search`,
     title: 'Search GraphQL Schema',
@@ -231,7 +221,8 @@ function searchTool(
   };
 }
 
-function validateTool(prefix: string, schema: GraphQLSchema): CustomTool {
+function validateTool({ prefix, deps }: MetaToolContext): CustomTool {
+  const { schema } = deps;
   return {
     name: `${prefix}validate`,
     title: 'Validate GraphQL Document',
@@ -257,13 +248,13 @@ function validateTool(prefix: string, schema: GraphQLSchema): CustomTool {
   };
 }
 
-function executeTool(
-  prefix: string,
-  deps: MetaToolDeps,
-  allows: RuleMatcher,
-  allowMutations: boolean,
-  maxChars: number,
-): CustomTool {
+function executeTool({
+  prefix,
+  deps,
+  allows,
+  allowMutations,
+  maxChars,
+}: MetaToolContext): CustomTool {
   return {
     name: `${prefix}execute`,
     title: 'Execute GraphQL Operation',
