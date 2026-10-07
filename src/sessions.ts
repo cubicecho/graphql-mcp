@@ -36,7 +36,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ReplayOption } from './eventStore.ts';
+import { type EventStore, eventStoreFactory, type ReplayOption } from './eventStore.ts';
 
 /**
  * A shared record of which instance holds which session — identity and
@@ -409,5 +409,133 @@ export class MemorySessionDirectory implements SessionDirectory {
 
   release(sessionId: string): void {
     this.claims.delete(sessionId);
+  }
+}
+
+/** The request header a client sends its session id in. */
+export const SESSION_ID_HEADER = 'mcp-session-id';
+
+/** HTTP status for a session id this instance cannot serve. */
+const SESSION_NOT_FOUND_STATUS = 404;
+
+/** JSON-RPC error code the MCP SDK uses for an unknown session. */
+const SESSION_NOT_FOUND_CODE = -32001;
+
+/** What a session transport must expose for {@link SessionHost} to keep it. */
+export interface SessionTransport extends ClosableTransport {
+  sessionId?: string;
+  onclose?: () => void;
+}
+
+/** The options {@link SessionHost.begin} hands a transport constructor. */
+export interface SessionTransportOptions {
+  sessionIdGenerator: () => string;
+  enableJsonResponse: boolean;
+  eventStore: EventStore | undefined;
+  onsessioninitialized: (id: string) => void;
+  onsessionclosed: (id: string) => Promise<void>;
+}
+
+/** The ready-to-send answer for a session id this instance cannot serve. */
+export interface SessionMiss {
+  status: number;
+  headers: Record<string, string>;
+  /** A serialized JSON-RPC error. */
+  body: string;
+}
+
+/**
+ * The session lifecycle both HTTP handlers share: find a session, answer for a
+ * missing one, begin a new one, and drop a pair that never initialized. Each
+ * handler only translates its own request and response types around it.
+ */
+export class SessionHost<T extends SessionTransport> {
+  /** The live sessions. */
+  readonly store: SessionStore<T>;
+  private readonly enableJsonResponse: boolean;
+  private readonly newEventStore: () => EventStore | undefined;
+
+  /**
+   * @param options - The handler's `sessions` option, already an object.
+   */
+  constructor(options: SessionOptions) {
+    this.store = new SessionStore<T>(options);
+    this.enableJsonResponse = options.enableJsonResponse ?? false;
+    // One replay buffer per session, so a reconnecting client resumes its own
+    // stream and the buffer dies with the session.
+    this.newEventStore = eventStoreFactory(options.replay);
+  }
+
+  /**
+   * Builds the host for a handler's `sessions` option.
+   *
+   * @param sessions - `true` for the defaults, an options object, or falsy for stateless.
+   * @returns The host, or `undefined` when the handler is stateless.
+   */
+  static from<T extends SessionTransport>(
+    sessions: boolean | SessionOptions | undefined,
+  ): SessionHost<T> | undefined {
+    const options = sessions === true ? {} : sessions || undefined;
+    return options ? new SessionHost<T>(options) : undefined;
+  }
+
+  /**
+   * Answers a request whose session id is not held here.
+   *
+   * @param id - The session id the request carried.
+   * @returns The status, headers and JSON-RPC body to send; see {@link sessionNotFound}.
+   */
+  async miss(id: string): Promise<SessionMiss> {
+    const owner = await this.store.elsewhere(id);
+    const error = { code: SESSION_NOT_FOUND_CODE, message: sessionNotFound(owner) };
+    return {
+      status: SESSION_NOT_FOUND_STATUS,
+      headers: { 'Content-Type': 'application/json', ...headersFor(owner) },
+      body: JSON.stringify({ jsonrpc: '2.0', error, id: null }),
+    };
+  }
+
+  /**
+   * Creates the transport for a request with no session id and wires it to the
+   * store. Such a request is either an `initialize`, which mints an id, or a
+   * stray one the transport rejects itself; the work is the same either way.
+   *
+   * @param server - The server minted for this session.
+   * @param create - Constructs the handler's transport from the session options.
+   * @returns The transport, not yet connected.
+   */
+  begin(server: McpServer, create: (options: SessionTransportOptions) => T): T {
+    const session: Session<T> = { server, lastSeen: Date.now() };
+    const transport = create({
+      sessionIdGenerator: this.store.generateSessionId,
+      enableJsonResponse: this.enableJsonResponse,
+      eventStore: this.newEventStore(),
+      // Registered before the initialize response is written, so a client that
+      // fires its next request immediately can't beat the session into the table.
+      onsessioninitialized: (id) => this.store.add(id, session),
+      onsessionclosed: (id) => this.store.drop(id),
+    });
+    session.transport = transport;
+    transport.onclose = () => {
+      if (transport.sessionId) {
+        void this.store.drop(transport.sessionId);
+      }
+    };
+    return transport;
+  }
+
+  /**
+   * Closes a pair whose request never initialized a session, so a stray request
+   * does not leak a server.
+   *
+   * @param server - The server passed to {@link SessionHost.begin}.
+   * @param transport - The transport it returned, after the request was handled.
+   */
+  async settle(server: McpServer, transport: T): Promise<void> {
+    if (transport.sessionId) {
+      return;
+    }
+    await transport.close();
+    await server.close();
   }
 }

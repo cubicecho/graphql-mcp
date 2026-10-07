@@ -32,15 +32,9 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { type EventStore, eventStoreFactory } from './eventStore.ts';
+import type { EventStore } from './eventStore.ts';
 import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
-import {
-  headersFor,
-  type Session,
-  type SessionOptions,
-  SessionStore,
-  sessionNotFound,
-} from './sessions.ts';
+import { SESSION_ID_HEADER, SessionHost, type SessionOptions } from './sessions.ts';
 
 /** A fetch-style MCP handler: give it a `Request`, get a `Response`. */
 export interface McpFetchHandler {
@@ -135,15 +129,13 @@ async function loadTransport(): Promise<WebTransportCtor> {
 export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandler {
   const { contextFromRequest, sessions, ...serverOptions } = options;
   const makeServer = createServerFactory(serverOptions);
-  const sessionOptions = sessions === true ? {} : sessions || undefined;
-  const store = sessionOptions ? new SessionStore<WebTransport>(sessionOptions) : null;
-  const newEventStore = eventStoreFactory(sessionOptions?.replay);
+  const host = SessionHost.from<WebTransport>(sessions);
 
   const handler = async (request: Request): Promise<Response> => {
     const Transport = await loadTransport();
     const contextOverride = contextFromRequest ? () => contextFromRequest(request) : undefined;
 
-    if (!store || !sessionOptions) {
+    if (!host) {
       const server = makeServer(contextOverride);
       const transport = new Transport({
         sessionIdGenerator: undefined,
@@ -159,40 +151,26 @@ export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandle
       return response;
     }
 
-    const sessionId = request.headers.get('mcp-session-id');
+    const sessionId = request.headers.get(SESSION_ID_HEADER);
     if (sessionId) {
-      const existing = store.take(sessionId);
+      const existing = host.store.take(sessionId);
       if (!existing?.transport) {
-        const owner = await store.elsewhere(sessionId);
-        return jsonRpcError(404, -32001, sessionNotFound(owner), headersFor(owner));
+        const miss = await host.miss(sessionId);
+        return new Response(miss.body, { status: miss.status, headers: miss.headers });
       }
       return existing.transport.handleRequest(request);
     }
 
     const server = makeServer(contextOverride);
-    const session: Session<WebTransport> = { server, lastSeen: Date.now() };
-    const transport = new Transport({
-      sessionIdGenerator: store.generateSessionId,
-      enableJsonResponse: sessionOptions.enableJsonResponse ?? false,
-      eventStore: newEventStore(),
-      onsessioninitialized: (id) => store.add(id, session),
-      onsessionclosed: (id) => store.drop(id),
-    });
-    session.transport = transport;
-    transport.onclose = () => {
-      if (transport.sessionId) void store.drop(transport.sessionId);
-    };
+    const transport = host.begin(server, (options) => new Transport(options));
     await connect(server, transport);
     const response = await transport.handleRequest(request);
-    if (!transport.sessionId) {
-      await transport.close();
-      await server.close();
-    }
+    await host.settle(server, transport);
     return response;
   };
 
   handler.close = async (): Promise<void> => {
-    await store?.closeAll();
+    await host?.store.closeAll();
   };
   return handler;
 }
@@ -207,17 +185,4 @@ export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandle
 async function connect(server: McpServer, transport: WebTransport): Promise<void> {
   // biome-ignore lint/suspicious/noExplicitAny: bridging the structural WebTransport to the SDK's Transport
   await connectServer(server, transport as any);
-}
-
-/** A JSON-RPC error as a `Response`, for requests no transport owns yet. */
-function jsonRpcError(
-  status: number,
-  code: number,
-  message: string,
-  headers: Record<string, string> = {},
-): Response {
-  return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code, message }, id: null }), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...headers },
-  });
 }

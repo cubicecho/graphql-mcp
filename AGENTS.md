@@ -73,7 +73,8 @@ src/
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
   argExample.ts   — a literal JSON example of one argument's shape (buildArgExample)
-  sessions.ts     — the bounded session table behind stateful HTTP (SessionStore)
+  sessions.ts     — the bounded session table behind stateful HTTP (SessionStore) and the
+                    lifecycle both HTTP handlers drive it through (SessionHost)
                     plus SessionDirectory, which reports session ownership across instances
   eventStore.ts   — the bounded SSE replay buffer behind resumability (MemoryEventStore)
   http.ts         — createHttpHandler for Node (IncomingMessage/ServerResponse)

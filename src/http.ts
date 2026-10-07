@@ -31,15 +31,8 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { eventStoreFactory } from './eventStore.ts';
 import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
-import {
-  headersFor,
-  type Session,
-  type SessionOptions,
-  SessionStore,
-  sessionNotFound,
-} from './sessions.ts';
+import { SESSION_ID_HEADER, SessionHost, type SessionOptions } from './sessions.ts';
 
 /** A request, optionally with a parsed JSON body attached (as `express.json()` provides). */
 export type McpHttpRequest = IncomingMessage & { body?: unknown };
@@ -97,20 +90,14 @@ export interface HttpHandlerOptions extends CreateMcpServerOptions {
 export function createHttpHandler(options: HttpHandlerOptions): McpHttpHandler {
   const { contextFromRequest, sessions, ...serverOptions } = options;
   const makeServer = createServerFactory(serverOptions);
-  const sessionOptions = sessions === true ? {} : sessions || undefined;
-  const store = sessionOptions
-    ? new SessionStore<StreamableHTTPServerTransport>(sessionOptions)
-    : null;
-  // One replay buffer per session, so a reconnecting client resumes its own
-  // stream and the buffer dies with the session.
-  const newEventStore = eventStoreFactory(sessionOptions?.replay);
+  const host = SessionHost.from<StreamableHTTPServerTransport>(sessions);
 
   const handler = async (req: McpHttpRequest, res: ServerResponse): Promise<void> => {
     // Per-request context derived from the real HTTP request wins over a static
     // `context`; otherwise fall back to whatever `serverOptions.context` holds.
     const contextOverride = contextFromRequest ? () => contextFromRequest(req) : undefined;
 
-    if (!store || !sessionOptions) {
+    if (!host) {
       const server = makeServer(contextOverride);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
@@ -125,49 +112,28 @@ export function createHttpHandler(options: HttpHandlerOptions): McpHttpHandler {
       return;
     }
 
-    const sessionId = headerValue(req, 'mcp-session-id');
+    const sessionId = headerValue(req, SESSION_ID_HEADER);
     if (sessionId) {
-      const existing = store.take(sessionId);
+      const existing = host.store.take(sessionId);
       if (!existing?.transport) {
-        const owner = await store.elsewhere(sessionId);
-        sendJsonRpcError(res, 404, -32001, sessionNotFound(owner), headersFor(owner));
+        const miss = await host.miss(sessionId);
+        res.writeHead(miss.status, miss.headers);
+        res.end(miss.body);
         return;
       }
       await existing.transport.handleRequest(req, res, req.body);
       return;
     }
 
-    // No session id: either an `initialize` — which mints one — or a stray
-    // request, which the transport itself rejects with 400 because it has not
-    // been initialized. Either way the work is the same, so the body never has
-    // to be inspected here.
     const server = makeServer(contextOverride);
-    const session: Session<StreamableHTTPServerTransport> = { server, lastSeen: Date.now() };
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: store.generateSessionId,
-      enableJsonResponse: sessionOptions.enableJsonResponse ?? false,
-      eventStore: newEventStore(),
-      // Registered before the initialize response is written, so a client that
-      // fires its next request immediately can't beat the session into the table.
-      onsessioninitialized: (id) => store.add(id, session),
-      onsessionclosed: (id) => store.drop(id),
-    });
-    session.transport = transport;
-    transport.onclose = () => {
-      if (transport.sessionId) void store.drop(transport.sessionId);
-    };
+    const transport = host.begin(server, (options) => new StreamableHTTPServerTransport(options));
     await connectServer(server, transport);
     await transport.handleRequest(req, res, req.body);
-    // A request that never initialized leaves nothing in the table; drop the
-    // pair rather than leaking a server per stray request.
-    if (!transport.sessionId) {
-      await transport.close();
-      await server.close();
-    }
+    await host.settle(server, transport);
   };
 
   handler.close = async (): Promise<void> => {
-    await store?.closeAll();
+    await host?.store.closeAll();
   };
   return handler;
 }
@@ -176,16 +142,4 @@ export function createHttpHandler(options: HttpHandlerOptions): McpHttpHandler {
 function headerValue(req: IncomingMessage, name: string): string | undefined {
   const value = req.headers[name];
   return Array.isArray(value) ? value[0] : value;
-}
-
-/** Writes a JSON-RPC error response, since no transport owns this request yet. */
-function sendJsonRpcError(
-  res: ServerResponse,
-  status: number,
-  code: number,
-  message: string,
-  headers: Record<string, string> = {},
-): void {
-  res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
-  res.end(JSON.stringify({ jsonrpc: '2.0', error: { code, message }, id: null }));
 }
