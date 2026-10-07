@@ -79,13 +79,30 @@ export function createHttpExecutor(
       body: JSON.stringify({ query, variables, operationName }),
     });
     if (!response.ok) {
-      return {
-        errors: [
-          { message: `GraphQL endpoint responded ${response.status} ${response.statusText}` },
-        ],
-      };
+      return failure(`GraphQL endpoint responded ${response.status} ${response.statusText}`);
     }
-    // Cast: the endpoint's body is trusted to be a GraphQL response.
-    return (await response.json()) as GraphqlResult;
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      return failure(`GraphQL endpoint responded ${response.status} with a body that is not JSON.`);
+    }
+    if (isGraphqlResult(body) === false) {
+      return failure(
+        `GraphQL endpoint responded ${response.status} with a body that has neither \`data\` ` +
+          'nor `errors`, so it is not a GraphQL response. Check the endpoint URL and its auth.',
+      );
+    }
+    return body;
   };
+}
+
+/** A result carrying one error and no data. */
+function failure(message: string): GraphqlResult {
+  return { errors: [{ message }] };
+}
+
+/** Whether a parsed body has the one thing every GraphQL response has. */
+function isGraphqlResult(body: unknown): body is GraphqlResult {
+  return typeof body === 'object' && body !== null && ('data' in body || 'errors' in body);
 }

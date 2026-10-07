@@ -101,4 +101,28 @@ describe('createHttpExecutor', () => {
     const result = await exec({ query: '', variables: {}, operationName: 'x' });
     assert.match(result.errors?.[0]?.message ?? '', /502 Bad Gateway/);
   });
+
+  for (const body of ['null', '"oops"', '[1]', '{"message":"Unauthorized"}']) {
+    test(`reports a 200 body that is not a GraphQL response: ${body}`, async () => {
+      const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+      const exec = createHttpExecutor('http://localhost/graphql', { fetch: fakeFetch });
+      const result = await exec({ query: '{ ping }', variables: {} });
+      assert.match(result.errors?.[0]?.message ?? '', /neither `data` nor `errors`/);
+    });
+  }
+
+  test('reports a 200 body that is not JSON', async () => {
+    const fakeFetch = (async () => new Response('<html>', { status: 200 })) as typeof fetch;
+    const exec = createHttpExecutor('http://localhost/graphql', { fetch: fakeFetch });
+    const result = await exec({ query: '{ ping }', variables: {} });
+    assert.match(result.errors?.[0]?.message ?? '', /not JSON/);
+  });
+
+  test('passes through a body with only `errors`', async () => {
+    const body = JSON.stringify({ errors: [{ message: 'nope' }] });
+    const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+    const exec = createHttpExecutor('http://localhost/graphql', { fetch: fakeFetch });
+    const result = await exec({ query: '{ ping }', variables: {} });
+    assert.deepEqual(result, { errors: [{ message: 'nope' }] });
+  });
 });
