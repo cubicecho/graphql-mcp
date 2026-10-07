@@ -1,32 +1,10 @@
 /**
- * The HTTP glue for running the MCP server "side-by-side" with your GraphQL
- * server: {@link createHttpHandler} returns a plain `(req, res)` handler you
- * mount on a route (e.g. `app.post('/mcp', handler)` in Express).
- *
- * It uses the MCP SDK's Streamable HTTP transport, in one of two modes:
- *
- * - **Stateless** (default) — a fresh `McpServer` + transport per request,
- *   answered as JSON. The transport owns a single connection, so per-request
- *   isolation is what keeps concurrent calls from clobbering each other, and
- *   nothing is retained between requests: any instance can serve any call.
- * - **Stateful** (`sessions: true`) — the client initializes once, gets an
- *   `Mcp-Session-Id`, and is routed back to the same long-lived server on every
- *   later request. That is what makes an open SSE stream — and therefore
- *   server-initiated messages — possible, and each session buffers what it has
- *   sent so a dropped stream resumes rather than losing it (see `event-store.ts`).
- *   It also pins a client to one process: an `McpServer` is a live object, so a
- *   session cannot be handed to another replica. Behind a load balancer that
- *   means sticky routing — and optionally a {@link SessionDirectory}, which
- *   makes a misrouted request say which instance it belonged to instead of
- *   failing anonymously. See the README's deployment notes.
- *
- * Express is assumed for the MVP, but nothing here imports it: any framework
- * works as long as it hands the handler a Node `IncomingMessage` and a Node
- * `ServerResponse`. A parsed JSON body on `req.body` (as `express.json()`
- * provides) is used when present, but the transport reads the request stream
- * itself when it isn't — so a bare `node:http` server needs no body parser.
- * Runtimes that speak `Request`/`Response` instead want
- * {@link createFetchHandler}.
+ * {@link createHttpHandler} returns a plain `(req, res)` handler to mount on a route, over the MCP SDK's Streamable
+ * HTTP transport. Stateless mode (the default) builds a fresh `McpServer` and transport per request and answers as
+ * JSON, because a transport owns a single connection and isolation keeps concurrent calls apart. Stateful mode
+ * (`sessions: true`) routes a client back to the same long-lived server, which allows an open SSE stream but pins the
+ * client to one process, so it needs sticky routing behind a load balancer. Any framework works if it passes a Node
+ * `IncomingMessage` and `ServerResponse`, and the transport reads the request stream itself when `req.body` is absent.
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';

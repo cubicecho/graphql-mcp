@@ -1,17 +1,11 @@
 /**
- * Auto-generates a GraphQL selection set for a field's return type.
+ * Auto-generates a GraphQL selection set for a field's return type, because a tool call cannot ask which fields the
+ * caller wants. It selects every scalar and enum leaf at each level and descends into object, interface and union types
+ * up to `maxDepth`, always adding `__typename` so the selection is never empty.
  *
- * A tool call has no way to ask the AI "which fields do you want back?", so we
- * select a sensible default: every scalar/enum leaf at each level, descending
- * into nested object/interface/union types up to `maxDepth`. `__typename` is
- * always included so the result is self-describing (and never an empty, invalid
- * selection set).
- *
- * Two things are deliberately skipped (see issue #12): fields that require
- * arguments (we can't invent argument values) and types already on the current
- * path (cycle guard). An interface contributes only its own fields, not those of
- * its implementations — issue #11. `returnedFields` holds these rules once, for
- * this module and for `output-schema.ts`.
+ * It skips fields that require arguments and types already on the current path (issue #12), and an interface
+ * contributes only its own fields (issue #11). `returnedFields` holds these rules once, for this module and for
+ * `output-schema.ts`.
  */
 
 import {

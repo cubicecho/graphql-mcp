@@ -1,46 +1,11 @@
 /**
- * Turns a {@link GraphqlResult} into the `CallToolResult` an agent actually
- * reads. Shared by the generated tools (`server.ts`) and the `execute` meta tool
- * (`meta.ts`) so both report success, failure, and size the same way.
+ * Turns a {@link GraphqlResult} into the `CallToolResult` an agent reads, shared by the generated tools (`server.ts`)
+ * and the `execute` meta tool (`meta.ts`).
  *
- * Three things matter here, and all three are about the *agent's* experience:
- *
- * - **Partial results are not failures.** GraphQL returns `data` *and* `errors`
- *   when some fields resolve and others don't. Flagging that whole call
- *   `isError` makes an agent discard rows it could have used, so `isError`
- *   tracks whether anything usable came back — not whether `errors` is
- *   non-empty. "Usable" means at least one root field is non-null: a nullable
- *   root field whose resolver threw still yields `data: { field: null }`, which
- *   is a total failure of that call however present `data` looks.
- * - **Errors are trimmed to what an agent can act on.** A GraphQL error's
- *   `locations` are line/column offsets into a query string the agent never
- *   wrote and cannot see; reporting them invites nonsense self-correction.
- *   `message`, `path`, and `extensions` (which carry app-level codes like
- *   `UNAUTHENTICATED`) survive — but only when they hold something, since
- *   graphql-js populates `extensions` on every error whether or not the server
- *   put anything in it.
- * - **Results are clamped, structurally.** A tool that returns a large collection
- *   would otherwise flood the agent's context with no warning. What gets cut is
- *   *rows*, never members of the envelope: {@link toCallToolResult} drops
- *   elements from the arrays inside `data` until the serialized whole fits, and
- *   records what went in a `truncated` member. Slicing the serialized string
- *   instead — which is what {@link clamp} does, and all this used to do — cuts
- *   mid-token and leaves something that is not JSON, and cuts from the end,
- *   where `errors` and the partial-result `note` live. A partial failure whose
- *   diagnostics were truncated away is reported as a clean success, which is
- *   worse than reporting nothing. The `truncated` record carries a pagination
- *   hint when the field has an argument to page with, since "this was cut" on
- *   its own leaves an agent with no move but to re-run the identical call.
- *
- * A {@link toCallToolResult} body is always parseable JSON — which is also why
- * {@link runExecutor} exists: an executor that *throws* would otherwise reach
- * the SDK, which reports the bare message as text and breaks that promise on
- * exactly the failure a client most needs to handle. `guardToolArguments`
- * (`handlers.ts`) closes the other way in: the SDK rejects a call whose
- * `arguments` don't match the registered schema *before* any of this runs, and
- * reports that the same bare way. ({@link text} bodies are
- * prose — SDL printouts and search hits — and {@link clamp} slices those by
- * character, which is right for prose and only for prose.)
+ * A partial result is not a failure, so `isError` is set only when there are errors and no root field came back
+ * non-null. Errors keep `message`, `path` and non-empty `extensions`, and lose `locations`, which point into a query
+ * the agent never wrote. An oversized result is cut by dropping array elements from `data`, never by slicing the
+ * serialized JSON, so the body always parses and `errors` and `note` survive.
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -107,16 +72,10 @@ export interface TruncationRecord {
 const PARTIAL_NOTE = 'Partial result: some fields failed and are null in `data`; the rest is valid. See `errors`.';
 
 /**
- * Wraps a GraphQL result as an MCP tool result.
- *
- * `isError` is set only when no data came back, so a partial result stays usable
- * — it carries a `note` explaining that some fields failed. Errors are condensed
- * to `message`/`path`/`extensions`.
- *
- * Over `maxChars`, rows are dropped from the arrays inside `data` until the
- * whole serialization fits, and a `truncated` member says what went. The
- * envelope itself is never cut, so the body stays parseable and `errors`/`note`
- * survive whatever happens to `data` — see the module docs.
+ * Wraps a GraphQL result as an MCP tool result. `isError` is set only when no usable data came back, so a partial
+ * result stays usable and carries a `note` saying that some fields failed. Errors are condensed to `message`, `path`
+ * and `extensions`. Over `maxChars`, array elements are dropped from `data` until the serialization fits and a
+ * `truncated` member records what went, so the body stays parseable.
  *
  * @param result - The executor's GraphQL result.
  * @param maxChars - Character budget before truncation.
@@ -152,21 +111,10 @@ export function toCallToolResult(result: GraphqlResult, maxChars = DEFAULT_MAX_C
 }
 
 /**
- * Fits the envelope into `maxChars` by dropping array elements from `data`.
- *
- * Every array under `data` is capped at the same number of elements, and the
- * largest cap that fits is found by bisection — a handful of serializations
- * rather than one per row. Capping uniformly rather than draining the biggest
- * array first keeps the result *shaped* like the one that was asked for: an
- * agent that sees three of a hundred rows in each of two collections can reason
- * about both, where one full collection and one empty one reads as though the
- * second returned nothing.
- *
- * If not even an empty `data` fits, `data` is left out entirely — an honest
- * "too large to return" with the errors still attached, rather than a body cut
- * into something unparseable. Should the diagnostics alone exceed the budget,
- * validity wins and the budget is missed: a `CallToolResult` a client cannot
- * parse is worse than one that is longer than intended.
+ * Fits the envelope into `maxChars` by dropping array elements from `data`. Every array is capped at the same length,
+ * found by bisection, so the result keeps the shape that was asked for instead of showing one full collection and one
+ * empty one. If even an empty `data` does not fit, `data` is left out and the errors stay attached. If the diagnostics
+ * alone exceed the budget, the budget is missed, because a body that cannot be parsed is worse than a long one.
  */
 function shrink(
   envelope: (data: unknown, truncated?: TruncationRecord) => string,

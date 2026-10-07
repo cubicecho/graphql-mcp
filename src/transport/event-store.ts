@@ -1,42 +1,10 @@
 /**
- * The replay buffer behind a resumable SSE stream.
- *
- * A stateful session's whole point is the open stream: progress notifications
- * and the result of a long tool call arrive on it after the request that
- * started them has been answered. Networks being what they are, that stream
- * drops. The MCP transport's answer is the SSE `Last-Event-ID` header — the
- * client reconnects saying how far it got, and the server sends what came
- * after. That only works if something kept the events, and the SDK keeps
- * nothing on its own: without an event store it never even writes an event id,
- * so a dropped connection loses whatever was in flight rather than resuming.
- *
- * ## Why the default is in-memory, and bounded
- *
- * A replay buffer is unbounded growth wearing a useful hat: every notification
- * on every stream of every live session, kept against a reconnection that may
- * never come. So {@link MemoryEventStore} caps two things — how many events a
- * stream keeps, and how many streams one session keeps — and evicts the oldest
- * of each. A session gets its own store, so the buffers die with the session
- * that the session table was already bounding.
- *
- * The ceiling that matters is the product: `maxSessions × maxStreams ×
- * maxEventsPerStream` messages, all three of which are options.
- *
- * ## Why an evicted event is an error rather than a silent gap
- *
- * {@link MemoryEventStore.getStreamIdForEventId} reports an aged-out event id as
- * unknown, which the transport answers with a 400. The alternative — replaying
- * the events that *are* left — would hand the client a stream it believes is
- * continuous and is not, and there is nothing downstream that could notice. A
- * client told its resume point is gone can start a fresh stream; one told
- * nothing cannot.
- *
- * ## Bringing your own
- *
- * Replay across replicas or restarts needs storage this package has no business
- * choosing, so {@link ReplayOption} also takes a factory returning any
- * {@link EventStore} — Redis, a Durable Object, a database. The interface is
- * modelled here rather than imported so it holds across the whole peer range.
+ * The replay buffer behind a resumable SSE stream. A client that reconnects with `Last-Event-ID` can only be caught up
+ * if something kept the events, and the SDK writes no event ids at all without an event store.
+ * {@link MemoryEventStore} is bounded per stream and per session and evicts the oldest of each, so at most
+ * `maxSessions × maxStreams × maxEventsPerStream` messages are held. An evicted event id is reported as unknown,
+ * which the transport answers with a 400, because replaying only what is left would hand the client a stream with a
+ * silent gap.
  */
 
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
@@ -160,10 +128,8 @@ export class MemoryEventStore implements EventStore {
     { send }: { send: (eventId: EventId, message: JSONRPCMessage) => Promise<void> },
   ): Promise<StreamId> {
     const streamId = this.streamOf.get(lastEventId);
-    // The transport asks `getStreamIdForEventId` first and stops on a miss, so
-    // reaching here with an unknown id means a caller drove the store directly.
-    // Returning a made-up stream id would map the client's new connection to a
-    // stream nothing writes to, so say so instead.
+    // The transport asks `getStreamIdForEventId` first, so an unknown id here means a caller drove the store directly.
+    // A made-up stream id would map the client's new connection to a stream nothing writes to.
     if (streamId === undefined) {
       throw packageError(`unknown event id '${lastEventId}'`);
     }

@@ -1,34 +1,10 @@
 /**
- * The `Request`/`Response` counterpart to {@link createHttpHandler}, for
- * runtimes that never had Node's `IncomingMessage`/`ServerResponse`:
- * Cloudflare Workers, Deno, Bun, Hono, and any other fetch-shaped host.
- *
- * The behaviour is the same one `http.ts` documents — stateless JSON per
- * request by default, optional stateful sessions — over the SDK's web-standard
- * transport rather than its Node wrapper.
- *
- * ## Why the transport is imported lazily
- *
- * `WebStandardStreamableHTTPServerTransport` only exists in `@modelcontextprotocol/sdk`
- * 1.25 and later, while this package's peer range starts at 1.12. A top-level
- * import would make the *entire* package unloadable on an older SDK — including
- * for the Node users who will never call this function. Importing on first use
- * confines the requirement to the one entry point that actually needs it, and
- * turns "module not found" into a sentence saying which version to install.
- *
- * ## Sessions on edge runtimes
- *
- * {@link SessionStore} is per-process memory. That is fine on Deno, Bun, or a
- * long-lived Node worker, and wrong on Cloudflare Workers, where consecutive
- * requests may land in different isolates and a session id would resolve on one
- * and 404 on the next. Stay stateless there unless you have pinned routing.
- *
- * Pinned routing on Workers means a Durable Object per session: the caller
- * routes by `Mcp-Session-Id` to the object that holds it, and *inside* that
- * object this handler is an ordinary single-process handler. The routing is the
- * part the platform has to do; a {@link SessionDirectory} only reports it, so
- * that a request which arrives in the wrong isolate says so. See the README's
- * deployment notes.
+ * The `Request`/`Response` counterpart to {@link createHttpHandler}, for fetch-shaped hosts such as Cloudflare
+ * Workers, Deno, Bun and Hono. It behaves as `http.ts` documents, over the SDK's web-standard transport. That
+ * transport is imported on first use because it only exists in `@modelcontextprotocol/sdk` 1.25 and later, and a
+ * top-level import would make the whole package unloadable on the older SDKs the peer range allows.
+ * {@link SessionStore} is per-process memory, so stay stateless on Cloudflare Workers unless each session is pinned to
+ * one isolate, for example with a Durable Object per session.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -145,9 +121,8 @@ export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandle
       });
       await connect(server, transport);
       const response = await transport.handleRequest(request);
-      // Unlike the Node path there is no `res.on('close')` to hang teardown on,
-      // and a stateless transport has nothing left to do once it has produced a
-      // Response — the body is already fully buffered as JSON.
+      // Unlike the Node path there is no `res.on('close')` to hang teardown on, and the stateless Response body is
+      // already fully buffered as JSON.
       await closeQuietly({ server, transport });
       return response;
     }

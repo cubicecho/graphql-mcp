@@ -1,23 +1,9 @@
 /**
  * Renders a compact JSON literal showing the shape one argument expects.
  *
- * A generated tool already carries the answer in its `inputSchema` — and that is
- * precisely the problem. On a real surface the JSON Schema is hundreds of
- * kilobytes of which a couple of percent is prose, and a model reads the prose.
- * Measured against a hand-written arm on the same schema, every failed call was
- * the same mistake: an argument's shape guessed from its name
- * (`orderBy: { startedAt: "desc" }` for a type that is really
- * `{ <column>: { direction, priority } }`). The schema said so. Nothing read it.
- *
- * So the shape goes where the reading happens. This module walks
- * `GraphQLInputType` only — no zod, no SDK — so what it prints cannot vary
- * across the zod peer range.
- *
- * **A truncated example is worse than none.** An example missing a required
- * field is valid-looking JSON the server rejects, which is the failure this
- * exists to remove rather than relocate. So depth bounds *optional* expansion
- * only; every non-null field is expanded however deep it goes, and if one cannot
- * be expanded — the only case is a cycle — the whole example is abandoned.
+ * This module walks `GraphQLInputType` only, with no zod and no SDK, so what it prints cannot vary across the zod peer
+ * range. Depth bounds optional expansion only, because an example missing a required field is one the server rejects.
+ * A non-null field that cannot be expanded, which only a cycle causes, abandons the whole example.
  */
 
 import type { GraphQLArgument, GraphQLInputField, GraphQLInputType, GraphQLNamedType } from 'graphql';
@@ -116,9 +102,8 @@ function renderNamed(
   if (isInputObjectType(type) === false) {
     return leafValue(type);
   }
-  // A type that contains itself has no finite literal. Reached through a
-  // non-null field this abandons the example; through the optional fallback
-  // below it merely drops that field.
+  // A type that contains itself has no finite literal. A non-null field abandons the example on this, and the
+  // optional fallback below drops only that field.
   if (path.has(type.name)) {
     return ABANDON;
   }
@@ -141,33 +126,13 @@ function renderNamed(
     shape[field.name] = value;
   }
 
-  // An all-optional object renders `{}` under a required-only rule, which is
-  // the whole failure again — `orderBy` is an optional outer object wrapping a
-  // required inner one. Show its first field so the nesting is visible. This is
-  // the only expansion `depth` bounds, because it is the only one that could
-  // otherwise walk a filter type's entire neighbourhood.
+  // An all-optional object would render `{}`, so show its first field to make the nesting visible. This is the only
+  // expansion `depth` bounds.
   const [first] = fields;
   if (required === 0 && first && depth >= 1) {
     const value = renderField(first, depth - 1, nextPath);
-    // A fallback rendering `{}` names the key and shows nothing inside it — the
-    // budget ran out before the nesting the fallback exists to reveal. Dropping
-    // it lets the emptiness propagate, so the example is suppressed outright
-    // rather than shipped half-built.
-    //
-    // At the top level a *scalar* first field is dropped too, for the opposite
-    // reason: there was never any nesting to reveal, so the fallback just names
-    // one arbitrary optional key under a banner that says "required fields
-    // only". On an all-optional update input (`set: UpdateTaskInput`, every
-    // column nullable) the key it picks is the first column — usually `id` —
-    // and `set: {"id":"string"}` sitting above a `where` keyed on the same `id`
-    // reads as "id is how you address the row", which is what `where` is for.
-    // An agent that copies it writes the primary key.
-    //
-    // Only at the top level, because deeper down the scalar *is* the nesting:
-    // `where: TaskFilters` renders `{"name":{"eq":"string"}}` only because the
-    // inner all-optional `StringFilter` expands to its scalar `eq`. Applying
-    // the rule at every level collapses that to `{}` and suppresses the whole
-    // example — the `orderBy`/`where` win this fallback exists for.
+    // Drop a fallback that rendered empty, so the example is suppressed instead of shipped half-built. A scalar is
+    // dropped only at the top level, where it names one arbitrary key, and deeper down it is the nesting being shown.
     const worthShowing = !top || isStructural(value);
     if (value !== ABANDON && worthShowing && isEmptyShape(value) === false) {
       shape[first.name] = value;

@@ -1,51 +1,12 @@
 /**
- * The two SDK request handlers this package wraps, and the one internal it
- * reaches through to find them.
+ * Wraps the SDK's `tools/list` and `tools/call` request handlers, and holds the one SDK internal used to find them.
+ * Both wrappers delegate to the SDK's own handler and do nothing if it cannot be found, so a change in the SDK's
+ * internals costs a slower listing and a worse error message, never a wrong answer.
  *
- * Both wrappers delegate to the SDK's own handler for everything they are not
- * changing, and both no-op if that handler can't be found — so an SDK that moves
- * its internals costs a slower listing and a worse error message, never a wrong
- * answer. Keeping the reach-through in one place is the point of the module.
- *
- * ## `tools/list` — rendered once per factory
- *
- * The MCP SDK converts every tool's Zod input schema to JSON Schema *inside* its
- * `tools/list` handler — on each request, not once at registration. For a schema
- * with fat input objects (a generated CRUD API, say, where each field takes a
- * filter with an operator object per column) that conversion is the bulk of the
- * request: pure CPU, on the event loop, so concurrent listings serialize behind
- * each other. Stateless HTTP mints a fresh server per request, so it is paid
- * again on every single one.
- *
- * The SDK's handler reads neither the request nor the `extra` — its output is a
- * function of the registered tools alone, and every server a factory mints
- * registers the same ones. So the first rendering is kept and handed to all the
- * rest.
- *
- * The rendering itself is still the SDK's: this wraps its handler rather than
- * reimplementing it, so the listing stays byte-for-byte what the SDK would have
- * produced, including whatever it grows next. If its internals move and the
- * handler can't be found, nothing is cached and every listing is rendered as it
- * was before — slower, never wrong.
- *
- * ## `tools/call` — arguments checked before the SDK rejects them
- *
- * The SDK validates a call's `arguments` against the registered Zod schema
- * before the tool's handler runs, and reports a failure by putting the bare
- * message in the result's text: `MCP error -32602: Input validation error:
- * Invalid arguments for tool tasks: …`. Every other outcome of a generated tool
- * — success, a GraphQL error, a partial result, an executor that threw — comes
- * back as the JSON envelope `result.ts` documents, so a malformed call was the
- * one failure whose body did not parse. That is the failure an agent hits most
- * (a wrong scalar, a misspelled key, a bad enum member), and the correction it
- * most needs to read.
- *
- * So the arguments are checked *first*, with the same schema the SDK is about to
- * use, and a rejection is returned through {@link toCallToolResult} like
- * anything else — one Zod issue per `errors` entry, each pointing at the
- * argument it is about. A call that passes is handed to the SDK untouched, which
- * validates it again; that second parse is what keeps this a pure addition
- * rather than a reimplementation of the call path.
+ * `tools/list` is rendered once per factory, because the SDK converts every Zod input schema to JSON Schema on each
+ * request and stateless HTTP mints a fresh server per request. The arguments of `tools/call` are checked before the SDK
+ * checks them, because the SDK reports a validation failure as bare text while every other outcome is the JSON envelope
+ * that `result.ts` documents.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

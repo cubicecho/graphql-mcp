@@ -1,19 +1,11 @@
 /**
- * Recognises a field's pagination arguments so a truncated result can name the
- * argument to page with.
+ * Recognises a field's pagination arguments so a truncated result can name the argument to page with, since running the
+ * same call again would return the same oversized page.
  *
- * A clamped result tells an agent that output was cut, which leaves it stuck:
- * re-running the same call returns the same oversized page. The fix is to say
- * *which* argument narrows it — and the schema already knows, because a field
- * that paginates advertises it in its arguments.
- *
- * Detection is by argument name, matched case-insensitively against the
- * conventions in wide use (Relay `first`/`after`, offset `limit`/`offset`, Prisma
- * `take`/`skip`, page-number `page`/`pageSize`). There is deliberately no check
- * that the field returns a list: the hint is only ever emitted alongside a
- * truncation note, and a call that produced more than the character budget is a
- * collection whatever its return type says. That also keeps Relay connections —
- * objects, not lists — from being missed.
+ * Detection is by argument name, matched case-insensitively against the common conventions, such as Relay
+ * `first`/`after`, offset `limit`/`offset`, Prisma `take`/`skip` and page-number `page`/`pageSize`. There is
+ * deliberately no check that the field returns a list, because the hint only accompanies a truncation note and such a
+ * check would miss Relay connections, which are objects.
  */
 
 import type { GraphQLArgument } from 'graphql';

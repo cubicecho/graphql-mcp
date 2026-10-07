@@ -1,24 +1,14 @@
 /**
- * Wires schema-derived {@link ToolDescriptor}s onto an `McpServer`, binding each
- * to a {@link GraphqlExecutor}, and lets callers register custom tools that add
- * to — or override, by name — the generated ones.
+ * Wires schema-derived {@link ToolDescriptor}s onto an `McpServer`, binding each to a {@link GraphqlExecutor}, and lets
+ * callers register custom tools that add to the generated ones or override them by name.
  *
- * Two entry points:
- * - {@link createMcpServer} — a ready `McpServer` (use directly for stdio or a
- *   single long-lived connection).
- * - {@link createServerFactory} — builds the (pure) descriptors once and returns
- *   a `() => McpServer` that mints a fresh server per call. The HTTP layer uses
- *   this so each stateless request gets its own server+transport.
+ * {@link createMcpServer} returns a ready server for stdio or a single long-lived connection. {@link
+ * createServerFactory} builds the descriptors once and returns a function that mints a fresh server per call, which the
+ * HTTP layer uses to give each stateless request its own server.
  *
- * ## Structured output
- *
- * Descriptors carry an {@link ToolDescriptor.outputSchema} describing the
- * field's return type, but it is deliberately *not* registered with the SDK.
- * Registering it obliges the handler to return `structuredContent` matching the
- * schema, whereas these tools return the whole GraphQL `{ data, errors }`
- * envelope as JSON text — and on a resolver error `data` is partially null, so
- * a conforming result can't be promised. It stays on the descriptor for
- * introspection; issue #15 records what registering it would actually take.
+ * A descriptor's {@link ToolDescriptor.outputSchema} is deliberately not registered with the SDK, because registering
+ * it obliges the handler to return matching `structuredContent`, and a resolver error leaves `data` partially null, so
+ * a conforming result cannot be promised.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -98,19 +88,11 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
   /** Custom tools to add or override generated (and meta) ones by name. */
   tools?: CustomTool[];
   /**
-   * Hand-written GraphQL documents to expose as tools, alongside — or instead
-   * of — the generated ones ({@link buildOperationTools}).
+   * Hand-written GraphQL documents to expose as tools ({@link buildOperationTools}), each replacing any generated tool
+   * of the same name.
    *
-   * A generated surface is complete and impersonal; a curated one is a bet that
-   * you know the questions. They compose, and that is the point: an operation
-   * named `todos` *replaces* the generated `todos` tool, so you can keep the
-   * whole generated surface and hand-write only the tool whose argument shape
-   * an agent keeps getting wrong.
-   *
-   * Takes documents, never paths — a factory is synchronous, and a top-level
-   * `node:fs` import would make this package unloadable on a fetch runtime. On
-   * Node that is one line at the call site, and a `Source` is what puts the
-   * file name into every boot-time error:
+   * Takes documents, never paths, because a top-level `node:fs` import would make this package unloadable on a fetch
+   * runtime, so on Node read each file into a `Source`, which puts the file name into every boot-time error:
    *
    * ```ts
    * operations: globSync('mcp/*.graphql').map(
@@ -118,40 +100,20 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
    * ),
    * ```
    *
-   * Documents validate against the *extended* schema, so an operation may
-   * select an MCP-only field. `nameCase`, `scalars`, `mutationHints`,
-   * `inputField`, `nullBranches` and `exampleDepth` carry over in their plain
-   * forms — and `inputField`, plus a `nullBranches: { byType }`, carry over
-   * whole, being type-keyed already; their *field* callback forms take a
-   * `GraphQLField`, which an operation has no counterpart for, and are not
-   * applied here. `include`/`exclude`/`filter`,
-   * `selectionDepth`, `toolName` and `extensions.mcp` do not apply at all —
-   * they project a schema, and you wrote this document yourself.
+   * Documents validate against the extended schema, so an operation may select an MCP-only field. `nameCase`,
+   * `scalars`, `mutationHints` and `inputField` carry over, as do `nullBranches` and `exampleDepth` unless given as a
+   * callback that takes a `GraphQLField`, and the options that project a schema (`include`, `exclude`, `filter`,
+   * `selectionDepth`, `toolName`, `extensions.mcp`) do not apply.
    */
   operations?: OperationsInput;
   /**
-   * Runs against each server this factory mints, before it is connected — the
-   * hook for everything the MCP SDK offers that this package does not generate:
-   * `registerPrompt`, `registerResource`, completions.
+   * Runs against each server this factory mints, before it is connected, so you can call what this package does not
+   * generate, such as `registerPrompt` and `registerResource`.
    *
-   * It has to run here rather than after `connect`, because the SDK's
-   * `registerCapabilities` throws once a transport is attached: a prompt
-   * registered later answers `prompts/list` while having told the client at
-   * `initialize` that the server had none.
-   *
-   * **Synchronous.** `createMcpServer` and {@link ServerFactory} return a server,
-   * not a promise, and both shipped handlers connect it the moment it comes
-   * back — so an awaited registration would be racing `initialize`. A hook
-   * returning a promise is refused rather than silently losing its
-   * capabilities. Do async setup before building the handler and close over the
-   * result.
-   *
-   * **Register the same tools every time.** The `tools/list` a factory renders
-   * is shared across every server it mints, so a hook whose *tool* set varies
-   * would serve one caller's listing to another. Prompts and resources may vary
-   * freely — only the tool listing is cached. Prefer the {@link
-   * CreateMcpServerOptions.tools} option for tools anyway: a tool registered
-   * here is outside the argument guard, so a malformed call to it gets the
+   * It must be synchronous, and a hook that returns a promise is refused, because the server is connected as soon as it
+   * is returned and the SDK cannot register capabilities after that. Register the same tools every time, because the
+   * `tools/list` rendering is shared by every server the factory mints. Prefer the {@link CreateMcpServerOptions.tools}
+   * option for tools, since a tool registered here is outside the argument guard and a malformed call to it gets the
    * SDK's `-32602` text instead of this package's JSON error envelope.
    */
   decorateServer?: ServerDecorator;
@@ -214,10 +176,9 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
   const executor = options.executor ?? createLocalExecutor(schema);
   const customTools = options.tools ?? [];
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
-  // Meta tools default to the same surface the generated tools expose, so the
-  // raw-document `execute` path can't reach past it.
   // Shared by every server this factory mints; see `shareToolListing`.
   const listing: ToolListingCache = {};
+  // Meta tools default to the surface the generated tools expose, so `execute` cannot reach past it.
   const metaOptions: MetaToolsOptions | null = options.metaTools
     ? {
         ...(typeof options.metaTools === 'object' ? options.metaTools : {}),
@@ -298,10 +259,8 @@ function withOperations(
   const curated = buildOperationTools(schema, options.operations, {
     nameCase: options.nameCase,
     scalars: options.scalars,
-    // A `{ byType }` object is not a function, so it survives this test and
-    // carries over on purpose: like `inputField`, it is keyed on the input type
-    // and has nothing to say about the root field an operation lacks. Only the
-    // per-*field* callback is dropped.
+    // A `{ byType }` object is keyed on the input type, so it carries over on purpose.
+    // Only the per-field callback is dropped, because an operation has no root field to hand it.
     nullBranches: typeof options.nullBranches === 'function' ? undefined : options.nullBranches,
     // Carries over whole: it is already a pure function of the input type, so
     // it has nothing to say about the root field an operation lacks.
@@ -364,30 +323,13 @@ function runServerDecorator(server: McpServer, hook: ServerDecorator | undefined
 }
 
 /**
- * Connects `server` to `transport`, treating a request that omits `arguments`
- * as one that sent `{}`.
+ * Connects `server` to `transport`, treating a request that omits `arguments` as one that sent `{}`.
  *
- * The MCP schema makes `params.arguments` optional, and a tool taking no
- * arguments at all — every generated tool for a field with no args — gives a
- * client nothing to put there. The SDK passes `params.arguments` to the tool's
- * input schema untouched, so an omitted one arrives as `undefined` and fails
- * validation before the handler is reached: `Invalid arguments for tool
- * schedule: expected object, received undefined`. A model that reasonably sent
- * no arguments then has no way to call the tool at all, and retrying produces
- * the identical error.
- *
- * `prompts/get` has the same shape of bug for a prompt registered with an empty
- * argument schema, so both methods are corrected.
- *
- * It has to be fixed on the way in. The schema cannot be made tolerant: the SDK
- * renders `tools/list` from the same value it validates against, and anything
- * that parses `undefined` — an optional or a default wrapping the object — stops
- * being recognised as an object schema, at which point the tool is advertised
- * with an empty one. So the message is corrected instead, after `connect` has
- * installed the SDK's own handler and before that handler sees it.
- *
- * Use this instead of `server.connect` on a server built here. Both shipped HTTP
- * handlers do.
+ * The MCP schema makes `arguments` optional, but the SDK validates an omitted one as `undefined` and rejects the
+ * request before the handler runs, so a tool or prompt that takes no arguments could not be called without them. The
+ * message is corrected instead of the schema, because a schema that accepts `undefined` is no longer recognised as an
+ * object schema and the tool is then listed with an empty one. Use this instead of `server.connect` on a server built
+ * here.
  *
  * @param server - The MCP server to connect.
  * @param transport - The transport to connect it to.
@@ -521,18 +463,15 @@ async function toVariables(
     try {
       source = await descriptor.mapArgs(args, extra);
     } catch (error) {
-      // The mapper is where a server puts its own argument rules, so what it
-      // throws is usually something the caller can act on — `BAD_INPUT` is the
-      // code an agent already knows to read as "fix your arguments".
+      // A mapper holds the server's own argument rules, so what it throws is usually something the caller can fix.
       const message = error instanceof Error ? error.message : String(error);
       return { failure: failureOf(message, BAD_INPUT, maxChars) };
     }
     const declared = new Set(descriptor.argNames);
     const undeclared = Object.keys(source).filter((key) => declared.has(key) === false);
     if (undeclared.length) {
-      // graphql-js drops an undeclared variable without a word, so left alone
-      // this is a call that succeeds with the mapped intent discarded. Say it is
-      // the server's fault, so an agent stops rather than retrying its own input.
+      // graphql-js silently drops an undeclared variable, so the call would succeed with the mapped intent discarded.
+      // The message blames the server so that an agent stops instead of retrying its own input.
       const message =
         `Tool '${descriptor.name}' is misconfigured: its argument mapper returned ` +
         `${undeclared.map((key) => `'${key}'`).join(', ')}, which the operation does ` +
@@ -562,21 +501,10 @@ function failureOf(message: string, code: string, maxChars: number): CallToolRes
 }
 
 /**
- * The schema a generated tool's arguments are registered and checked against:
- * a *strict* object over the descriptor's shape, built once.
- *
- * Strict rather than the raw shape, because handed a shape the SDK wraps it in a
- * plain `z.object`, which strips unknown keys — while the listing it renders
- * from that same schema says `additionalProperties: false`. An agent that
- * misspells an argument would otherwise get a success result with its typo
- * quietly discarded. The descriptor keeps exposing the raw shape, so `decorate`
- * and custom tools are unaffected.
- *
- * Built once because a descriptor's shape is fixed and a Zod schema is
- * stateless, so one object can back every server built from it — worth hoisting
- * because stateless HTTP re-registers every tool on every request. Keyed on the
- * shape rather than the descriptor, so `decorate`d copies sharing a shape share
- * the schema too.
+ * The strict object schema for each descriptor shape, which a generated tool's arguments are registered and checked
+ * against. It is strict because the SDK wraps a raw shape in a plain `z.object` that strips unknown keys, so a
+ * misspelled argument would be discarded and the call would still succeed. Each schema is built once per shape, because
+ * stateless HTTP registers every tool again on every request.
  */
 const strictInputs = new WeakMap<ZodShape, ReturnType<typeof buildStrictInput>>();
 

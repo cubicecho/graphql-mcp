@@ -32,16 +32,10 @@ import { compileRules } from './rules.ts';
 /**
  * Turns a tool's validated arguments into the variables its operation sends.
  *
- * `args` has already been checked against the tool's advertised `inputSchema`,
- * so a mapper never validates — it reshapes. `extra` is the SDK's per-call
- * handler argument, the same value a {@link ToolDescriptor} handler and a
- * `ContextFactory` receive, so a mapper can inject something request-scoped.
- *
- * Every key it returns must be a variable the operation declares. graphql-js
- * discards an undeclared variable *silently*, so a typo would otherwise produce
- * a successful call with the mapped intent thrown away — the expensive failure
- * when the caller is a model. The mismatch is reported instead, as
- * `BAD_TOOL_CONFIG`.
+ * `args` has already been checked against the tool's advertised `inputSchema`, so a mapper reshapes and never
+ * validates. `extra` is the SDK's per-call handler argument, so a mapper can inject something request-scoped. A key
+ * that is not a variable the operation declares is reported as `BAD_TOOL_CONFIG`, because graphql-js would otherwise
+ * discard it silently.
  */
 export type ArgMapper = (
   args: Record<string, unknown>,
@@ -167,38 +161,19 @@ export type SelectionDepth =
   | ((field: GraphQLField<any, any>, kind: OperationKind) => number);
 
 /**
- * Null-branch handling for a schema's tools: one mode for every field, or a
- * callback deciding per field — deliberately the same shape as
- * {@link SelectionDepth}, so there is one spelling of "per-field knob".
+ * Null-branch handling for a schema's tools, as one mode for every field, a callback deciding per field, or
+ * `{ byType }` deciding per named input type.
  *
- * The callback exists because the trade differs by *kind* far more often than
- * by schema. On a generated CRUD surface the read side never legitimately takes
- * an explicit null — a filter argument set to null is a caller mistake, not a
- * request to match null — while the write side uses one to clear a column. A
- * single mode makes that one decision for both:
+ * A callback fits a generated CRUD surface, where reads never legitimately take an explicit null and writes use one
+ * to clear a column. A per-kind callback can render one input type two ways across the tool listing, so see the
+ * README before flattening every tool's `$defs` into a single downstream namespace. `{ byType }` gives one named
+ * type one rendered body, so it stays safe under a flattened `$defs` and carries into `operations`, where the field
+ * callback cannot.
  *
  * ```ts
  * nullBranches: (_field, kind) => (kind === 'query' ? 'never' : 'always')
- * ```
- *
- * Note that per-kind means one input type can render two ways across the tool
- * listing. Safe as the SDK converts it (one tool at a time, so no `$defs` id
- * collides), but see the README before flattening every tool's `$defs` into a
- * single downstream namespace.
- *
- * `{ byType }` is the keying that does not have that property, and is usually
- * the closer fit anyway: it is the *filter types* that never legitimately take
- * an explicit null, wherever they appear, rather than the fields that happen to
- * use them.
- *
- * ```ts
  * nullBranches: { byType: (type) => (type.name.endsWith('Filter') ? 'never' : 'always') }
  * ```
- *
- * One named type, one mode, one rendered body — so it stays safe under a
- * flattened `$defs`, and it carries into `operations` where the field callback
- * cannot. A field callback may also *return* `{ byType }`, which is how a
- * per-kind decision and a per-type one compose.
  */
 export type NullBranchesOption =
   | NullBranchesSetting
@@ -228,30 +203,10 @@ export type NameCase = 'snake' | 'preserve';
 /**
  * How a mutation's `destructiveHint` and `idempotentHint` are decided.
  *
- * `'uniform'` (the default) marks every mutation destructive and non-idempotent.
- * Nothing dangerous is under-reported, but the hint's only real consumer is a
- * client deciding whether to interrupt the operator for confirmation — spent on
- * every mutation, it is spent on none in particular, and an operator who
- * confirms `create_task` a dozen times a day has been trained to click through
- * the dialog that also guards `delete_task`.
- *
- * `'byName'` reads the conventional prefixes generated schemas use, so a create
- * stops claiming to destroy and a delete admits it is idempotent:
- *
- * - `create*`, `add*`, `insert*` — additive: `destructiveHint: false`.
- * - `delete*`, `remove*`, `destroy*` — `idempotentHint: true`; deleting what is
- *   already gone changes nothing further.
- * - anything else keeps the conservative default, which is already right for
- *   `update*`/`set*` (destructive) and is the only safe answer for a name the
- *   convention says nothing about (`runTask`, `stopTask`).
- *
- * A prefix only matches on a word boundary — `createTask`, `create_task`, and
- * `create` match; `creationFor` does not.
- *
- * This is opt-in because it changes what a client confirms on, and no schema
- * should have that change under it on a minor upgrade. It is a naming
- * convention, not knowledge: where the convention is broken or absent,
- * `extensions.mcp.annotations` and `decorate` still have the last word.
+ * `'uniform'` (the default) marks every mutation destructive and non-idempotent. `'byName'` reads a conventional
+ * prefix on a word boundary, where `create`, `add` or `insert` clears `destructiveHint`, `delete`, `remove` or
+ * `destroy` sets `idempotentHint`, and any other name keeps the uniform default. It is opt-in because it changes
+ * what a client asks the operator to confirm.
  */
 export type MutationHints = 'uniform' | 'byName';
 
@@ -271,15 +226,11 @@ export interface BuildToolsOptions {
    */
   includeDeprecated?: boolean;
   /**
-   * Selection-set depth for return types (see `buildSelectionSet`). Default `2`.
-   * Also drives `outputSchema`, so the descriptor's schema always matches what
-   * the generated operation actually selects.
+   * Selection-set depth for return types (see `buildSelectionSet`). Default `2`. Also drives `outputSchema`, so the
+   * descriptor's schema always matches what the generated operation selects.
    *
-   * A callback sets it per field — `(field, kind) => field.name === 'runs' ? 1 : 2`
-   * — which is how a schema you don't hand-write (and so can't annotate with
-   * `extensions.mcp.selectionDepth`) gives its one expensive field a shallower
-   * selection without flattening every other tool to match. See
-   * {@link SelectionDepth}.
+   * A callback ({@link SelectionDepth}) sets it per field, which gives the one expensive field of a generated schema
+   * a shallower selection without flattening every other tool to match.
    */
   selectionDepth?: SelectionDepth;
   /**
@@ -307,41 +258,22 @@ export interface BuildToolsOptions {
    */
   inputField?: InputFieldFilter;
   /**
-   * Whether a nullable argument advertises an explicit `null` branch alongside
-   * being absent from `required`. Default `'always'`.
+   * Whether a nullable argument advertises an explicit `null` branch alongside being absent from `required`. Default
+   * `'always'`.
    *
-   * `'never'` drops the branch, which roughly halves the node count of a
-   * filter-heavy input schema and removes the one shape that has no legal
-   * draft-07 rendering downstream (`anyOf: [{$ref}, {type: 'null'}]`). The cost
-   * is that an explicit `null` becomes a validation error, so a mutation whose
-   * schema uses `null` to *clear* a field can no longer express that. See
-   * {@link ZodShapeOptions.nullBranches}.
-   *
-   * A callback sets it per field — `(_, kind) => kind === 'query' ? 'never' : 'always'`
-   * — which is the usual shape of the trade: reads never need an explicit null,
-   * writes use one to clear a column. `{ byType: (type) => ... }` sets it per
-   * *named input type* instead, which is what a mutation taking both a filter
-   * and a patch needs: `where` never wants an explicit null and `set` does, and
-   * a per-field mode has to choose one for both. See {@link NullBranchesOption}.
+   * `'never'` drops the branch, which roughly halves the node count of a filter-heavy input schema, but an explicit
+   * `null` becomes a validation error, so a mutation that uses `null` to clear a field can no longer express that.
+   * A callback sets it per field and `{ byType }` sets it per named input type, as {@link NullBranchesOption}
+   * describes.
    */
   nullBranches?: NullBranchesOption;
   /**
-   * How deep the `shape:` example under each argument expands. Default `3`; `0`
-   * turns examples off.
+   * How deep the `shape:` example under each argument expands, `3` by default and `0` to turn examples off.
    *
-   * An argument whose type is an input object gets a compact JSON literal in its
-   * description showing what to send. The shape is already in `inputSchema`, but
-   * a large `inputSchema` is not what a model reads — measured against a
-   * hand-written arm on the same schema, every failed call was an argument shape
-   * guessed from its name while the correct one sat unread in the JSON Schema.
-   * The examples cost about 1% of the listing.
-   *
-   * A callback sets it per field, and `extensions.mcp.exampleDepth` or a
-   * `decorate` patch replacing `description` still have the last word. Unlike
-   * `selectionDepth` this is not recorded on the descriptor and a patch cannot
-   * rebuild at a new depth: depth has to be on the descriptor because the query,
-   * the output schema and the description must agree about it, while an example
-   * affects the description alone — which `decorate` can already replace outright.
+   * An argument whose type is an input object gets a compact JSON literal in its description showing what to send,
+   * because a model does not read a large `inputSchema`. The examples cost about 1% of the listing. A callback sets
+   * it per field, and `extensions.mcp.exampleDepth` or a `decorate` patch replacing `description` still have the
+   * last word.
    */
   exampleDepth?: ExampleDepth;
   /**
@@ -373,15 +305,11 @@ export interface BuildToolsOptions {
    */
   nameCase?: NameCase;
   /**
-   * Map a field to a custom tool name. Default: the field name under `nameCase`.
-   * A name returned here is used verbatim — `nameCase` is not applied on top.
+   * Map a field to a custom tool name, which is used verbatim without `nameCase` applied on top.
    *
-   * Return `undefined` to decline and keep the default, the way `decorate`
-   * does. Renaming two fields out of forty is then a two-line callback, and the
-   * forty keep whatever `nameCase` says without the caller reimplementing it —
-   * reimplementing is the trap, because a hand-rolled snake_case agrees with
-   * {@link applyNameCase} until a field like `parseURLFilter` splits an acronym
-   * run, and nothing reports the divergence.
+   * Return `undefined` to decline and keep the default, the field name under `nameCase`. Do not reimplement the
+   * casing, because a hand-rolled snake_case diverges from {@link applyNameCase} on an acronym run such as
+   * `parseURLFilter` and nothing reports it.
    */
   // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to naming
   toolName?: (field: GraphQLField<any, any>, kind: OperationKind) => string | undefined;
@@ -567,10 +495,8 @@ function decorated(descriptor: ToolDescriptor, decoration: Decoration): ToolDesc
   if (!patch) {
     return descriptor;
   }
-  // A patched depth changes what the operation selects and a patched null-branch
-  // mode changes the input schema *and* the argument prose, so everything derived
-  // from either is rebuilt. Both are resolved before the comparison: forwarding a
-  // stale copy of the one the patch didn't mention would silently reset it.
+  // A patched depth or null-branch mode changes everything derived from it, so the descriptor is rebuilt. Both are
+  // resolved first, because forwarding a stale copy of the one the patch did not mention would silently reset it.
   const depth = patch.selectionDepth ?? descriptor.selectionDepth;
   const branches = patch.nullBranches ?? descriptor.nullBranches;
   const isUnchanged = depth === descriptor.selectionDepth && branches === descriptor.nullBranches;
@@ -594,14 +520,8 @@ function decorated(descriptor: ToolDescriptor, decoration: Decoration): ToolDesc
  * both, so they must not drift apart.
  */
 function applyPatch(descriptor: ToolDescriptor, patch: ToolDescriptor | Partial<ToolDescriptor>): ToolDescriptor {
-  // Setting `inputSchema` says the advertised shape is no longer the field's
-  // arguments; leaving `description` says the prose still describes the old
-  // ones — down to the `shape:` examples, which would confidently show a
-  // literal for an argument the tool now rejects. Regenerating the prose would
-  // mean walking a Zod schema back into English across the v3/v4 split, so this
-  // is a boot-time refusal instead of a rendering. A mapper that keeps the same
-  // keys (injecting a tenant id, reordering) sets no `inputSchema` and never
-  // trips it.
+  // A replaced `inputSchema` under the generated `description` would describe arguments the tool now rejects, so
+  // that pairing is refused at boot. A mapper that keeps the same keys sets no `inputSchema` and never trips it.
   if (patch.mapArgs && patch.inputSchema && patch.description === undefined) {
     throw packageError(
       `tool '${descriptor.name}' sets \`mapArgs\` and \`inputSchema\` without a ` +
@@ -676,9 +596,8 @@ function toDescriptor(field: RootField, options: DescriptorOptions): ToolDescrip
   } = options;
   const { query, operationName, argNames, selection } = buildOperation(kind, field, selectionDepth);
   const pageHint = paginationHint(field.args);
-  // Resolved once and passed to all three: the argument prose warns about
-  // sending an explicit `null` only where one can still be sent, so a schema
-  // built at one mode and described at another is a tool that lies about itself.
+  // Resolved once and passed to all three: the argument prose warns about an explicit `null` only where one can
+  // still be sent, so the schema and the description must be built at the same mode.
   const nullBranches = shape.nullBranches ?? DEFAULT_NULL_BRANCHES;
   return {
     name,
@@ -686,9 +605,8 @@ function toDescriptor(field: RootField, options: DescriptorOptions): ToolDescrip
     title: humanize(field.name),
     description: buildDescription({ field, kind, selection, nullBranches, exampleDepth }),
     inputSchema: argsToZodShape(field.args, { ...shape, nullBranches }),
-    // `nullBranches` is an *input* concern: it trades away the ability to send
-    // an explicit null. An output schema only describes what comes back, where
-    // a null is not a thing the caller chooses, so it keeps its null branches.
+    // `nullBranches` is an input concern, the ability to send an explicit null. An output schema describes what
+    // comes back, which the caller does not choose, so it keeps its null branches.
     outputSchema: buildOutputSchema(field.type, selectionDepth, shape.scalars),
     annotations: annotationsFor(kind, field.name, humanize(field.name), mutationHints),
     query,
@@ -751,10 +669,8 @@ function buildDescription({
   lines.push('');
   lines.push(`GraphQL ${kind}: \`${field.name}\` → \`${field.type.toString()}\``);
   lines.push(...describeArguments(field.args, nullBranches, exampleDepth));
-  // The return type alone doesn't tell an agent which fields arrive: the
-  // selection is built automatically and truncated at `selectionDepth`, so a
-  // nested object may come back with only some of its fields. Show the real
-  // selection rather than letting the agent assume the full type.
+  // The selection is built automatically and truncated at `selectionDepth`, so the return type alone does not
+  // tell an agent which fields arrive. Show the real selection.
   if (selection) {
     lines.push('');
     lines.push('Returns this fixed selection (chosen automatically — not requestable):');
@@ -800,14 +716,9 @@ export function describeArguments(
 /**
  * One argument's description line: name, type, its default, and any deprecation.
  *
- * The default matters as much as the type. An agent told only `\`limit\`: \`Int\``
- * can't tell whether omitting it returns everything or a server-chosen page, so
- * it either guesses a value or is surprised by the result.
- *
- * Exported for sibling modules that render an argument line of their own, so
- * there is one renderer to change rather than two that drift apart. Not
- * re-exported from `index.ts` — this is an internal seam, not public API
- * (the `builtinScalar`/`toResolver` precedent in `zod-schema.ts`).
+ * The default is shown because an agent told only the type cannot tell whether omitting the argument returns
+ * everything or a server-chosen page. Exported for sibling modules so there is one renderer, and deliberately not
+ * re-exported from `index.ts` because it is not public API.
  */
 export function describeArgument(
   arg: GraphQLArgument,
@@ -815,12 +726,8 @@ export function describeArgument(
 ): string {
   const parts = [`\`${arg.name}\`: \`${arg.type.toString()}\``];
   const fallback = defaultOf(arg);
-  // "default: 10" reads as "10 is what you get unless you say otherwise", and an
-  // explicit `null` is very much saying otherwise — GraphQL treats a passed null
-  // as null, not as a request for the default. An agent that sends null to mean
-  // "no preference" gets null. Say which lever actually reaches the default, and
-  // only warn about null where null can still be sent (`nullBranches: 'never'`
-  // rejects it outright, so the warning would describe an impossible call).
+  // GraphQL treats a passed null as null, not as a request for the default, so the line says to omit the argument.
+  // The null warning appears only where null can still be sent, which `nullBranches: 'never'` rules out.
   if (fallback) {
     const nullable = isNonNullType(arg.type) === false && branchesAt(nullBranches, arg.type) !== 'never';
     parts.push(

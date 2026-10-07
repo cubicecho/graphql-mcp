@@ -1,19 +1,11 @@
 /**
- * Derives a Zod schema for a field's GraphQL *return* type — a machine-readable
- * companion to {@link buildSelectionSet}.
+ * Derives a Zod schema for a field's GraphQL return type, a machine-readable companion to {@link buildSelectionSet}. It
+ * walks the same `returnedFields` as `selection.ts` and always adds `__typename`, so the schema never describes a field
+ * the query does not fetch.
  *
- * It must mirror `selection.ts` exactly, because the selection set is what the
- * tool actually asks for: a schema describing fields the query never fetches
- * would be a lie. So both walk the same `returnedFields` — fields requiring
- * arguments are skipped, composite fields past `maxDepth` or already on the
- * current path are *omitted* (not stubbed) — and both always add `__typename`.
- *
- * Wrappers are carried over faithfully: `List` → `z.array(...)`, `NonNull` →
- * required, and a nullable field → `.nullable()` (GraphQL includes a selected
- * nullable field in the response as `null`, so it is never simply absent).
- *
- * This is a structural *hint* for descriptor introspection, not a validator the
- * server runs — see issue #15 on registering it with the MCP SDK.
+ * A list becomes `z.array(...)`, and a nullable field becomes `.nullable()` because GraphQL returns a selected nullable
+ * field as `null` instead of leaving it out. The schema is a structural hint for descriptor introspection, not a
+ * validator the server runs (see issue #15).
  */
 
 import {

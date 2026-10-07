@@ -1,26 +1,11 @@
 /**
- * Turns hand-written GraphQL documents into {@link ToolDescriptor}s — the
- * curated counterpart to `tools.ts`, which projects a whole schema.
+ * Turns hand-written GraphQL documents into {@link ToolDescriptor}s, the curated counterpart to `tools.ts`, which
+ * projects a whole schema.
  *
- * A generated surface is complete and impersonal: every root field becomes a
- * tool, argument shapes are whatever the schema's generator emitted, and the
- * listing grows with the schema. A hand-written operation is the opposite bet —
- * you name the tool, choose the selection, write the prose, and expose the
- * variables an agent should actually vary. Both surfaces produce the same
- * descriptor shape and run through the same registration, executor, and result
- * formatting, so they compose: an operation tool overrides a generated tool of
- * the same name, exactly as a `tools` entry does.
- *
- * Everything here happens at build time, so a typo in a document is a boot
- * failure with a `file:line:column`, not a failure on the call that hits it.
- *
- * Pure data: no SDK, no executor.
- *
- * Note that input types are **not** deduplicated across operations — each
- * descriptor builds its own, matching the generated path's per-field behaviour.
- * A shared memo would have to be keyed by `scalars` and `nullBranches` as well
- * as by type name, and a memo whose key ignores those is precisely the bug
- * AGENTS.md records under listing size.
+ * Both surfaces produce the same descriptor shape and run through the same registration, executor and result
+ * formatting, so an operation tool overrides a generated tool of the same name. Everything here happens at build
+ * time, so a typo in a document is a boot failure with a `file:line:column`. Input types are not deduplicated across
+ * operations, because a shared memo would have to be keyed by `scalars` and `nullBranches` as well as by type name.
  */
 
 import {
@@ -143,9 +128,8 @@ export function buildOperationTools(
   const merged = mergeDocuments(sources);
   assertValid(schema, merged);
 
-  // `separateOperations` keys by operation name, and an anonymous operation
-  // keys as `''` — so the check has to run over the definitions, before the
-  // split silently collapses two anonymous operations into one entry.
+  // `separateOperations` keys an anonymous operation as `''`, so this check runs over the definitions before the
+  // split can collapse two anonymous operations into one entry.
   const definitions: NamedOperation[] = [];
   for (const definition of merged.definitions.filter(isOperation)) {
     assertUsable(definition);
@@ -189,9 +173,8 @@ function toDocument(source: OperationSource): DocumentNode {
   try {
     return parse(source);
   } catch (error) {
-    // A `GraphQLError` carries the source it was thrown against, which is the
-    // whole reason the option accepts a `Source`: without one the message says
-    // *what* is wrong and gives no way to find *which file* it is wrong in.
+    // A `GraphQLError` carries the source it was thrown against, so a named `Source` puts the file into the
+    // message.
     const at = error instanceof GraphQLError ? error : undefined;
     throw packageError(
       `could not parse an \`operations\` document — ${messageOf(error, 'the parser gave no reason')}` +
@@ -269,10 +252,8 @@ function toDescriptor(
       query,
     }),
     inputSchema: toInputSchema(args, variables, options, nullBranches),
-    // Deferred, deliberately: a schema derived from the document's selection set
-    // (aliases, spreads, inline fragments, type conditions) is its own walker,
-    // and nothing observes this today — it is not registered with the SDK (see
-    // issue #15), and the description already carries the printed source.
+    // Deferred deliberately: deriving a schema from the document's selection set needs its own walker, and nothing
+    // observes this today because it is not registered with the SDK (see issue #15).
     outputSchema: z.unknown(),
     // `byName` reads the *operation* name here, which is a better signal than a
     // generated field name: the author chose it.
@@ -332,9 +313,8 @@ function toInputSchema(
 function toArgument(schema: GraphQLSchema, variable: VariableDefinitionNode): GraphQLArgument {
   const name = variable.variable.name.value;
   const type = typeFromAST(schema, variable.type);
-  // Unreachable in practice — `validate` rejects a variable whose type isn't an
-  // input type before this runs — but the cast has to be justified by a check
-  // rather than by a comment.
+  // Unreachable in practice, because `validate` rejects a variable whose type is not an input type, but the cast
+  // below needs a check to justify it.
   if (!type || isInputType(type) === false) {
     throw packageError(`variable \`$${name}\` is not a GraphQL input type.`);
   }

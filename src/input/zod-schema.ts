@@ -75,21 +75,12 @@ export type ScalarMapping = ScalarMap | ScalarResolver;
 export type NullBranches = 'always' | 'never';
 
 /**
- * A null-branch mode chosen per *named type*, rather than one mode for a whole
- * field. See {@link ZodShapeOptions.nullBranches}.
+ * A null-branch mode for {@link ZodShapeOptions.nullBranches} chosen per named type, rather than one mode for a whole
+ * field.
  *
- * The type handed to `byType` is the one **in the position** — the named type
- * left after stripping non-null and list wrappers — not the input object that
- * contains it. That is the keying the option is for: on a generated CRUD
- * surface it is the *filter types* that never legitimately take an explicit
- * null, wherever they appear, and "wherever" includes the top-level `where`
- * argument, which has no containing input type at all. Keying by the container
- * would leave exactly that position — the one rendering `anyOf: [{$ref}, {type:
- * 'null'}]`, the shape with no legal draft-07 rendering — ungovernable.
- *
- * Scalars and enums are passed too, so "objects keep their branch, scalars
- * don't" is expressible; it is only the *hoisted* types where the keying also
- * buys id safety.
+ * The type handed to `byType` is the named type in the position, after stripping non-null and list wrappers, not the
+ * input object that contains it. Keying by the container could not govern a top-level argument such as `where`, which
+ * has no containing input type. Scalars and enums are passed too.
  */
 export interface NullBranchesByType {
   byType: (type: GraphQLNamedInputType) => NullBranches;
@@ -121,53 +112,24 @@ export interface ZodShapeOptions {
    */
   scalars?: ScalarMapping;
   /**
-   * Whether a nullable input position advertises an explicit `null` branch.
-   * Default `'always'`, which is what GraphQL actually permits.
+   * Whether a nullable input position advertises an explicit `null` branch. The default is `'always'`.
    *
-   * `'never'` exists because the branch is expensive and, in one shape, not
-   * portable. It roughly doubles the node count of a filter-heavy schema —
-   * optionality is stated twice, and the second statement is the costly one —
-   * and when the surviving branch is a `$ref` there is *no* legal draft-07
-   * rendering of "nullable" for a downstream consumer to collapse it to:
-   * siblings of `$ref` are ignored there and strict validators reject them, so
-   * a consumer either keeps a combinator its backend refuses or emits an
-   * illegal node.
-   *
-   * It is not free. `'never'` makes an explicit `null` a *validation error*,
-   * which breaks the common mutation idiom of passing `null` to clear a field
-   * (`updateUser(bio: null)`) — absent and null are the same thing to many
-   * GraphQL servers, but not to all of them, and only the schema's author knows
-   * which kind theirs is. That is why the default keeps the branch.
-   *
-   * List *elements* are unaffected either way: an element cannot be absent, so
-   * a nullable element always renders its null branch.
+   * `'never'` exists because the branch roughly doubles the node count of a filter-heavy schema, and a nullable `$ref`
+   * has no legal draft-07 rendering. It makes an explicit `null` a validation error, which breaks the mutation idiom
+   * of passing `null` to clear a field (`updateUser(bio: null)`).
    */
   nullBranches?: NullBranchesSetting;
   /**
-   * Whether a field of an input object is advertised at all. Return `false` to
-   * prune it. Default: every field is kept.
-   *
-   * The knob every other option lacks: `include`, `filter`, `decorate` and the
-   * rest all address a *root field*, so the transitive closure behind a
-   * generated `where` was take-it-or-leave-it. On a generated CRUD surface that
-   * closure is most of the listing — relation filters pull in each other's
-   * whole filter type, measured at 92% of a 378 kB listing for capability that
-   * went unused across 100 logged calls.
+   * Whether a field of an input object is advertised at all. Return `false` to prune it.
    *
    * ```ts
    * // drop relation filters from the MCP projection; the API keeps them
    * inputField: (field) => !/ListRelationFilter/.test(String(field.type))
    * ```
    *
-   * **It must be a pure function of the type**, which is why it receives the
-   * field and its parent and *not* the root field it was reached through.
-   * Input objects are cached and named by GraphQL type name alone, so one name
-   * has to mean one schema; a prune that varied by route would put two bodies
-   * under one name and throw `Duplicate schema id` during JSON Schema
-   * conversion. Deciding per type keeps the cache key correct by construction.
-   *
-   * Pruning a **non-null** field throws instead: the server still requires it,
-   * so the tool would be advertised as callable and rejected on every call.
+   * It must be a pure function of the type, because input objects are cached and named by GraphQL type name alone, so
+   * a prune that varied by route would throw `Duplicate schema id` during JSON Schema conversion. Pruning a non-null
+   * field throws, because the server still requires it and every call would be rejected.
    */
   inputField?: InputFieldFilter;
 }
@@ -216,18 +178,11 @@ interface Ctx {
    */
   pending: Map<string, AnyZodType>;
   /**
-   * Input objects already built, keyed by type name — the *same* Zod instance is
-   * returned every time a type is met again.
+   * Input objects already built, keyed by type name, so the same Zod instance is returned every time a type is met
+   * again.
    *
-   * Identity is the whole point. `pending` only guards the path being walked and
-   * is cleared on the way back up, so without this a type reached twice by two
-   * different routes was rebuilt into two structurally identical but distinct
-   * schemas. `toJSONSchema` deduplicates by instance, so those became two
-   * expansions rather than a `$ref`, and a schema where several tables filter
-   * through one another grew multiplicatively: one real `where` argument
-   * rendered at 2.8 MB, and its whole tool listing at 18 MB, which is past what
-   * any model will read. Sharing the instance turns the walk into a DAG and the
-   * repeats into `$defs`.
+   * `toJSONSchema` deduplicates by instance, so sharing it renders a repeated type as one `$defs` entry instead of
+   * expanding it at every site. Without it, one real `where` argument rendered at 2.8 MB and its tool listing at 18 MB.
    */
   done: Map<string, AnyZodType>;
   scalar: ScalarResolver;
@@ -282,11 +237,8 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
     return enumSchema(type);
   }
   if (isInputObjectType(type)) {
-    // Self-referential input types (e.g. a nested filter tree) resolve to the
-    // `z.lazy` node registered before the shape is built, so the recursion is
-    // modelled precisely instead of collapsing to an opaque `z.any()`.
-    // A type already finished is reused outright; one still on the stack resolves
-    // to its `z.lazy` placeholder, which is what makes a cycle terminate.
+    // A finished type is reused outright. One still being built resolves to its `z.lazy` placeholder, which is what
+    // makes a cycle terminate.
     const built = ctx.done.get(type.name);
     if (built) {
       return built;
@@ -305,11 +257,7 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
     const shape: ZodShape = {};
     for (const [name, field] of Object.entries(type.getFields())) {
       if (ctx.inputField && !ctx.inputField(field, type)) {
-        // A pruned non-null field is not a smaller tool, it is a broken one:
-        // the schema stops advertising a field the server still requires, so
-        // every call is rejected for a reason the agent cannot see from the
-        // tool. Refusing at build time is the same bargain the operation
-        // refusals make — fail where a human is reading, not per call.
+        // A pruned non-null field would advertise a tool the server rejects on every call, so refuse at build time.
         if (isNonNullType(field.type)) {
           throw packageError(
             `\`inputField\` pruned \`${type.name}.${name}\`, which is non-null. ` +
@@ -324,18 +272,8 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
       shape[name] = withArgDefault(describe(fieldToZod(field.type, ctx, 'property'), field.description), field);
     }
     ctx.pending.delete(type.name);
-    // `.strict()`, not the default `strip`: the JSON Schema the SDK renders from
-    // this object already advertises `additionalProperties: false`, and a plain
-    // `z.object` silently drops the unknown key instead of rejecting it. For a
-    // caller that is a model, silence is the expensive failure — a misspelled
-    // field name comes back `isError: false` with a success payload, so nothing
-    // signals that part of the intent was discarded and nothing prompts a retry.
-    // Strict makes the enforced contract match the advertised one and names the
-    // offending field, the way the GraphQL endpoint itself would.
-    // Named after the GraphQL type: a shared input object is hoisted into the
-    // rendered `definitions`, and without a name the entry is keyed by position
-    // (`__schema0`), which strips the one piece of context an agent needs to
-    // read a `where` argument. See {@link withName}.
+    // `.strict()` makes an unknown key an error that names the field, where the default `strip` would silently drop it.
+    // The name keys the hoisted `definitions` entry by GraphQL type instead of by position (`__schema0`).
     holder.schema = withName(z.object(shape).strict(), type.name);
     ctx.done.set(type.name, holder.schema);
     return holder.schema;
@@ -380,20 +318,11 @@ export function enumSchema(type: GraphQLEnumType): AnyZodType {
 }
 
 /**
- * An argument or input field's default as the JSON a caller would actually
- * send, or `undefined` when it has none.
+ * An argument or input field's default as the JSON a caller would actually send, or `undefined` when it has none.
  *
- * The AST literal is preferred over the coerced `defaultValue` because the two
- * disagree exactly where it matters: an enum's *internal* value need not be its
- * SDL name, and the name is what crosses the wire as a GraphQL variable.
- * `valueFromASTUntyped` reads the literal without a type, which yields the name
- * for an enum and the plain JS value for everything else — precisely the JSON
- * form. A programmatically built schema carries no AST, so the coerced value is
- * the fallback.
- *
- * Exported for `arg-example.ts`, which needs the same JSON form for the same
- * reason — an example printing an enum's internal value would be one an agent
- * cannot send. Not re-exported from `index.ts`.
+ * The AST literal is preferred over the coerced `defaultValue` because an enum's internal value need not be its SDL
+ * name, and the name is what crosses the wire as a GraphQL variable. A programmatically built schema carries no AST,
+ * so the coerced value is the fallback. Exported for `arg-example.ts` and not re-exported from `index.ts`.
  */
 export function defaultJsonOf(source: GraphQLArgument | GraphQLInputField): unknown {
   const node = source.astNode?.defaultValue;
@@ -424,9 +353,8 @@ function withArgDefault(schema: AnyZodType, source: GraphQLArgument | GraphQLInp
  * @returns A Zod raw shape; empty (`{}`) for a field with no arguments.
  */
 export function argsToZodShape(args: ReadonlyArray<GraphQLArgument>, options: ZodShapeOptions = {}): ZodShape {
-  // Both maps live for this call only: the memo is keyed by type name alone, and
-  // a different `scalars` mapping or `nullBranches` setting would give the same
-  // name a different schema.
+  // Both maps live for this call only, because the memo is keyed by type name alone and different options would give
+  // the same name a different schema.
   const ctx: Ctx = {
     pending: new Map(),
     done: new Map(),

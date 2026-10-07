@@ -1,25 +1,10 @@
 /**
- * Zod types spelled so they hold across both majors in the peer range.
+ * Zod types spelled so they hold across both majors in the peer range, `^3.25 || ^4.0`.
  *
- * `zod` is a peer dependency accepting `^3.25 || ^4.0`, so the schemas this
- * package builds are whatever the *consumer* installed. The two majors do not
- * agree on the names we would otherwise import:
- *
- * - `ZodTypeAny` is `ZodType<any, any, any>` in v3, but resolves to the core
- *   `$ZodType` in v4 — which carries no `.parse`, `.describe`, or `.safeParse`,
- *   so every call site fails to type-check.
- * - `ZodRawShape` is a mutable `Record` in v3 and a `Readonly<Record>` in v4,
- *   so a shape built by assignment (which is how every shape here is built) is
- *   rejected under v4.
- *
- * Bare `ZodType` means the classic schema class in both, with `.parse` and
- * friends, and its generics default in both. {@link ZodShape} then matches the
- * SDK's own `ZodRawShapeCompat` (`Record<string, AnySchema>`) exactly, so
- * anything assignable to one is assignable to the other.
- *
- * Import from here rather than from `zod` directly for these two names; `z`
- * itself is fine to import anywhere, as the runtime API we use is common to
- * both majors.
+ * In v4 `ZodTypeAny` resolves to the core `$ZodType`, which has no `.parse` or `.describe`, and `ZodRawShape` is
+ * read-only, which rejects a shape built by assignment. Bare `ZodType` is the classic schema class in both majors, and
+ * {@link ZodShape} matches the SDK's own `ZodRawShapeCompat`. Import these two names from here instead of from `zod`,
+ * while `z` itself is fine to import anywhere.
  */
 
 import type { ZodType } from 'zod';
@@ -34,19 +19,11 @@ export type AnyZodType = ZodType;
 export type ZodShape = Record<string, AnyZodType>;
 
 /**
- * Names a schema, so a JSON Schema render that hoists it into `definitions`
- * keys it by that name instead of by position.
+ * Names a schema, so a JSON Schema render that hoists it into `definitions` keys it by that name instead of by
+ * position (`__schema0`).
  *
- * A schema reached from several places is written out once and referenced; v4
- * calls the entry `__schema0`, `__schema1`, … in the order it met them. The
- * reader here is a model, and `#/definitions/__schema7` tells it nothing — the
- * GraphQL type name (`TaskFilters`, `StringFilter`) is the whole meaning, and
- * this package has it at build time.
- *
- * Only v4 hoists, and only v4 has `.meta()`; v3 inlines the first occurrence
- * and never renders a `$ref`, so there is nothing to name and this is a no-op
- * there. `.meta()` returns a *clone* carrying the name — use the return value,
- * or the name is registered against a schema nobody references.
+ * Only v4 hoists and only v4 has `.meta()`, so this is a no-op under v3. The name is carried by a clone that `.meta()`
+ * returns, so use the return value.
  */
 export function withName<T extends AnyZodType>(schema: T, name: string): T {
   const meta = (schema as { meta?: (metadata: { id: string }) => T }).meta;
@@ -54,23 +31,12 @@ export function withName<T extends AnyZodType>(schema: T, name: string): T {
 }
 
 /**
- * Advertises a value as the schema's JSON Schema `default`, **without** making
- * Zod apply it.
+ * Advertises a value as the schema's JSON Schema `default`, without making Zod apply it.
  *
- * The distinction is the whole point. `.default(v)` would substitute `v` at
- * parse time, which puts the value into the GraphQL `variables` and so makes
- * this package decide the default instead of the server — two sources of truth
- * for one value, and the wrong one wins whenever the schema changes. The JSON
- * Schema `default` keyword is advisory and takes no part in validation, so
- * writing it as metadata advertises the server's default while still letting
- * the argument be genuinely absent on the wire.
- *
- * Apply it *after* any nullability wrapping, so the keyword lands on the
- * property rather than inside one branch of an `anyOf`.
- *
- * Like {@link withName} this is v4-only — `.meta()` does not exist on v3, where
- * it degrades to a no-op — and it returns a **clone**, so the return value is
- * what must be stored.
+ * Zod's `.default(v)` would substitute the value at parse time and put it into the GraphQL `variables`, making this
+ * package decide the default instead of the server. Apply it after any nullability wrapping, so the keyword lands on
+ * the property rather than inside one branch of an `anyOf`. Like {@link withName} this is a no-op under v3 and returns
+ * a clone, so store the return value.
  */
 export function withDefault<T extends AnyZodType>(schema: T, value: unknown): T {
   const meta = (schema as { meta?: (metadata: { default: unknown }) => T }).meta;

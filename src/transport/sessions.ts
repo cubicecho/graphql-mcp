@@ -1,38 +1,9 @@
 /**
- * The in-memory session table behind stateful MCP-over-HTTP.
- *
- * Stateless mode (the default) mints a server and transport per request and
- * throws both away, which is why it scales across processes without
- * coordination. A *session* is the opposite trade: the client initializes once,
- * gets an `Mcp-Session-Id` back, and every later request is routed to the same
- * long-lived server — which is what makes server-initiated messages (progress
- * notifications, the standalone SSE stream) possible at all, since there is a
- * connection left open to deliver them on.
- *
- * The cost is state, and state has to be bounded. A session ends when the client
- * sends `DELETE`, but a client that simply walks away sends nothing, so the
- * store also evicts by idle time and by count. Sweeping happens on each lookup
- * rather than on a timer: a timer would have to be `unref`'d to avoid holding
- * the process open, and would then be one more lifecycle for callers to own for
- * no benefit over sweeping exactly when the table is touched.
- *
- * ## Why the table stays per-process
- *
- * A session owns a live {@link McpServer}, which is a connected transport, an
- * open stream, and a set of registered handlers — not a value that can be
- * written to Redis and read back on another replica. So the table itself cannot
- * be shared, and a design that tries to serialize it will not work.
- *
- * What *can* be shared is the routing: which instance holds a given session id.
- * That is {@link SessionDirectory}, and supplying one turns the second replica's
- * "I have never heard of this session" into "instance `web-2` holds it" — a
- * routing fact the operator can act on, rather than a mystery 404. Without one
- * the behaviour is unchanged, which is what keeps the single-process case
- * zero-config.
- *
- * The events a session's stream has already sent are bounded separately, in
- * `event-store.ts`, and belong to the session: they are what a client reconnects
- * against, and they are released when the session here is.
+ * The in-memory session table behind stateful MCP-over-HTTP. A session routes every request after `initialize` to the
+ * same long-lived server, which is what leaves a connection open for server-initiated messages. The store evicts by
+ * idle time and by count, sweeping on each lookup rather than on a timer, because a client that walks away never sends
+ * `DELETE`. The table is per-process because a session owns a live {@link McpServer} that cannot be serialized, so a
+ * {@link SessionDirectory} shares only which instance holds each id.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -40,26 +11,11 @@ import { DEFAULT_CLAIM_TTL_MS, DEFAULT_IDLE_TIMEOUT_MS, DEFAULT_MAX_SESSIONS } f
 import { type EventStore, eventStoreFactory, type ReplayOption } from './event-store.ts';
 
 /**
- * A shared record of which instance holds which session — identity and
- * ownership, never the session object.
- *
- * Implement it over whatever the deployment already runs: Redis, a database
- * table, a Durable Object namespace. Three methods, all keyed by session id:
- *
- * - {@link claim} is called when a session is registered **and again on each
- *   later use**, so an implementation with a TTL can treat it as the refresh
- *   and needs nothing else. Make it idempotent.
- * - {@link owner} answers a lookup that missed the local table.
- * - {@link release} is called when the session ends, however it ends.
- *
- * Claims are written without being awaited, so a client fast enough to land its
- * second request on another replica before the first claim is durable gets the
- * same 404 it would have got anyway. Nothing is lost that was not already lost;
- * the directory narrows the window rather than closing it.
- *
- * An instance that dies leaves its claims behind. A TTL is the answer, which is
- * why {@link claim} is also the refresh — and why an implementation should
- * prefer its store's native expiry over sweeping.
+ * A shared record of which instance holds which session, never the session object itself. {@link claim} is called
+ * when a session is registered and again on each later use, so make it idempotent and let a TTL treat it as the
+ * refresh. {@link owner} answers a lookup that missed the local table, and {@link release} is called when the session
+ * ends. Claims are written without being awaited and outlive an instance that dies, so prefer the store's native
+ * expiry to clean them up.
  */
 export interface SessionDirectory {
   /** Records (or refreshes) `owner` as the holder of `sessionId`. */
@@ -127,13 +83,10 @@ export interface SessionOptions {
    */
   instanceId?: string;
   /**
-   * How each session buffers SSE events so a dropped connection can resume from
-   * `Last-Event-ID`. Default `true`: a bounded in-memory buffer per session.
-   *
-   * `false` turns resumability off, which is what the transport does unaided —
-   * a dropped stream then loses whatever was in flight. An options object tunes
-   * the bounds; a factory supplies a store of your own, which is what replay
-   * across restarts or replicas needs. See {@link ReplayOption}.
+   * How each session buffers SSE events so a dropped connection can resume from `Last-Event-ID`. Default `true`, a
+   * bounded in-memory buffer per session. `false` turns resumability off, so a dropped stream loses whatever was in
+   * flight. An options object tunes the bounds and a factory supplies a store of your own, as {@link ReplayOption}
+   * describes.
    */
   replay?: ReplayOption;
 }
@@ -145,19 +98,10 @@ export interface SessionOptions {
 export const SESSION_OWNER_HEADER = 'Mcp-Session-Owner';
 
 /**
- * The message for a session id this instance cannot serve.
- *
- * Both handlers answer 404 here, with or without an owner: the spec has clients
- * treat 404 as "your session is gone, initialize again", and a 400 would read as
- * a malformed request and leave the client retrying an id that will never come
- * back. Nor can the request be forwarded — an `McpServer` is a live object, so
- * there is no session to route *to* from here.
- *
- * What the owner adds is the diagnosis. An intermittent, unexplained 404 is the
- * signature of a load balancer that lost its stickiness, and it is miserable to
- * chase; naming the instance turns it into something an operator reads off a
- * single response. The wording and {@link SESSION_OWNER_HEADER} live here, with
- * the directory, so the Node and fetch handlers cannot drift apart.
+ * The message for a session id this instance cannot serve. Both handlers answer 404, with or without an owner, because
+ * the spec has clients treat 404 as a reason to initialize again, while a 400 would leave them retrying a dead id.
+ * Naming the owner lets an operator diagnose a load balancer that lost its stickiness from a single response. The
+ * wording and {@link SESSION_OWNER_HEADER} live here so the Node and fetch handlers cannot drift apart.
  *
  * @param owner - The instance holding the session, from
  *   {@link SessionStore.elsewhere}, or `undefined` if it is simply gone.
@@ -363,17 +307,10 @@ export async function closeQuietly<T extends ClosableTransport>(
 }
 
 /**
- * A {@link SessionDirectory} in local memory, with a TTL.
- *
- * This exists to make the interface concrete — as a test double, and as the
- * shape to copy when writing the Redis or database version. It is *not* a
- * multi-instance directory: memory is exactly the thing several instances do not
- * share, so in a real deployment this answers only for the instance that wrote
- * the claim, which is what the local session table already knew.
- *
- * The TTL is swept on read rather than on a timer, for the same reason
- * {@link SessionStore} sweeps on lookup: a timer would hold the process open.
- * A real implementation should use its store's native expiry instead.
+ * A {@link SessionDirectory} in local memory, with a TTL. It is a test double and the shape to copy for a Redis or
+ * database version, not a multi-instance directory, because instances do not share memory. The TTL is swept on read
+ * rather than on a timer, because a timer would hold the process open. A real implementation should use its store's
+ * native expiry instead.
  */
 export class MemorySessionDirectory implements SessionDirectory {
   private readonly claims = new Map<string, { owner: string; expires: number }>();
