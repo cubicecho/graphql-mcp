@@ -1,6 +1,5 @@
 /**
- * The one way this package raises an error about how it was configured, so every
- * message names where it came from.
+ * How this package raises its own errors and reads the ones it catches.
  */
 
 /** Opens every error message this package throws. */
@@ -15,4 +14,20 @@ const ERROR_PREFIX = 'graphql-mcp: ';
  */
 export function packageError(message: string, options?: ErrorOptions): Error {
   return new Error(`${ERROR_PREFIX}${message}`, options);
+}
+
+/**
+ * A thrown value's message, however it was thrown.
+ *
+ * @param cause - Whatever a `catch` received.
+ * @param fallback - Used when `cause` says nothing: an `Error` with an empty
+ *   message, or a plain object, whose string form is `[object Object]`.
+ * @returns Text fit to show a caller.
+ */
+export function messageOf(cause: unknown, fallback: string): string {
+  if (cause instanceof Error) {
+    return cause.message || fallback;
+  }
+  const text = String(cause);
+  return text === '' || text === '[object Object]' ? fallback : text;
 }

@@ -74,7 +74,7 @@ src/
   server.ts       — createMcpServer / createServerFactory / connectServer / registerGraphqlTools (+ custom tools)
   handlers.ts     — the SDK request handlers this package wraps (shareToolListing, guardToolArguments)
   zodCompat.ts    — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
-  errors.ts       — packageError: every thrown message carries the `graphql-mcp: ` prefix
+  errors.ts       — packageError (the `graphql-mcp: ` prefix) and messageOf (a caught value's text)
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
   argExample.ts   — a literal JSON example of one argument's shape (buildArgExample)

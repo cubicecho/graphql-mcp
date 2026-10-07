@@ -44,7 +44,7 @@ import {
 } from 'graphql';
 import { z } from 'zod';
 import { DEFAULT_EXAMPLE_DEPTH } from './argExample.ts';
-import { packageError } from './errors.ts';
+import { messageOf, packageError } from './errors.ts';
 import { kindOf } from './operation.ts';
 import { paginationHint } from './pagination.ts';
 import {
@@ -197,7 +197,7 @@ function toDocument(source: OperationSource): DocumentNode {
     // *what* is wrong and gives no way to find *which file* it is wrong in.
     const at = error instanceof GraphQLError ? error : undefined;
     throw packageError(
-      `could not parse an \`operations\` document — ${messageOf(error)}` +
+      `could not parse an \`operations\` document — ${messageOf(error, 'the parser gave no reason')}` +
         locationOf(at?.locations?.[0], at?.source?.name),
       { cause: error },
     );
@@ -439,9 +439,4 @@ function locationOf(at: { line: number; column: number } | undefined, name?: str
     return '';
   }
   return ` (${name ?? 'operation'}:${at.line}:${at.column})`;
-}
-
-/** An error's message, however it was thrown. */
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

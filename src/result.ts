@@ -44,6 +44,7 @@
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { messageOf } from './errors.ts';
 import type { GraphqlError, GraphqlExecutor, GraphqlRequest, GraphqlResult } from './types.ts';
 
 /** Default character budget for a tool result before truncation. */
@@ -293,17 +294,8 @@ export async function runExecutor(
   try {
     return await executor({ ...request, variables: request.variables ?? {} });
   } catch (cause) {
-    return { errors: [{ message: messageOf(cause) }] };
+    return { errors: [{ message: messageOf(cause, 'The GraphQL executor failed.') }] };
   }
-}
-
-/** A thrown value's message, falling back to its string form. */
-function messageOf(cause: unknown): string {
-  if (cause instanceof Error && cause.message) {
-    return cause.message;
-  }
-  const text = String(cause);
-  return text === '[object Object]' ? 'The GraphQL executor failed.' : text;
 }
 
 /**

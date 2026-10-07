@@ -49,6 +49,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { messageOf } from './errors.ts';
 import { toCallToolResult } from './result.ts';
 import type { GraphqlError } from './types.ts';
 import type { AnyZodType } from './zodCompat.ts';
@@ -185,7 +186,12 @@ function inputErrors(error: unknown): GraphqlError[] {
   // Cast: a `ZodError` under either major has `issues`; anything else has none.
   const issues = (error as { issues?: ReadonlyArray<ZodIssue> } | undefined)?.issues;
   if (!issues?.length) {
-    return [{ message: messageOf(error), extensions: { code: BAD_INPUT } }];
+    return [
+      {
+        message: messageOf(error, 'The arguments were rejected.'),
+        extensions: { code: BAD_INPUT },
+      },
+    ];
   }
   return issues.map((issue) => {
     const where = argumentPath(issue.path);
@@ -207,10 +213,6 @@ function argumentPath(path: ReadonlyArray<PropertyKey> | undefined): string {
     }
     return rendered ? `${rendered}.${String(key)}` : String(key);
   }, '');
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /**

@@ -33,6 +33,7 @@ import {
 } from 'graphql';
 import { z } from 'zod';
 import { exampleForType } from './argExample.ts';
+import { messageOf } from './errors.ts';
 import { kindOf } from './operation.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, text, toCallToolResult } from './result.ts';
 import { compileRules, type RuleMatcher } from './rules.ts';
@@ -408,7 +409,7 @@ function tryParse(query: string): { document: DocumentNode } | { error: string }
   try {
     return { document: parse(query) };
   } catch (cause) {
-    return { error: `Syntax error: ${(cause as Error).message}` };
+    return { error: `Syntax error: ${messageOf(cause, 'the parser gave no reason')}` };
   }
 }
 
