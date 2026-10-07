@@ -303,6 +303,38 @@ describe('SessionStore with a directory', () => {
     assert.deepEqual(log, ['transport:a', 'server:a']);
   });
 
+  test('a directory whose claim throws does not stop a session from being added', () => {
+    const directory: SessionDirectory = {
+      claim: () => {
+        throw new Error('directory unreachable');
+      },
+      owner: () => undefined,
+      release: () => {},
+    };
+    const store = new SessionStore<FakeTransport>({ directory, instanceId: 'web-1' });
+    store.add('a', fakeSession([], 'a'));
+    assert.equal(store.take('a')?.lastSeen !== undefined, true);
+  });
+
+  test('a directory whose claim rejects leaves no unhandled rejection', async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', record);
+    const directory: SessionDirectory = {
+      claim: async () => {
+        throw new Error('directory unreachable');
+      },
+      owner: async () => undefined,
+      release: async () => {},
+    };
+    const store = new SessionStore<FakeTransport>({ directory, instanceId: 'web-1' });
+    store.add('a', fakeSession([], 'a'));
+    store.take('a');
+    await new Promise((resolve) => setImmediate(resolve));
+    process.off('unhandledRejection', record);
+    assert.deepEqual(unhandled, []);
+  });
+
   test('a directory that rejects does not stop closeAll', async () => {
     const log: string[] = [];
     const directory: SessionDirectory = {

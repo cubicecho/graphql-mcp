@@ -228,7 +228,7 @@ export class SessionStore<T extends ClosableTransport> {
     this.sessions.set(id, session);
     // Re-claiming on use is what lets a directory expire the claims of an
     // instance that died without ever getting to release them.
-    void this.directory?.claim(id, this.instanceId);
+    void this.claimQuietly(id);
     return session;
   }
 
@@ -272,7 +272,7 @@ export class SessionStore<T extends ClosableTransport> {
     }
     session.lastSeen = Date.now();
     this.sessions.set(id, session);
-    void this.directory?.claim(id, this.instanceId);
+    void this.claimQuietly(id);
   }
 
   /**
@@ -308,6 +308,21 @@ export class SessionStore<T extends ClosableTransport> {
     const live = [...this.sessions.entries()];
     this.sessions.clear();
     await Promise.all(live.flatMap(([id, s]) => [this.releaseQuietly(id), closeQuietly(s)]));
+  }
+
+  /**
+   * Claims a session for this instance, swallowing failures. A directory that
+   * is momentarily unreachable must not fail the request being served; the
+   * next use of the session claims it again.
+   *
+   * @param id - The session id to claim.
+   */
+  private async claimQuietly(id: string): Promise<void> {
+    try {
+      await this.directory?.claim(id, this.instanceId);
+    } catch {
+      // The session still works here; only cross-instance lookup misses it.
+    }
   }
 
   /**
