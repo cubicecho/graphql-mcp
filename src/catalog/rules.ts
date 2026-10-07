@@ -29,6 +29,7 @@ const PREFIX_KINDS: Record<string, OperationKind> = {
  * An empty list yields a matcher that never matches.
  *
  * @param patterns - Field-name patterns, optionally `Query.`/`Mutation.`-prefixed.
+ * @returns A matcher that is `true` when any pattern matches the field name and its kind.
  * @throws If a dotted pattern's prefix is neither `Query` nor `Mutation`.
  */
 export function compileRules(patterns: readonly string[]): RuleMatcher {
@@ -48,7 +49,12 @@ export function compileRules(patterns: readonly string[]): RuleMatcher {
   return (fieldName, kind) => compiled.some((rule) => (!rule.kind || rule.kind === kind) && rule.regex.test(fieldName));
 }
 
-/** `delete*` → `/^delete.*$/` — escape everything, then let `*` match any run. */
+/**
+ * `delete*` → `/^delete.*$/` — escape everything, then let `*` match any run.
+ *
+ * @param pattern - A field-name pattern in which `*` is the only wildcard.
+ * @returns A regular expression anchored to match the whole field name.
+ */
 function globToRegex(pattern: string): RegExp {
   const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`^${escaped.replace(/\\\*/g, '.*')}$`);

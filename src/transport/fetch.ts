@@ -67,6 +67,8 @@ let ctorPromise: Promise<WebTransportCtor> | undefined;
 /**
  * Loads the web-standard transport once, caching the promise so concurrent
  * first requests share a single import.
+ *
+ * @returns The transport's constructor. The promise rejects if the installed SDK lacks the web-standard transport.
  */
 async function loadTransport(): Promise<WebTransportCtor> {
   ctorPromise ??= import('@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js')
@@ -157,6 +159,9 @@ export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandle
  * The transport satisfies the SDK's `Transport` interface, but this module
  * models only the parts it drives so the public types stay independent of an
  * SDK version the peer range doesn't require — hence the cast at this one seam.
+ *
+ * @param server - The server that will answer requests arriving on the transport.
+ * @param transport - The web-standard transport to attach to the server.
  */
 async function connect(server: McpServer, transport: WebTransport): Promise<void> {
   // biome-ignore lint/suspicious/noExplicitAny: bridging the structural WebTransport to the SDK's Transport

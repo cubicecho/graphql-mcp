@@ -95,6 +95,10 @@ export type NullBranchesSetting = NullBranches | NullBranchesByType;
  * Exported so the description renderer resolves it the same way the schema
  * builder does — prose that warns about sending an explicit `null` where the
  * schema now rejects one is a tool that lies about itself.
+ *
+ * @param setting - The configured mode, or `undefined` to use the default mode.
+ * @param type - The type in the position. Its list and non-null wrappers are removed before `byType` is asked.
+ * @returns `'always'` or `'never'` for that position.
  */
 export function branchesAt(setting: NullBranchesSetting | undefined, type: GraphQLInputType): NullBranches {
   if (setting === undefined) {
@@ -159,6 +163,7 @@ const SCALAR_BUILDERS: Record<string, () => AnyZodType> = {
  * describe a scalar identically.
  *
  * @param type - The scalar type to map.
+ * @returns The built-in schema, or `z.any()` described with the scalar name and its SDL description.
  */
 export function builtinScalar(type: GraphQLScalarType): AnyZodType {
   const builder = SCALAR_BUILDERS[type.name];
@@ -190,7 +195,12 @@ interface Ctx {
   inputField: InputFieldFilter | undefined;
 }
 
-/** Normalizes either mapping form into a single lookup function. */
+/**
+ * Normalizes either mapping form into a single lookup function.
+ *
+ * @param mapping - A record keyed by scalar name, a resolver function, or `undefined` for no overrides.
+ * @returns A resolver that gives `undefined` for a scalar the mapping does not cover.
+ */
 export function toResolver(mapping: ScalarMapping | undefined): ScalarResolver {
   if (!mapping) {
     return () => undefined;
@@ -213,6 +223,11 @@ export function toResolver(mapping: ScalarMapping | undefined): ScalarResolver {
  * An **element** of a list cannot be absent — there is no such thing as a hole
  * in a JSON array — so `.nullable()` is the only way to say `[String]` permits
  * nulls, and dropping it there would change the type rather than compress it.
+ *
+ * @param type - The input type, with its non-null wrapper still on.
+ * @param ctx - The recursion state shared across one conversion.
+ * @param position - `'property'` for an argument or input field, `'element'` for a member of a list.
+ * @returns The schema for the type with its nullability applied.
  */
 function fieldToZod(type: GraphQLInputType, ctx: Ctx, position: 'property' | 'element'): AnyZodType {
   if (isNonNullType(type)) {
@@ -225,7 +240,13 @@ function fieldToZod(type: GraphQLInputType, ctx: Ctx, position: 'property' | 'el
   return branchesAt(ctx.nullBranches, type) === 'never' ? base.optional() : base.nullish();
 }
 
-/** Builds the Zod type for a (already nullability-stripped) list/named GraphQL type. */
+/**
+ * Builds the Zod type for a (already nullability-stripped) list/named GraphQL type.
+ *
+ * @param type - A list or named input type, with no non-null wrapper on the outside.
+ * @param ctx - The recursion state shared across one conversion.
+ * @returns An array, scalar, enum or strict object schema, or `z.any()` for a type that is none of these.
+ */
 function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
   if (isListType(type)) {
     return z.array(fieldToZod(type.ofType, ctx, 'element'));
@@ -323,6 +344,9 @@ export function enumSchema(type: GraphQLEnumType): AnyZodType {
  * The AST literal is preferred over the coerced `defaultValue` because an enum's internal value need not be its SDL
  * name, and the name is what crosses the wire as a GraphQL variable. A programmatically built schema carries no AST,
  * so the coerced value is the fallback. Exported for `arg-example.ts` and not re-exported from `index.ts`.
+ *
+ * @param source - The argument or input field whose default is read.
+ * @returns The default as JSON, or `undefined` when none is declared.
  */
 export function defaultJsonOf(source: GraphQLArgument | GraphQLInputField): unknown {
   const node = source.astNode?.defaultValue;
@@ -336,6 +360,10 @@ export function defaultJsonOf(source: GraphQLArgument | GraphQLInputField): unkn
  * Attaches the JSON Schema `default` keyword when there is one to attach.
  * Advisory only — see {@link withDefault} for why this is metadata rather than
  * a Zod `.default()`.
+ *
+ * @param schema - The schema to annotate, after its nullability wrapping.
+ * @param source - The argument or input field that may declare a default.
+ * @returns A schema carrying the default, or `schema` unchanged when there is none.
  */
 function withArgDefault(schema: AnyZodType, source: GraphQLArgument | GraphQLInputField): AnyZodType {
   const value = defaultJsonOf(source);

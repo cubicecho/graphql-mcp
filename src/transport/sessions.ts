@@ -105,12 +105,18 @@ export const SESSION_OWNER_HEADER = 'Mcp-Session-Owner';
  *
  * @param owner - The instance holding the session, from
  *   {@link SessionStore.elsewhere}, or `undefined` if it is simply gone.
+ * @returns The message text, which names the owner when one is given.
  */
 export function sessionNotFound(owner?: string): string {
   return owner === undefined ? 'Session not found' : `Session not found on this instance; it is held by '${owner}'`;
 }
 
-/** Response headers to accompany {@link sessionNotFound}. */
+/**
+ * Response headers to accompany {@link sessionNotFound}.
+ *
+ * @param [owner] - The instance holding the session, or `undefined` if no instance claims it.
+ * @returns The owner under {@link SESSION_OWNER_HEADER}, or an empty object when there is no owner.
+ */
 export function headersFor(owner?: string): Record<string, string> {
   return owner === undefined ? {} : { [SESSION_OWNER_HEADER]: owner };
 }
@@ -132,6 +138,11 @@ export class SessionStore<T extends ClosableTransport> {
   /** This process's name in the directory. */
   readonly instanceId: string;
 
+  /**
+   * Creates an empty store, filling every omitted bound from the package defaults.
+   *
+   * @param [options] - The idle timeout, session cap, id generator, directory and instance name to use.
+   */
   constructor(options: SessionOptions = {}) {
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
@@ -140,7 +151,11 @@ export class SessionStore<T extends ClosableTransport> {
     this.instanceId = options.instanceId ?? crypto.randomUUID();
   }
 
-  /** How many sessions are currently held. */
+  /**
+   * How many sessions are currently held.
+   *
+   * @returns The number of sessions in the table, including any that have expired but are not yet swept.
+   */
   get size(): number {
     return this.sessions.size;
   }
@@ -274,6 +289,8 @@ export class SessionStore<T extends ClosableTransport> {
    * Drops a claim, swallowing failures. Eviction and shutdown must not be held
    * up — or abandoned halfway — by a directory that is momentarily unreachable;
    * a claim left behind expires on its own, while a session left open does not.
+   *
+   * @param id - The session id whose claim is given back.
    */
   private async releaseQuietly(id: string): Promise<void> {
     try {
@@ -290,6 +307,8 @@ export class SessionStore<T extends ClosableTransport> {
  * Teardown runs from eviction, shutdown and end-of-request paths where there is
  * no caller left to report to, and a transport that throws on close must not
  * strand the other sessions in the same sweep or the response already built.
+ *
+ * @param session - The server and optional transport to close, transport first.
  */
 export async function closeQuietly<T extends ClosableTransport>(
   session: Pick<Session<T>, 'server' | 'transport'>,
@@ -325,7 +344,11 @@ export class MemorySessionDirectory implements SessionDirectory {
     this.ttlMs = ttlMs;
   }
 
-  /** Number of unexpired claims. Expired entries are counted out, not swept. */
+  /**
+   * Number of unexpired claims. Expired entries are counted out, not swept.
+   *
+   * @returns The count of claims whose expiry is still in the future.
+   */
   get size(): number {
     const now = Date.now();
     let live = 0;
@@ -337,10 +360,22 @@ export class MemorySessionDirectory implements SessionDirectory {
     return live;
   }
 
+  /**
+   * Records or refreshes a claim, restarting its TTL from now.
+   *
+   * @param sessionId - The session being claimed.
+   * @param owner - The name of the instance that holds the session.
+   */
   claim(sessionId: string, owner: string): void {
     this.claims.set(sessionId, { owner, expires: Date.now() + this.ttlMs });
   }
 
+  /**
+   * Looks up who holds a session, deleting the claim if it has expired.
+   *
+   * @param sessionId - The session to look up.
+   * @returns The claiming instance's name, or `undefined` if there is no claim or it has expired.
+   */
   owner(sessionId: string): string | undefined {
     const claim = this.claims.get(sessionId);
     if (!claim) {
@@ -353,6 +388,11 @@ export class MemorySessionDirectory implements SessionDirectory {
     return claim.owner;
   }
 
+  /**
+   * Forgets the claim on a session, whoever held it.
+   *
+   * @param sessionId - The session whose claim is removed.
+   */
   release(sessionId: string): void {
     this.claims.delete(sessionId);
   }

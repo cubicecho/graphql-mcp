@@ -25,6 +25,11 @@ process and forward to a remote GraphQL endpoint.
   braced block (`useBlockStatements`), and a logic check is negated with `=== false`, not `!`
   (`no-negation.grit`; `!` stays for null guards).
 - **File names:** kebab-case (`zod-schema.ts`, `event-store.ts`). A new module goes in the folder whose phrase below covers it, never in a `utils` or `helpers` folder.
+- **Comments:** every function and method has a TSDoc block: a description of at most four
+  sentences, a blank line, then `@param name - …` for each parameter (`@param [name] - …` when
+  optional) and `@returns …` unless it returns nothing. No `{type}` annotations. A comment in a
+  function body is at most two lines. Keep the one fact that stops a reader undoing a decision;
+  the longer history goes in this file or the commit message.
 - **Dependencies:** `@graphql-tools/schema` (schema merging for the `extend`
   option) is the only runtime dependency. `@modelcontextprotocol/sdk`
   (`>=1.12`), `graphql` (`>=16`) and `zod` (`^3.25 || ^4.0`) are **peer deps** —

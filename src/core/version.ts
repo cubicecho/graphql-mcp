@@ -16,6 +16,11 @@ const requireJson = createRequire(import.meta.url);
 /** This package's version, or `'0.0.0'` if `package.json` can't be read. */
 export const VERSION: string = readVersion();
 
+/**
+ * Reads the `version` field of this package's `package.json`.
+ *
+ * @returns The version string, or `'0.0.0'` when the manifest cannot be read or has no version.
+ */
 function readVersion(): string {
   try {
     // Cast: `require` of JSON is untyped; the field is checked below.

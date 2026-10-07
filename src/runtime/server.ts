@@ -153,6 +153,7 @@ export interface CreateMcpServerOptions extends BuildToolsOptions {
  * its own server). Use this directly for stdio or a single persistent session.
  *
  * @param options - Schema, executor, context, and tool options.
+ * @returns The server, with its tools registered and not yet connected to a transport.
  */
 export function createMcpServer(options: CreateMcpServerOptions): McpServer {
   return createServerFactory(options)();
@@ -247,6 +248,11 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
  * Only the plain forms of the shared options carry over: a `selectionDepth`- or
  * `nullBranches`-style callback is handed a `GraphQLField`, and an operation
  * has none to hand it.
+ *
+ * @param schema - The extended schema the operations are validated against.
+ * @param generated - The descriptors built from the schema, in listing order.
+ * @param options - The server options, read for `operations` and the settings that carry over.
+ * @returns The descriptors with each operation added or swapped in, or `generated` itself when there are none.
  */
 function withOperations(
   schema: GraphQLSchema,
@@ -275,7 +281,14 @@ function withOperations(
   return [...byName.values()];
 }
 
-/** Reads a key off the `metaTools` object form (absent for the `true` form). */
+/**
+ * Reads a key off the `metaTools` object form (absent for the `true` form).
+ *
+ * @typeParam K - The meta tool option being read.
+ * @param options - The server options that hold `metaTools`.
+ * @param key - The meta tool option to read.
+ * @returns The value, or `undefined` when `metaTools` is not an object or does not set the key.
+ */
 function pickMeta<K extends keyof MetaToolsOptions>(
   options: CreateMcpServerOptions,
   key: K,
@@ -294,6 +307,9 @@ function pickMeta<K extends keyof MetaToolsOptions>(
  * `async` function, and the SDK throws on `registerCapabilities` after a
  * transport is attached — so an awaited registration would fail intermittently,
  * under load, far from its cause.
+ *
+ * @param server - The freshly minted server, not yet connected.
+ * @param hook - The `decorateServer` option, or `undefined` when the caller gave none.
  */
 function runServerDecorator(server: McpServer, hook: ServerDecorator | undefined): void {
   if (!hook) {
@@ -361,6 +377,10 @@ const OPTIONAL_ARGUMENTS = new Set(['tools/call', 'prompts/get']);
  * Copied rather than mutated: the caller's message may be shared (a transport is
  * free to hand the same parsed body to more than one listener), and a request
  * this rewrites in place would be seen changed by anything reading it after.
+ *
+ * @typeParam T - The type of the incoming message.
+ * @param message - A raw JSON-RPC message from the transport.
+ * @returns A copy with `params.arguments` set to `{}`, or the same message when it needs no change.
  */
 function withArguments<T>(message: T): T {
   if (!message || typeof message !== 'object') {
@@ -415,6 +435,12 @@ interface GeneratedTool {
   maxChars: number;
 }
 
+/**
+ * Registers one generated tool on a server, with a handler that runs its operation through the executor.
+ *
+ * @param server - The MCP server to register the tool on.
+ * @param tool - The descriptor with its strict input schema, executor, context and result budget.
+ */
 function registerGeneratedTool(
   server: McpServer,
   { descriptor, input, executor, context, maxChars }: GeneratedTool,
@@ -451,6 +477,13 @@ function registerGeneratedTool(
  * Both failures are *reported*, never thrown: `result.ts` promises a parseable
  * JSON body on every outcome, and a caller that is a model needs the reason in
  * the body it already knows how to read.
+ *
+ * @param descriptor - The tool being called, read for its argument names and optional mapper.
+ * @param args - The validated arguments of the call.
+ * @param extra - The MCP `extra` of the call, passed to the mapper.
+ * @param maxChars - Character budget for a failure result.
+ * @returns The declared variables that have a value, or a `failure` when the mapper throws or returns an
+ * undeclared name.
  */
 async function toVariables(
   descriptor: ToolDescriptor,
@@ -508,10 +541,22 @@ function failureOf(message: string, code: string, maxChars: number): CallToolRes
  */
 const strictInputs = new WeakMap<ZodShape, ReturnType<typeof buildStrictInput>>();
 
+/**
+ * Builds the object schema that rejects any key the shape does not declare.
+ *
+ * @param shape - The input shape of a generated tool.
+ * @returns The strict Zod object schema.
+ */
 function buildStrictInput(shape: ZodShape) {
   return z.object(shape).strict();
 }
 
+/**
+ * Gives the strict schema for a shape, building it on first use and reusing it afterwards.
+ *
+ * @param shape - The input shape of a generated tool.
+ * @returns The cached strict Zod object schema.
+ */
 function strictInput(shape: ZodShape): ReturnType<typeof buildStrictInput> {
   const cached = strictInputs.get(shape);
   if (cached) {
@@ -522,6 +567,12 @@ function strictInput(shape: ZodShape): ReturnType<typeof buildStrictInput> {
   return schema;
 }
 
+/**
+ * Registers a user-supplied tool on a server, with or without an input schema.
+ *
+ * @param server - The MCP server to register the tool on.
+ * @param tool - The tool to register.
+ */
 function registerCustomTool(server: McpServer, tool: CustomTool): void {
   // The SDK's overloads differ by whether `inputSchema` is present; cast the
   // config/handler at this boundary so callers get a single clean `CustomTool`.
@@ -535,6 +586,13 @@ function registerCustomTool(server: McpServer, tool: CustomTool): void {
   server.registerTool(tool.name, config as any, tool.handler as any);
 }
 
+/**
+ * Resolves the GraphQL context for one call.
+ *
+ * @param context - A static context value, or a factory that derives one.
+ * @param extra - The MCP `extra` of the call, passed to the factory.
+ * @returns What the factory returns, or the static value as given.
+ */
 async function resolveContext(context: unknown | ContextFactory, extra: unknown): Promise<unknown> {
   // Cast: `typeof` narrows `unknown` to `Function`, not to the factory's signature.
   return typeof context === 'function' ? await (context as ContextFactory)(extra) : context;

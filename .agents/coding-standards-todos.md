@@ -58,7 +58,7 @@ what it returns; one session lifecycle serves both transports."
 | R9 | Refactor [sweep] | Rewrites 36 logic negations (`!x`) as named positive conditions and turns the lint plugin on. | P20 sweep | R8 | done |
 | R10 | Refactor [sweep] | Names the magic values: 10 numbers plus repeated strings (error prefix, session header, JSON-RPC codes, the search limit that is also typed into its description). | P16 sweep | — | done |
 | R11 | Refactor [sweep] | Removes the type assertions that a narrower type makes unnecessary (about 12 of 28) and gives each remaining one a stated reason. | P17 sweep | — | done |
-| R12 | Refactor [sweep] | Adds the missing doc blocks (30 functions) and missing `@param`/`@returns` tags (78 and 85 functions). | P4 sweep | — | open |
+| R12 | Refactor [sweep] | Adds the missing doc blocks (30 functions) and missing `@param`/`@returns` tags (78 and 85 functions). | P4 sweep | — | done |
 | R13 | Refactor [sweep] | Shortens 54 doc blocks over four sentences and 25 body comments over two lines; the rationale already lives in AGENTS.md. | P19 sweep; source is 45% comment lines | decision | done |
 | R14 | Refactor [consistency] | Adds the house tsconfig flags and the `check:biome` / `check:types` script names. | Same commands and checks as other cubicecho repos | — | done |
 | T2 | Test [reuse] | Moves test helpers that exist in two or three test files (`connect`, `fieldType`, `unwrap`, result-body readers) into the shared fixtures file. | One place to change when the SDK client API moves | — | done |

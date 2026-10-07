@@ -518,6 +518,10 @@ function decorated(descriptor: ToolDescriptor, decoration: Decoration): ToolDesc
  * `annotations` merge rather than replace, and a patched `title` mirrors into
  * `annotations.title` unless the patch sets that itself — the SDK advertises
  * both, so they must not drift apart.
+ *
+ * @param descriptor - The descriptor to patch, which is left unmodified.
+ * @param patch - The `decorate` return value, full or partial.
+ * @returns A new descriptor with the patch merged in.
  */
 function applyPatch(descriptor: ToolDescriptor, patch: ToolDescriptor | Partial<ToolDescriptor>): ToolDescriptor {
   // A replaced `inputSchema` under the generated `description` would describe arguments the tool now rejects, so
@@ -540,7 +544,13 @@ function applyPatch(descriptor: ToolDescriptor, patch: ToolDescriptor | Partial<
   return merged;
 }
 
-/** Overlays `field.extensions.mcp` metadata onto the SDL-derived descriptor. */
+/**
+ * Overlays `field.extensions.mcp` metadata onto the SDL-derived descriptor.
+ *
+ * @param descriptor - The SDL-derived descriptor, which is left unmodified.
+ * @param extensions - The field's `extensions.mcp` metadata.
+ * @returns A new descriptor with the name, title, description and annotations the metadata sets.
+ */
 function applyExtensions(descriptor: ToolDescriptor, extensions: McpFieldExtensions): ToolDescriptor {
   let description = extensions.description ?? descriptor.description;
   if (extensions.appendDescription) {
@@ -585,6 +595,14 @@ interface DescriptorOptions {
   exampleDepth?: number;
 }
 
+/**
+ * Builds the descriptor for one root field from its SDL: the operation it runs, its description, its input and
+ * output schemas and its annotations.
+ *
+ * @param field - The root field the tool calls.
+ * @param options - The tool name, the kind and the per-field settings.
+ * @returns The descriptor before any `extensions.mcp` metadata or `decorate` patch is applied.
+ */
 function toDescriptor(field: RootField, options: DescriptorOptions): ToolDescriptor {
   const {
     name,
@@ -618,7 +636,14 @@ function toDescriptor(field: RootField, options: DescriptorOptions): ToolDescrip
   };
 }
 
-/** A depth for one field: a callback is asked, a number is taken as-is. */
+/**
+ * A depth for one field: a callback is asked, a number is taken as-is.
+ *
+ * @param depth - A fixed depth, a per-field callback, or `undefined` when the option is unset.
+ * @param field - The root field handed to the callback.
+ * @param kind - Whether the field came from `Query` or `Mutation`.
+ * @returns The depth for this field, or `undefined` when the option is unset.
+ */
 function depthFor(
   depth: SelectionDepth | ExampleDepth | undefined,
   field: RootField,
@@ -631,6 +656,11 @@ function depthFor(
  * The null-branch setting for one field: a callback is asked, anything else
  * taken as-is. A `{ byType }` object is *not* a callback — it is resolved later,
  * per input position, by {@link branchesAt}.
+ *
+ * @param nullBranches - A fixed setting, a per-field callback, or `undefined` when the option is unset.
+ * @param field - The root field handed to the callback.
+ * @param kind - Whether the field came from `Query` or `Mutation`.
+ * @returns The setting for this field, or `undefined` when the option is unset.
  */
 function branchesFor(
   nullBranches: NullBranchesOption | undefined,
@@ -650,7 +680,12 @@ interface FieldProse {
   exampleDepth?: number;
 }
 
-/** Composes a tool description from the field's SDL: docstring, signature, args, and result. */
+/**
+ * Composes a tool description from the field's SDL: docstring, signature, args, and result.
+ *
+ * @param prose - The field, its kind, the selection its operation requests, and the two rendering settings.
+ * @returns The description as lines joined with newlines.
+ */
 function buildDescription({
   field,
   kind,
@@ -719,6 +754,10 @@ export function describeArguments(
  * The default is shown because an agent told only the type cannot tell whether omitting the argument returns
  * everything or a server-chosen page. Exported for sibling modules so there is one renderer, and deliberately not
  * re-exported from `index.ts` because it is not public API.
+ *
+ * @param arg - The argument to describe.
+ * @param [nullBranches] - The setting the input schema was built at; decides whether the line warns about `null`.
+ * @returns The line, without a leading bullet.
  */
 export function describeArgument(
   arg: GraphQLArgument,
@@ -749,6 +788,9 @@ export function describeArgument(
  * none. The AST node is preferred over the coerced `defaultValue` because an
  * enum's internal value need not be its SDL name — printing the AST always gives
  * the literal a caller would actually write.
+ *
+ * @param arg - The argument whose default is read.
+ * @returns The default as a GraphQL literal, as JSON when there is no AST, or `undefined` when there is none.
  */
 function defaultOf(arg: GraphQLArgument): string | undefined {
   const node = arg.astNode?.defaultValue;
@@ -779,6 +821,12 @@ const REMOVING_PREFIX = /^(?:delete|remove|destroy)(?=$|_|[A-Z0-9])/;
  * `extensions.mcp.name` cannot change what a tool claims about itself.
  *
  * Exported for sibling modules on the same terms as {@link describeArgument}.
+ *
+ * @param kind - Whether the operation is a query or a mutation.
+ * @param fieldName - The GraphQL field or operation name the prefix match reads.
+ * @param title - The human-friendly title copied into the annotations.
+ * @param [mutationHints] - How a mutation's write hints are decided, `'uniform'` by default.
+ * @returns The annotations, with `openWorldHint` always `true`.
  */
 export function annotationsFor(
   kind: OperationKind,
@@ -810,6 +858,9 @@ const CAMEL_HUMP = /([a-z0-9])([A-Z])/g;
  * run of capitals stays one word rather than becoming one underscore per letter.
  * GraphQL names are already `[_A-Za-z][_0-9A-Za-z]*`, so the result is always a
  * valid tool name; a field already spelled `snake_case` comes through unchanged.
+ *
+ * @param fieldName - A GraphQL field name in any casing.
+ * @returns The name in lower-case `snake_case`.
  */
 function toSnakeCase(fieldName: string): string {
   return fieldName
@@ -827,12 +878,21 @@ function toSnakeCase(fieldName: string): string {
  * `undefined` return on `toolName` covers the common case; this covers the one
  * where the caller wants to transform the name *and* case it the way the
  * package does.
+ *
+ * @param fieldName - The GraphQL field name to case.
+ * @param [nameCase] - The casing convention, `'snake'` by default.
+ * @returns The name unchanged under `'preserve'`, otherwise in `snake_case`.
  */
 export function applyNameCase(fieldName: string, nameCase: NameCase = 'snake'): string {
   return nameCase === 'preserve' ? fieldName : toSnakeCase(fieldName);
 }
 
-/** `createTodo` → `Create Todo`; `me` → `Me`. Exported for sibling modules. */
+/**
+ * `createTodo` → `Create Todo`; `me` → `Me`. Exported for sibling modules.
+ *
+ * @param fieldName - A name in camelCase, `snake_case` or hyphenated form.
+ * @returns The name as words separated by spaces, each starting with a capital.
+ */
 export function humanize(fieldName: string): string {
   const spaced = fieldName.replace(CAMEL_HUMP, '$1 $2').replace(/[_-]+/g, ' ').trim();
   return spaced.replace(/\b\w/g, (char) => char.toUpperCase());

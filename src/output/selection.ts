@@ -37,7 +37,14 @@ export function buildSelectionSet(type: GraphQLOutputType, maxDepth = DEFAULT_SE
   return selectionFor(getNamedType(type), maxDepth, new Set());
 }
 
-/** Returns a `{ ... }` block for a composite type, or `''` for a leaf. */
+/**
+ * Returns a `{ ... }` block for a composite type, or `''` for a leaf.
+ *
+ * @param named - The type to select from, with list and non-null wrappers removed.
+ * @param depth - Object levels left to select.
+ * @param path - Type names already on the way down to `named`.
+ * @returns The braced selection, or `''` for a scalar or enum.
+ */
 function selectionFor(named: GraphQLNamedType, depth: number, path: ReadonlySet<string>): string {
   if (isScalarType(named) || isEnumType(named)) {
     return '';
@@ -109,7 +116,14 @@ export function returnedFields(
   return returned;
 }
 
-/** Joins the selectable fields of an object/interface type, always ending with `__typename`. */
+/**
+ * Joins the selectable fields of an object/interface type, always ending with `__typename`.
+ *
+ * @param type - The object or interface type whose fields are selected.
+ * @param depth - Object levels left, counting `type` itself.
+ * @param path - Type names already on the way down to `type`.
+ * @returns The field selections separated by spaces, without the surrounding braces.
+ */
 function compositeFields(
   type: GraphQLObjectType | GraphQLInterfaceType,
   depth: number,

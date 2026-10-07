@@ -24,6 +24,10 @@ export type ZodShape = Record<string, AnyZodType>;
  *
  * Only v4 hoists and only v4 has `.meta()`, so this is a no-op under v3. The name is carried by a clone that `.meta()`
  * returns, so use the return value.
+ *
+ * @param schema - The schema to name.
+ * @param name - The id the schema is hoisted under in `definitions`.
+ * @returns The named clone, or `schema` itself under Zod 3.
  */
 export function withName<T extends AnyZodType>(schema: T, name: string): T {
   const meta = (schema as { meta?: (metadata: { id: string }) => T }).meta;
@@ -37,6 +41,10 @@ export function withName<T extends AnyZodType>(schema: T, name: string): T {
  * package decide the default instead of the server. Apply it after any nullability wrapping, so the keyword lands on
  * the property rather than inside one branch of an `anyOf`. Like {@link withName} this is a no-op under v3 and returns
  * a clone, so store the return value.
+ *
+ * @param schema - The schema to annotate.
+ * @param value - The default to advertise, as the JSON a caller would send.
+ * @returns The annotated clone, or `schema` itself under Zod 3.
  */
 export function withDefault<T extends AnyZodType>(schema: T, value: unknown): T {
   const meta = (schema as { meta?: (metadata: { default: unknown }) => T }).meta;

@@ -114,6 +114,11 @@ export interface BuildOperationToolsOptions {
  * Throws — naming the source and line — on a syntax error, a validation error,
  * an anonymous operation, a subscription, or a non-empty source list that
  * yielded no operations at all.
+ *
+ * @param schema - The schema the operations are validated against.
+ * @param operations - One document or a list of them, each as text, a named `Source` or a parsed AST.
+ * @param [options] - Naming, scalar, null-branch, pruning, hint and example settings.
+ * @returns One descriptor per operation in source order; empty when given an empty source list.
  */
 export function buildOperationTools(
   schema: GraphQLSchema,
@@ -149,23 +154,43 @@ export function buildOperationTools(
 /** An operation {@link assertUsable} has passed: it has a name. */
 type NamedOperation = OperationDefinitionNode & { name: NameNode };
 
-/** `Array.isArray` alone does not narrow a readonly array out of a union. */
+/**
+ * `Array.isArray` alone does not narrow a readonly array out of a union.
+ *
+ * @param operations - One document or a list of them.
+ * @returns `true` when the input is a list.
+ */
 function isSourceList(operations: OperationsInput): operations is ReadonlyArray<OperationSource> {
   return Array.isArray(operations);
 }
 
-/** Parses every source into one document, keeping each node's original `loc`. */
+/**
+ * Parses every source into one document, keeping each node's original `loc`.
+ *
+ * @param sources - The documents to merge, parsed or still text.
+ * @returns One document holding every definition in source order.
+ */
 function mergeDocuments(sources: ReadonlyArray<OperationSource>): DocumentNode {
   const definitions = sources.flatMap((source) => toDocument(source).definitions);
   return { kind: Kind.DOCUMENT, definitions };
 }
 
-/** Already parsed, as opposed to text or a named `Source` still to parse. */
+/**
+ * Already parsed, as opposed to text or a named `Source` still to parse.
+ *
+ * @param source - One document in any accepted form.
+ * @returns `true` when the source is a parsed document node.
+ */
 function isDocument(source: OperationSource): source is DocumentNode {
   return typeof source === 'object' && 'kind' in source && source.kind === Kind.DOCUMENT;
 }
 
-/** Parses one source, re-throwing a syntax error with the package's prefix. */
+/**
+ * Parses one source, re-throwing a syntax error with the package's prefix.
+ *
+ * @param source - One document as text, a named `Source` or a parsed AST.
+ * @returns The parsed document; one that was already parsed is returned as it is.
+ */
 function toDocument(source: OperationSource): DocumentNode {
   if (isDocument(source)) {
     return source;
@@ -192,6 +217,9 @@ function toDocument(source: OperationSource): DocumentNode {
  * every run uses. Everything else is kept, which is where duplicate operation
  * names, unknown fields (with graphql-js's "Did you mean"), and mistyped
  * variables are caught — each with the file and line the source was named with.
+ *
+ * @param schema - The schema the document is validated against.
+ * @param document - The merged document holding every operation and fragment.
  */
 function assertValid(schema: GraphQLSchema, document: DocumentNode): void {
   const rules = specifiedRules.filter((rule) => rule !== NoUnusedFragmentsRule);
@@ -206,7 +234,11 @@ function assertValid(schema: GraphQLSchema, document: DocumentNode): void {
   );
 }
 
-/** Refuses the two operation shapes that cannot become a tool. */
+/**
+ * Refuses the two operation shapes that cannot become a tool.
+ *
+ * @param definition - The operation to check; an anonymous operation or a subscription throws.
+ */
 function assertUsable(definition: OperationDefinitionNode): asserts definition is NamedOperation {
   const where = locationOf(definition.loc?.startToken, definition.loc?.source.name);
   if (!definition.name) {
@@ -223,7 +255,15 @@ function assertUsable(definition: OperationDefinitionNode): asserts definition i
   }
 }
 
-/** Projects one operation into a descriptor. */
+/**
+ * Projects one operation into a descriptor.
+ *
+ * @param schema - The schema that resolves the operation's variable types.
+ * @param definition - The named operation the tool runs.
+ * @param document - The self-contained document for this operation, with the fragments it uses.
+ * @param options - Naming, scalar, null-branch, pruning, hint and example settings.
+ * @returns The descriptor, whose `outputSchema` is always `z.unknown()`.
+ */
 function toDescriptor(
   schema: GraphQLSchema,
   definition: NamedOperation,
@@ -276,6 +316,12 @@ function toDescriptor(
  * agent to send a value the document already chose. So a non-null variable
  * carrying a default becomes optional, *after* the shape is built, leaving the
  * advertised `default` keyword in place.
+ *
+ * @param args - The operation's variables as arguments, in the same order as `variables`.
+ * @param variables - The operation's variable definitions, read for their defaults and nullability.
+ * @param options - The source of the scalar mapping and the input-field filter.
+ * @param nullBranches - The resolved null-branch setting for this operation.
+ * @returns The Zod raw shape, keyed by variable name.
  */
 function toInputSchema(
   args: ReadonlyArray<GraphQLArgument>,
@@ -309,6 +355,10 @@ function toInputSchema(
  * prints the GraphQL literal a caller would actually write. Keeping the
  * construction in one place is also the mitigation for graphql v17, which
  * reworks `defaultValue`.
+ *
+ * @param schema - The schema that resolves the variable's type.
+ * @param variable - The variable definition to convert.
+ * @returns An argument with the variable's name, type, comments as its description, and default on `astNode`.
  */
 function toArgument(schema: GraphQLSchema, variable: VariableDefinitionNode): GraphQLArgument {
   const name = variable.variable.name.value;
@@ -354,6 +404,9 @@ interface OperationProse {
  * selection: an agent that cannot choose what comes back will otherwise assume
  * the full return type and plan around fields that never arrive. Here it is
  * also the only place the selection is written down at all.
+ *
+ * @param prose - The operation, its kind, its variables as arguments, the printed document and the two settings.
+ * @returns The description as lines joined with newlines.
  */
 function buildDescription({
   operationName,
@@ -393,6 +446,9 @@ function buildDescription({
  * graphql-js's documented surface, so a document with no `loc` at all (parsed
  * with `noLocation`, or re-`print`ed) simply yields nothing and the caller
  * falls back to a generic summary.
+ *
+ * @param node - A node whose `loc`, when present, gives the token the search starts from.
+ * @returns The trimmed comment lines from top to bottom; empty when there are none or the node has no `loc`.
  */
 function leadingComments(node: { loc?: OperationDefinitionNode['loc'] }): string[] {
   const out: string[] = [];
@@ -415,12 +471,23 @@ function leadingComments(node: { loc?: OperationDefinitionNode['loc'] }): string
   return out;
 }
 
-/** Narrows a definition to an operation. */
+/**
+ * Narrows a definition to an operation.
+ *
+ * @param definition - Any top-level definition of a document.
+ * @returns `true` when the definition is an operation.
+ */
 function isOperation(definition: DocumentNode['definitions'][number]): definition is OperationDefinitionNode {
   return definition.kind === Kind.OPERATION_DEFINITION;
 }
 
-/** ` (ops.graphql:4:3)`, or nothing when the source was unnamed or absent. */
+/**
+ * ` (ops.graphql:4:3)`, or nothing when the position is unknown.
+ *
+ * @param at - The line and column to report, or `undefined` when the position is unknown.
+ * @param [name] - The name of the source; `operation` is printed when it is absent.
+ * @returns The location in parentheses after a leading space, or an empty string when `at` is `undefined`.
+ */
 function locationOf(at: { line: number; column: number } | undefined, name?: string): string {
   if (!at) {
     return '';

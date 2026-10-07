@@ -115,7 +115,13 @@ export function createHttpHandler(options: HttpHandlerOptions): McpHttpHandler {
   return handler;
 }
 
-/** Reads a header, collapsing the array form Node uses for repeated headers. */
+/**
+ * Reads a header, collapsing the array form Node uses for repeated headers.
+ *
+ * @param req - The incoming request whose headers are read.
+ * @param name - The header name in lower case, as Node stores it.
+ * @returns The header's value, the first one if it was repeated, or `undefined` if it is absent.
+ */
 function headerValue(req: IncomingMessage, name: string): string | undefined {
   const value = req.headers[name];
   return Array.isArray(value) ? value[0] : value;

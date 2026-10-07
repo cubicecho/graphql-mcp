@@ -57,7 +57,15 @@ export function buildOutputSchema(
   return wrapField(type, inner ?? z.unknown());
 }
 
-/** Returns the schema for a composite/leaf named type, or `undefined` for a non-selectable one. */
+/**
+ * Returns the schema for a composite/leaf named type, or `undefined` for a non-selectable one.
+ *
+ * @param named - The type to describe, with list and non-null wrappers removed.
+ * @param depth - Object levels left to describe.
+ * @param path - Type names already on the way down to `named`.
+ * @param scalar - The user's scalar mapping, as a resolver.
+ * @returns The schema, or `undefined` for a union with no members or a type that is not an output type.
+ */
 function schemaFor(
   named: GraphQLNamedType,
   depth: number,
@@ -90,7 +98,15 @@ function schemaFor(
   return undefined;
 }
 
-/** Builds the shape for an object/interface type, always ending with `__typename`. */
+/**
+ * Builds the shape for an object/interface type, always ending with `__typename`.
+ *
+ * @param type - The object or interface type whose fields are described.
+ * @param depth - Object levels left, counting `type` itself.
+ * @param path - Type names already on the way down to `type`.
+ * @param scalar - The user's scalar mapping, as a resolver.
+ * @returns A shape of the returned fields plus `__typename`, a literal for an object type and a string otherwise.
+ */
 function compositeFields(
   type: GraphQLObjectType | GraphQLInterfaceType,
   depth: number,
@@ -108,7 +124,13 @@ function compositeFields(
   return shape;
 }
 
-/** Applies a field type's nullability around `inner`: required for `NonNull`, else `.nullable()`. */
+/**
+ * Applies a field type's nullability around `inner`: required for `NonNull`, else `.nullable()`.
+ *
+ * @param type - The field's type, wrappers included.
+ * @param inner - The schema for the named type at the centre of `type`.
+ * @returns `inner` with the list and nullability wrappers of `type` applied.
+ */
 function wrapField(type: GraphQLOutputType, inner: AnyZodType): AnyZodType {
   if (isNonNullType(type)) {
     return wrapBase(type.ofType, inner);
@@ -116,7 +138,13 @@ function wrapField(type: GraphQLOutputType, inner: AnyZodType): AnyZodType {
   return wrapBase(type, inner).nullable();
 }
 
-/** Applies a (nullability-stripped) type's list wrappers around the named-type schema. */
+/**
+ * Applies a (nullability-stripped) type's list wrappers around the named-type schema.
+ *
+ * @param type - A list or named type, with no non-null wrapper on the outside.
+ * @param inner - The schema for the named type at the centre of `type`.
+ * @returns An array schema for a list type, otherwise `inner` unchanged.
+ */
 function wrapBase(type: GraphQLOutputType, inner: AnyZodType): AnyZodType {
   if (isListType(type)) {
     return z.array(wrapField(type.ofType, inner));

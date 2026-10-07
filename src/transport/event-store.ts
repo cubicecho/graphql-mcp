@@ -86,12 +86,21 @@ export class MemoryEventStore implements EventStore {
   private readonly maxStreams: number;
   private counter = 0;
 
+  /**
+   * Creates an empty store, filling every omitted bound from the package defaults.
+   *
+   * @param [options] - The caps on events per stream and on streams.
+   */
   constructor(options: ReplayOptions = {}) {
     this.maxEventsPerStream = options.maxEventsPerStream ?? DEFAULT_MAX_EVENTS_PER_STREAM;
     this.maxStreams = options.maxStreams ?? DEFAULT_MAX_STREAMS;
   }
 
-  /** Events currently buffered across every stream. */
+  /**
+   * Events currently buffered across every stream.
+   *
+   * @returns The total number of buffered events.
+   */
   get size(): number {
     let total = 0;
     for (const events of this.streams.values()) {
@@ -100,11 +109,22 @@ export class MemoryEventStore implements EventStore {
     return total;
   }
 
-  /** Streams currently holding a buffer. */
+  /**
+   * Streams currently holding a buffer.
+   *
+   * @returns The number of streams with a buffer.
+   */
   get streamCount(): number {
     return this.streams.size;
   }
 
+  /**
+   * Buffers a message on its stream under a newly minted id, dropping the stream's oldest events past the cap.
+   *
+   * @param streamId - The stream the message was sent on.
+   * @param message - The message to keep for replay.
+   * @returns The new event's id, a counter that rises across every stream in this store.
+   */
   async storeEvent(streamId: StreamId, message: JSONRPCMessage): Promise<EventId> {
     const id = String(++this.counter);
     const events = this.open(streamId);
@@ -119,10 +139,23 @@ export class MemoryEventStore implements EventStore {
     return id;
   }
 
+  /**
+   * Finds the stream an event was stored on.
+   *
+   * @param eventId - The event id to resolve.
+   * @returns The stream id, or `undefined` if the event was never stored or has been dropped.
+   */
   async getStreamIdForEventId(eventId: EventId): Promise<StreamId | undefined> {
     return this.streamOf.get(eventId);
   }
 
+  /**
+   * Sends every event buffered after a given one on the same stream, in order. Throws if the event id is unknown.
+   *
+   * @param lastEventId - The last event the client received.
+   * @param handlers - Carries `send`, which is awaited once for each replayed event.
+   * @returns The id of the stream the events belong to.
+   */
   async replayEventsAfter(
     lastEventId: EventId,
     { send }: { send: (eventId: EventId, message: JSONRPCMessage) => Promise<void> },
@@ -151,6 +184,9 @@ export class MemoryEventStore implements EventStore {
    * The buffer for a stream, created if new and marked as just-written either
    * way — `Map` iteration order is insertion order, so re-inserting keeps the
    * first entry the least-recently-written one to evict.
+   *
+   * @param streamId - The stream about to be written to.
+   * @returns The stream's event buffer, empty if the stream is new.
    */
   private open(streamId: StreamId): Array<{ id: EventId; message: JSONRPCMessage }> {
     const existing = this.streams.get(streamId);
@@ -171,7 +207,11 @@ export class MemoryEventStore implements EventStore {
     return events;
   }
 
-  /** Drops a stream's buffer and every id that pointed into it. */
+  /**
+   * Drops a stream's buffer and every id that pointed into it.
+   *
+   * @param streamId - The stream to drop.
+   */
   private forget(streamId: StreamId): void {
     for (const event of this.streams.get(streamId) ?? []) {
       this.streamOf.delete(event.id);
@@ -187,6 +227,9 @@ export class MemoryEventStore implements EventStore {
  * one shared buffer would let a session's reconnect replay another's events,
  * and would outlive every session that filled it. A caller-supplied factory is
  * free to hand back the same store each time if its own keying makes that safe.
+ *
+ * @param [option] - The replay setting, which defaults to `true` for a bounded in-memory store.
+ * @returns A factory called once per session, which yields `undefined` when replay is turned off.
  */
 export function eventStoreFactory(option: ReplayOption = true): () => EventStore | undefined {
   if (option === false) {

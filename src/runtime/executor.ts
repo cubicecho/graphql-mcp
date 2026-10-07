@@ -27,6 +27,7 @@ export interface LocalExecutorOptions {
  *
  * @param schema - The executable schema to run against.
  * @param options - Default root/context values.
+ * @returns The executor, which resolves with the result of the execution.
  */
 export function createLocalExecutor(schema: GraphQLSchema, options: LocalExecutorOptions = {}): GraphqlExecutor {
   return async ({ query, variables, operationName, context }) => {
@@ -61,6 +62,8 @@ export interface HttpExecutorOptions {
  *
  * @param endpoint - The GraphQL endpoint URL.
  * @param options - Header and `fetch` overrides.
+ * @returns The executor, which resolves with a single-error result when the response is not OK, not JSON or not a
+ * GraphQL response.
  */
 export function createHttpExecutor(endpoint: string, options: HttpExecutorOptions = {}): GraphqlExecutor {
   const doFetch = options.fetch ?? globalThis.fetch;
@@ -90,12 +93,22 @@ export function createHttpExecutor(endpoint: string, options: HttpExecutorOption
   };
 }
 
-/** A result carrying one error and no data. */
+/**
+ * A result carrying one error and no data.
+ *
+ * @param message - The text of the error.
+ * @returns A result whose `errors` holds that one message and whose `data` is absent.
+ */
 function failure(message: string): GraphqlResult {
   return { errors: [{ message }] };
 }
 
-/** Whether a parsed body has the one thing every GraphQL response has. */
+/**
+ * Whether a parsed body has the one thing every GraphQL response has.
+ *
+ * @param body - The parsed JSON body of a response.
+ * @returns `true` when the body is an object with a `data` or an `errors` key.
+ */
 function isGraphqlResult(body: unknown): body is GraphqlResult {
   return typeof body === 'object' && body !== null && ('data' in body || 'errors' in body);
 }

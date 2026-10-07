@@ -82,6 +82,7 @@ const ADVANCE: Record<PaginationStyle, string> = {
  * has no pagination arguments.
  *
  * @param args - The field's arguments.
+ * @returns The sentence naming the arguments to pass, or `undefined` when none is recognised.
  */
 export function paginationHint(args: readonly GraphQLArgument[]): string | undefined {
   const pagination = detectPagination(args);

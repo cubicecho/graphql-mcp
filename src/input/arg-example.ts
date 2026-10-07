@@ -33,6 +33,10 @@ const ABANDON = Symbol('abandon');
  * The example for an input type, as JSON, or `undefined` when there isn't a
  * useful one: the type isn't an input object, the budget is spent, the result
  * would be an empty object, or it grew past {@link MAX_EXAMPLE_CHARS}.
+ *
+ * @param type - The input type to show, wrappers included.
+ * @param [depth] - How many levels of optional fields to expand. Below 1 there is no example.
+ * @returns The example as JSON text of at most `MAX_EXAMPLE_CHARS` characters, or `undefined`.
  */
 export function exampleForType(type: GraphQLInputType, depth: number = DEFAULT_EXAMPLE_DEPTH): string | undefined {
   if (depth < 1) {
@@ -60,6 +64,10 @@ export function exampleForType(type: GraphQLInputType, depth: number = DEFAULT_E
  * An argument carrying its own object or list default is skipped: the
  * description already prints that default as the GraphQL literal a caller would
  * write, and two literals in two syntaxes on adjacent lines read as one.
+ *
+ * @param arg - The argument to show an example for.
+ * @param [depth] - How many levels of optional fields to expand. Below 1 there is no example.
+ * @returns The example as JSON text, or `undefined` when there is no useful one.
  */
 export function buildArgExample(arg: GraphQLArgument, depth: number = DEFAULT_EXAMPLE_DEPTH): string | undefined {
   const fallback = defaultJsonOf(arg);
@@ -74,6 +82,12 @@ export function buildArgExample(arg: GraphQLArgument, depth: number = DEFAULT_EX
  * itself. `top` marks the argument's own type — list wrappers included, since
  * `[UpdateTaskInput]` is the same argument in a list — and only reaches the
  * all-optional fallback in {@link renderNamed}, which is stricter there.
+ *
+ * @param type - The input type in this position, wrappers included.
+ * @param depth - Levels of optional expansion left.
+ * @param path - Names of the input objects being rendered above this position, used to detect a cycle.
+ * @param [top] - Whether this is the argument's own type and not a nested field's.
+ * @returns The value to serialize, or `ABANDON` when no sendable value exists.
  */
 function renderType(
   type: GraphQLInputType,
@@ -93,6 +107,16 @@ function renderType(
   return renderNamed(type, depth, path, top);
 }
 
+/**
+ * Renders the value for a named type: a placeholder for a scalar or enum, or an object holding every required field.
+ * An object with no required fields shows its first field instead, when that field is worth showing.
+ *
+ * @param type - The type in this position, with list and non-null wrappers removed.
+ * @param depth - Levels of optional expansion left.
+ * @param path - Names of the input objects being rendered above this position, used to detect a cycle.
+ * @param [top] - Whether this is the argument's own type and not a nested field's.
+ * @returns The value to serialize, or `ABANDON` when the type contains itself or a required field cannot be rendered.
+ */
 function renderNamed(
   type: GraphQLNamedType,
   depth: number,
@@ -141,12 +165,22 @@ function renderNamed(
   return shape;
 }
 
-/** An object or a list — a value with an inside worth showing. */
+/**
+ * An object or a list — a value with an inside worth showing.
+ *
+ * @param value - A rendered example value.
+ * @returns `true` for an object or an array, `false` for a scalar or `null`.
+ */
 function isStructural(value: unknown): boolean {
   return typeof value === 'object' && value !== null;
 }
 
-/** `{}` or `[{}]` — structurally present, informationally absent. */
+/**
+ * `{}` or `[{}]` — structurally present, informationally absent.
+ *
+ * @param value - A rendered example value.
+ * @returns `true` for an object with no keys, or a one-element array holding an empty shape.
+ */
 function isEmptyShape(value: unknown): boolean {
   if (Array.isArray(value)) {
     return value.length === 1 && isEmptyShape(value[0]);
@@ -157,7 +191,14 @@ function isEmptyShape(value: unknown): boolean {
   return Object.keys(value).length === 0;
 }
 
-/** A field's own default wins: it is both accurate and what the server assumes. */
+/**
+ * A field's own default wins: it is both accurate and what the server assumes.
+ *
+ * @param field - The input field to render.
+ * @param depth - Levels of optional expansion left.
+ * @param path - Names of the input objects being rendered above this field, used to detect a cycle.
+ * @returns The field's default when it has one, otherwise the rendered value or `ABANDON`.
+ */
 function renderField(field: GraphQLInputField, depth: number, path: ReadonlySet<string>): unknown | typeof ABANDON {
   const fallback = defaultJsonOf(field);
   if (fallback !== undefined) {
@@ -172,6 +213,9 @@ function renderField(field: GraphQLInputField, depth: number, path: ReadonlySet<
  * The enum case is the one that pays for itself: an agent shown `"desc"` where
  * the schema means `DESC` writes the string it saw. The first member is not
  * chosen for meaning — it is there so the *spelling* is unambiguous.
+ *
+ * @param type - A scalar or enum type.
+ * @returns The first enum value's name, the built-in scalar's placeholder, or `<TypeName>` for a custom scalar.
  */
 function leafValue(type: GraphQLNamedType): unknown {
   if (isEnumType(type)) {

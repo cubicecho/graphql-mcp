@@ -138,6 +138,9 @@ interface ZodIssue {
  * A Zod failure as GraphQL-shaped errors: one per issue, so a call that got two
  * arguments wrong is told about both rather than only the first (which is all
  * the SDK's message carries).
+ *
+ * @param error - The error from a failed parse, normally a `ZodError`.
+ * @returns One `BAD_INPUT` error per issue, or a single one when the error carries no issues.
  */
 function inputErrors(error: unknown): GraphqlError[] {
   // Cast: a `ZodError` under either major has `issues`; anything else has none.
@@ -159,7 +162,12 @@ function inputErrors(error: unknown): GraphqlError[] {
   });
 }
 
-/** A Zod issue path as an agent would write it: `steps[0].order`. */
+/**
+ * A Zod issue path as an agent would write it: `steps[0].order`.
+ *
+ * @param path - The keys and indexes leading to the rejected value.
+ * @returns The rendered path, or an empty string when the path is missing or empty.
+ */
 function argumentPath(path: ReadonlyArray<PropertyKey> | undefined): string {
   if (!path?.length) {
     return '';
@@ -178,6 +186,9 @@ function argumentPath(path: ReadonlyArray<PropertyKey> | undefined): string {
  * `Protocol.setRequestHandler` would replace a handler outright, and there is no
  * public way to get the one already installed; wrapping needs it. Absent means
  * the SDK moved it, and every caller here treats that as "leave the SDK alone".
+ *
+ * @param server - The server whose handler table is wanted.
+ * @returns The table keyed by request method, or `undefined` when the SDK no longer has it there.
  */
 function requestHandlers(server: McpServer): Map<string, RawRequestHandler> | undefined {
   return (server.server as unknown as { _requestHandlers?: Map<string, RawRequestHandler> })._requestHandlers;

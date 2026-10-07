@@ -28,6 +28,7 @@ const JSON_INDENT = 2;
  * @param maxChars - Character budget.
  * @param hint - Optional extra advice appended to the note — {@link paginationHint}
  *   supplies one naming the field's paging argument.
+ * @returns `value` unchanged when it fits, otherwise its first `maxChars` characters followed by the note.
  */
 export function clamp(value: string, maxChars: number, hint?: string): string {
   if (value.length <= maxChars) {
@@ -47,7 +48,13 @@ function adviceFor(hint?: string): string {
   return `narrow the query or request fewer fields${hint ? `. ${hint}` : ''}`;
 }
 
-/** Wraps a plain body as a (clamped) text tool result. */
+/**
+ * Wraps a plain body as a (clamped) text tool result.
+ *
+ * @param body - The prose to return.
+ * @param [maxChars] - Character budget before the body is clamped.
+ * @returns A tool result holding the body as one text block.
+ */
 export function text(body: string, maxChars = DEFAULT_MAX_CHARS): CallToolResult {
   return { content: [{ type: 'text', text: clamp(body, maxChars) }] };
 }
@@ -81,6 +88,7 @@ const PARTIAL_NOTE = 'Partial result: some fields failed and are null in `data`;
  * @param maxChars - Character budget before truncation.
  * @param hint - Optional advice added to the `truncated` record — {@link paginationHint}
  *   supplies one naming the field's paging argument.
+ * @returns A tool result whose one text block is the JSON envelope, with `isError` set as described above.
  */
 export function toCallToolResult(result: GraphqlResult, maxChars = DEFAULT_MAX_CHARS, hint?: string): CallToolResult {
   const errors = result.errors ?? [];
@@ -115,6 +123,12 @@ export function toCallToolResult(result: GraphqlResult, maxChars = DEFAULT_MAX_C
  * found by bisection, so the result keeps the shape that was asked for instead of showing one full collection and one
  * empty one. If even an empty `data` does not fit, `data` is left out and the errors stay attached. If the diagnostics
  * alone exceed the budget, the budget is missed, because a body that cannot be parsed is worse than a long one.
+ *
+ * @param envelope - Serializes a `data` value and an optional truncation record into the body.
+ * @param data - The result's `data` before any cut.
+ * @param maxChars - Character budget for the serialized body.
+ * @param [hint] - Extra advice for the `truncated` record, such as the paging argument.
+ * @returns The body with the highest array cap that fits, or a body without `data` when no cap fits.
  */
 function shrink(
   envelope: (data: unknown, truncated?: TruncationRecord) => string,
@@ -146,7 +160,14 @@ function shrink(
   return best ?? envelope(undefined, { dataOmitted: true, totalItems, advice });
 }
 
-/** `value` with every array under it cut to `keep` elements, counting what went. */
+/**
+ * `value` with every array under it cut to `keep` elements, counting what went.
+ *
+ * @param value - The JSON value to cap.
+ * @param keep - The most elements any array may keep.
+ * @param counter - Running total of dropped elements, which this call adds to.
+ * @returns A capped copy. A value that is neither an array nor a plain object is returned as it is.
+ */
 function capArrays(value: unknown, keep: number, counter: { dropped: number }): unknown {
   if (Array.isArray(value)) {
     counter.dropped += Math.max(0, value.length - keep);
@@ -158,7 +179,12 @@ function capArrays(value: unknown, keep: number, counter: { dropped: number }): 
   return value;
 }
 
-/** Total array elements anywhere under `value` — the unit {@link capArrays} drops. */
+/**
+ * Total array elements anywhere under `value` — the unit {@link capArrays} drops.
+ *
+ * @param value - The JSON value to count under.
+ * @returns The number of elements across all arrays, or 0 when there are none.
+ */
 function countItems(value: unknown): number {
   if (Array.isArray(value)) {
     return value.reduce<number>((total, item) => total + countItems(item), value.length);
@@ -169,7 +195,12 @@ function countItems(value: unknown): number {
   return 0;
 }
 
-/** The longest array anywhere under `value` — the upper bound for the bisection. */
+/**
+ * The longest array anywhere under `value` — the upper bound for the bisection.
+ *
+ * @param value - The JSON value to search.
+ * @returns The length of the longest array, or 0 when there are none.
+ */
 function longestArray(value: unknown): number {
   if (Array.isArray(value)) {
     return value.reduce<number>((longest, item) => Math.max(longest, longestArray(item)), value.length);
@@ -185,6 +216,9 @@ function longestArray(value: unknown): number {
  * result is plain JSON, so a prototype check would be ceremony — but a custom
  * executor can return anything, and walking a `Date` or a class instance field
  * by field would rewrite it into something the caller never returned.
+ *
+ * @param value - The value to test.
+ * @returns `true` when the prototype is `Object.prototype` or `null`.
  */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return (
@@ -219,6 +253,7 @@ export type ExecutorRequest = Omit<GraphqlRequest, 'variables'> & {
  *
  * @param executor - Where the operation runs.
  * @param request - The GraphQL request to run.
+ * @returns The executor's result, or a result with one error message when the executor throws.
  */
 export async function runExecutor(executor: GraphqlExecutor, request: ExecutorRequest): Promise<GraphqlResult> {
   try {
@@ -233,6 +268,9 @@ export async function runExecutor(executor: GraphqlExecutor, request: ExecutorRe
  * field. `null`/absent `data` is a top-level or transport failure, and
  * `{ field: null }` — what a nullable root field yields when its resolver throws
  * — is just as empty despite being a present object.
+ *
+ * @param data - The result's `data` member.
+ * @returns `false` when `data` is `null`, absent, or holds only `null` root fields.
  */
 function hasUsableData(data: Record<string, unknown> | null | undefined): boolean {
   if (data === null || data === undefined) {
@@ -248,6 +286,9 @@ function hasUsableData(data: Record<string, unknown> | null | undefined): boolea
  * `extensions` to `{}` on every `GraphQLError`, so a truthiness check alone puts
  * a useless `"extensions": {}` on every local-executor failure — the exact kind
  * of noise this function exists to remove.
+ *
+ * @param error - The error as the executor reported it.
+ * @returns A new error with `message`, plus `path` and `extensions` when they are not empty.
  */
 function condense(error: GraphqlError): GraphqlError {
   const condensed: GraphqlError = { message: error.message };

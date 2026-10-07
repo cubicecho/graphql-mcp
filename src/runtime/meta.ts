@@ -134,6 +134,12 @@ const META_TOOL_BUILDERS: Record<MetaToolName, MetaToolBuilder> = {
 
 /* ------------------------------------------------------------------ tools -- */
 
+/**
+ * Builds the `introspect` tool, which prints a schema overview or the SDL of one named type.
+ *
+ * @param context - The prefix, schema access, allow rules and limits shared by the meta tools.
+ * @returns The tool, which answers an unknown type name with an error result.
+ */
 function introspectTool({ prefix, deps, allows, maxChars }: MetaToolContext): CustomTool {
   const { schema } = deps;
   return {
@@ -175,6 +181,9 @@ function introspectTool({ prefix, deps, allows, maxChars }: MetaToolContext): Cu
  * Here it is bounded and asked for: reading `orderBy: TaskOrderBy` in the
  * overview is precisely what sends an agent to introspect `TaskOrderBy`, and the
  * SDL alone leaves it to assemble the literal itself.
+ *
+ * @param type - The type to print.
+ * @returns The SDL, followed by a commented JSON example when the type is an input object that has one.
  */
 function withShapeExample(type: GraphQLNamedType): string {
   const sdl = printType(type);
@@ -185,6 +194,12 @@ function withShapeExample(type: GraphQLNamedType): string {
   return example ? `${sdl}\n\n# Minimal JSON example (required fields only):\n# ${example}` : sdl;
 }
 
+/**
+ * Builds the `search` tool, which finds types and fields whose name or description contains a substring.
+ *
+ * @param context - The prefix, schema access, allow rules and limits shared by the meta tools.
+ * @returns The tool, which answers with one line per match or a note that nothing matched.
+ */
 function searchTool({ prefix, deps, allows, maxChars }: MetaToolContext): CustomTool {
   const { schema } = deps;
   return {
@@ -216,6 +231,12 @@ function searchTool({ prefix, deps, allows, maxChars }: MetaToolContext): Custom
   };
 }
 
+/**
+ * Builds the `validate` tool, which checks a document against the schema without running it.
+ *
+ * @param context - The prefix, schema access, allow rules and limits shared by the meta tools.
+ * @returns The tool, which answers `Valid.` or an error result listing what is wrong.
+ */
 function validateTool({ prefix, deps }: MetaToolContext): CustomTool {
   const { schema } = deps;
   return {
@@ -243,6 +264,12 @@ function validateTool({ prefix, deps }: MetaToolContext): CustomTool {
   };
 }
 
+/**
+ * Builds the `execute` tool, which runs a document the caller wrote after checking it against the allow rules.
+ *
+ * @param context - The prefix, schema access, allow rules and limits shared by the meta tools.
+ * @returns The tool, which answers with an error result when the document is invalid or not permitted.
+ */
 function executeTool({ prefix, deps, allows, allowMutations, maxChars }: MetaToolContext): CustomTool {
   return {
     name: `${prefix}execute`,
@@ -321,7 +348,13 @@ function executeTool({ prefix, deps, allows, allowMutations, maxChars }: MetaToo
 
 /* ---------------------------------------------------------------- helpers -- */
 
-/** Root-field names of `operation`, expanding fragment spreads and inline fragments. */
+/**
+ * Root-field names of `operation`, expanding fragment spreads and inline fragments.
+ *
+ * @param document - The document that defines the fragments the operation may spread.
+ * @param operation - The operation whose top-level selections are read.
+ * @returns Each root field name once, in the order first selected.
+ */
 function rootFieldNames(document: DocumentNode, operation: OperationDefinitionNode): string[] {
   const fragments = new Map<string, SelectionSetNode>();
   for (const def of document.definitions) {
@@ -357,7 +390,13 @@ function rootFieldNames(document: DocumentNode, operation: OperationDefinitionNo
   return [...new Set(names)];
 }
 
-/** Picks the operation to run, matching graphql-js's rules for an omitted name. */
+/**
+ * Picks the operation to run, matching graphql-js's rules for an omitted name.
+ *
+ * @param document - The parsed document to pick from.
+ * @param operationName - The operation to run, or `undefined` when the document should define only one.
+ * @returns The operation, or an `error` message when none matches or the choice is ambiguous.
+ */
 function pickOperation(
   document: DocumentNode,
   operationName: string | undefined,
@@ -380,11 +419,22 @@ function pickOperation(
   return { operation: operations[0] };
 }
 
-/** An optional string argument; the tool's input schema has already checked it. */
+/**
+ * An optional string argument; the tool's input schema has already checked it.
+ *
+ * @param value - The raw argument value.
+ * @returns The value when it is a string, otherwise `undefined`.
+ */
 function stringOf(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+/**
+ * Parses a GraphQL document, reporting a syntax error instead of throwing.
+ *
+ * @param query - The document source text.
+ * @returns The parsed document, or an `error` message that starts with `Syntax error:`.
+ */
 function tryParse(query: string): { document: DocumentNode } | { error: string } {
   try {
     return { document: parse(query) };
@@ -393,7 +443,13 @@ function tryParse(query: string): { document: DocumentNode } | { error: string }
   }
 }
 
-/** The no-argument `introspect` response: callable root fields plus every type name. */
+/**
+ * The no-argument `introspect` response: callable root fields plus every type name.
+ *
+ * @param schema - The schema being described.
+ * @param allows - Decides which root fields are listed as callable.
+ * @returns The overview as text, one line per root field and a final line of type names.
+ */
 function overview(schema: GraphQLSchema, allows: RuleMatcher): string {
   const lines: string[] = [];
   for (const [root, kind] of [
@@ -418,6 +474,16 @@ function overview(schema: GraphQLSchema, allows: RuleMatcher): string {
   return lines.join('\n');
 }
 
+/**
+ * Lists the types and fields whose name or description contains `needle`, leaving out hidden types and root fields
+ * the allow rules refuse.
+ *
+ * @param schema - The schema to search.
+ * @param needle - The substring to look for, already lower-cased.
+ * @param limit - The most matches to return.
+ * @param allows - Decides which root fields may be shown.
+ * @returns One line per match, empty when nothing matches.
+ */
 function search(schema: GraphQLSchema, needle: string, limit: number, allows: RuleMatcher): string[] {
   const rootKinds = new Map<string, OperationKind>();
   const queryType = schema.getQueryType();
@@ -466,6 +532,12 @@ function search(schema: GraphQLSchema, needle: string, limit: number, allows: Ru
   return hits;
 }
 
+/**
+ * Renders a field the way SDL writes it, with its arguments, type and any deprecation.
+ *
+ * @param field - The field to render.
+ * @returns The line, such as `todo(id: ID!): Todo`.
+ */
 // biome-ignore lint/suspicious/noExplicitAny: signatures are printed for any root field
 function signature(field: GraphQLField<any, any>): string {
   const args = field.args.length
@@ -477,6 +549,12 @@ function signature(field: GraphQLField<any, any>): string {
   return `${field.name}${args}: ${field.type}${deprecated}`;
 }
 
+/**
+ * Gives the SDL keyword a search hit is labelled with.
+ *
+ * @param type - The type that matched.
+ * @returns `interface` or `input` for those kinds, and `type` for everything else.
+ */
 function kindWord(type: GraphQLNamedType): string {
   if (isObjectType(type)) {
     return 'type';
@@ -490,17 +568,35 @@ function kindWord(type: GraphQLNamedType): string {
   return 'type';
 }
 
+/**
+ * Formats a description for the end of a search hit.
+ *
+ * @param [description] - The description of the type or field, if it has one.
+ * @returns A dash followed by the first line of the description, or an empty string when there is none.
+ */
 function describeSuffix(description?: string | null): string {
   return description ? ` — ${description.trim().split('\n')[0]}` : '';
 }
 
+/**
+ * Lists the names of every type that belongs to the API.
+ *
+ * @param schema - The schema whose type map is read.
+ * @returns The type names in schema order, without the hidden types.
+ */
 function typeNames(schema: GraphQLSchema): string[] {
   return Object.values(schema.getTypeMap())
     .filter((type) => isHiddenType(type) === false)
     .map((type) => type.name);
 }
 
-/** `'Toodo'` → `" Did you mean 'Todo'?"` — a cheap prefix/substring nudge. */
+/**
+ * `'Toodo'` → `" Did you mean 'Todo'?"` — a cheap prefix/substring nudge.
+ *
+ * @param input - The name the caller gave.
+ * @param candidates - The names that exist.
+ * @returns A hint naming up to three near matches, with a leading space, or an empty string when none is near.
+ */
 function suggest(input: string, candidates: string[]): string {
   const lower = input.toLowerCase();
   const near = candidates.filter(
@@ -514,6 +610,12 @@ function suggest(input: string, candidates: string[]): string {
     : '';
 }
 
+/**
+ * Wraps a message as a failed tool result.
+ *
+ * @param body - The message shown to the caller.
+ * @returns A result with `isError` set and the message as its only text content.
+ */
 function errorText(body: string): CallToolResult {
   return { content: [{ type: 'text', text: body }], isError: true };
 }
