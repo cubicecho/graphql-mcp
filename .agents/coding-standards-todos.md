@@ -53,7 +53,7 @@ what it returns; one session lifecycle serves both transports."
 | R4 | Refactor [sweep] | Merges 12 small helper pairs that exist twice (describe, enum-to-zod, scalar lookup, error text, kind-from-operation, and others). | P6 sweep | — | done |
 | R5 | Refactor [readability] | Splits the 60-line closure inside `buildTools` into named steps and renames single-letter parameters. | The hottest file (24 commits/yr) reads as its pipeline | — | done |
 | R6 | Refactor [pattern] | Internal functions taking 5–7 positional arguments take one named-field object instead. | Call sites stop depending on argument order | — | open |
-| R7 | Refactor [pattern] | The meta-tool `switch` and the example-leaf `switch` become lookup tables, and the meta-tool name list and its type are derived from one source. | P24, P14: a new meta tool is one entry | — | open |
+| R7 | Refactor [pattern] | The meta-tool `switch` and the example-leaf `switch` become lookup tables, and the meta-tool name list and its type are derived from one source. | P24, P14: a new meta tool is one entry | — | done |
 | R8 | Refactor [sweep] | Braces every single-line `if`/`for` body (128 in source, 17 in tests) and turns the lint rule on. | P15 sweep | — | done |
 | R9 | Refactor [sweep] | Rewrites 36 logic negations (`!x`) as named positive conditions and turns the lint plugin on. | P20 sweep | R8 | done |
 | R10 | Refactor [sweep] | Names the magic values: 10 numbers plus repeated strings (error prefix, session header, JSON-RPC codes, the search limit that is also typed into its description). | P16 sweep | — | open |

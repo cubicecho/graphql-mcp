@@ -39,10 +39,10 @@ import { compileRules, type RuleMatcher } from './rules.ts';
 import type { CustomTool } from './server.ts';
 import type { GraphqlExecutor, OperationKind } from './types.ts';
 
-/** The available meta tools. */
-export type MetaToolName = 'introspect' | 'search' | 'validate' | 'execute';
+const META_TOOL_NAMES = ['introspect', 'search', 'validate', 'execute'] as const;
 
-const ALL_META_TOOLS: MetaToolName[] = ['introspect', 'search', 'validate', 'execute'];
+/** The available meta tools. */
+export type MetaToolName = (typeof META_TOOL_NAMES)[number];
 
 /** Options for {@link buildMetaTools}. */
 export interface MetaToolsOptions {
@@ -84,7 +84,7 @@ export interface MetaToolDeps {
  */
 export function buildMetaTools(deps: MetaToolDeps, options: MetaToolsOptions = {}): CustomTool[] {
   const prefix = options.prefix ?? 'graphql_';
-  const wanted = options.tools ?? ALL_META_TOOLS;
+  const wanted = options.tools ?? META_TOOL_NAMES;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const included = options.include ? compileRules(options.include) : null;
   const excluded = options.exclude ? compileRules(options.exclude) : null;
@@ -96,25 +96,38 @@ export function buildMetaTools(deps: MetaToolDeps, options: MetaToolsOptions = {
     return !included || included(name, kind);
   };
 
+  const context: MetaToolContext = { prefix, deps, allows, allowMutations, maxChars };
   const built: CustomTool[] = [];
   for (const name of wanted) {
-    switch (name) {
-      case 'introspect':
-        built.push(introspectTool(prefix, deps.schema, allows, maxChars));
-        break;
-      case 'search':
-        built.push(searchTool(prefix, deps.schema, allows, maxChars));
-        break;
-      case 'validate':
-        built.push(validateTool(prefix, deps.schema));
-        break;
-      case 'execute':
-        built.push(executeTool(prefix, deps, allows, allowMutations, maxChars));
-        break;
+    // A name from untyped JavaScript may not be one of ours; it builds nothing.
+    const build = META_TOOL_BUILDERS[name] as MetaToolBuilder | undefined;
+    if (build) {
+      built.push(build(context));
     }
   }
   return built;
 }
+
+/** Everything a meta tool is built from, resolved once per {@link buildMetaTools} call. */
+interface MetaToolContext {
+  prefix: string;
+  deps: MetaToolDeps;
+  allows: RuleMatcher;
+  allowMutations: boolean;
+  maxChars: number;
+}
+
+type MetaToolBuilder = (context: MetaToolContext) => CustomTool;
+
+/** One entry per meta tool; adding a tool is a name above and a builder here. */
+const META_TOOL_BUILDERS: Record<MetaToolName, MetaToolBuilder> = {
+  introspect: ({ prefix, deps, allows, maxChars }) =>
+    introspectTool(prefix, deps.schema, allows, maxChars),
+  search: ({ prefix, deps, allows, maxChars }) => searchTool(prefix, deps.schema, allows, maxChars),
+  validate: ({ prefix, deps }) => validateTool(prefix, deps.schema),
+  execute: ({ prefix, deps, allows, allowMutations, maxChars }) =>
+    executeTool(prefix, deps, allows, allowMutations, maxChars),
+};
 
 /* ------------------------------------------------------------------ tools -- */
 

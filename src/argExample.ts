@@ -42,6 +42,15 @@ export const DEFAULT_EXAMPLE_DEPTH = 3;
  */
 export const MAX_EXAMPLE_CHARS = 300;
 
+/** What stands in for each built-in scalar in an example. */
+const SCALAR_PLACEHOLDERS: ReadonlyMap<string, unknown> = new Map<string, unknown>([
+  ['Int', 0],
+  ['Float', 0],
+  ['Boolean', true],
+  ['String', 'string'],
+  ['ID', 'string'],
+]);
+
 /** Rendering could not produce something a caller could actually send. */
 const ABANDON = Symbol('abandon');
 
@@ -224,18 +233,7 @@ function leafValue(type: GraphQLNamedType): unknown {
   if (isEnumType(type)) {
     return type.getValues()[0]?.name ?? 'string';
   }
-  switch (type.name) {
-    case 'Int':
-    case 'Float':
-      return 0;
-    case 'Boolean':
-      return true;
-    case 'String':
-    case 'ID':
-      return 'string';
-    // A custom scalar's wire format lives in its SDL description, which the
-    // argument line already carries; naming the type points there.
-    default:
-      return `<${type.name}>`;
-  }
+  // A custom scalar's wire format lives in its SDL description, which the
+  // argument line already carries; naming the type points there.
+  return SCALAR_PLACEHOLDERS.has(type.name) ? SCALAR_PLACEHOLDERS.get(type.name) : `<${type.name}>`;
 }
