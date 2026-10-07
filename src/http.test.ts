@@ -12,7 +12,7 @@ import { after, before, describe, test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { createLocalExecutor } from './executor.ts';
-import { makeTodoSchema } from './fixtures.test.ts';
+import { makeTodoSchema, type TextResult } from './fixtures.test.ts';
 import { createHttpHandler, type McpHttpHandler, type McpHttpRequest } from './http.ts';
 import { MemorySessionDirectory, type SessionDirectory } from './sessions.ts';
 
@@ -47,11 +47,6 @@ async function connect(url: URL): Promise<Client> {
   const client = new Client({ name: 'http-test', version: '0.0.0' });
   await client.connect(new StreamableHTTPClientTransport(url));
   return client;
-}
-
-interface TextResult {
-  content: Array<{ type: string; text: string }>;
-  isError?: boolean;
 }
 
 describe('createHttpHandler', () => {

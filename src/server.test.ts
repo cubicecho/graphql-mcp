@@ -12,7 +12,13 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { buildSchema, type GraphQLSchema } from 'graphql';
 import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
-import { makeTodoSchema, TODO_FRAGMENTS, TODO_OPERATIONS } from './fixtures.test.ts';
+import {
+  bodyOf,
+  makeTodoSchema,
+  type TextResult,
+  TODO_FRAGMENTS,
+  TODO_OPERATIONS,
+} from './fixtures.test.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, toCallToolResult } from './index.ts';
 import {
   type CreateMcpServerOptions,
@@ -30,15 +36,8 @@ async function connect(server: McpServer): Promise<Client> {
   return client;
 }
 
-interface TextResult {
-  content: Array<{ type: string; text: string }>;
-  isError?: boolean;
-}
-
 function parseResult(result: unknown): { isError?: boolean; data?: unknown; errors?: unknown } {
-  const typed = result as TextResult;
-  const parsed = JSON.parse(typed.content[0].text);
-  return { isError: typed.isError, ...parsed };
+  return { isError: (result as TextResult).isError, ...JSON.parse(bodyOf(result)) };
 }
 
 describe('createMcpServer', () => {
@@ -250,7 +249,7 @@ describe('createMcpServer', () => {
     });
     const client = await connect(server);
     const result = await client.callTool({ name: 'todos', arguments: {} });
-    const body = (result as TextResult).content[0].text;
+    const body = bodyOf(result);
     // Parseable first, small second: the budget is a target the clamp works
     // down to by dropping whole rows, and the floor is the record explaining
     // what went missing — a body no client can parse is worth nothing, however
@@ -290,7 +289,7 @@ describe('createMcpServer', () => {
     });
     const client = await connect(server);
     const result = await client.callTool({ name: 'todos', arguments: {} });
-    const body = (result as TextResult).content[0].text;
+    const body = bodyOf(result);
     const payload = JSON.parse(body) as { errors: Array<{ message: string }> };
     assert.equal(result.isError, true);
     assert.equal(payload.errors[0].message, 'ECONNREFUSED 127.0.0.1:4000');
@@ -346,7 +345,7 @@ describe('createMcpServer', () => {
     assert.equal(tools.length, 4);
 
     const result = await client.callTool({ name: 'todo', arguments: {} });
-    assert.equal((result as TextResult).content[0].text, 'custom!');
+    assert.equal(bodyOf(result), 'custom!');
     await client.close();
   });
 

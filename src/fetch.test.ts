@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { createLocalExecutor } from './executor.ts';
 import { createFetchHandler, type McpFetchHandler } from './fetch.ts';
-import { makeTodoSchema } from './fixtures.test.ts';
+import { makeTodoSchema, type TextResult } from './fixtures.test.ts';
 import { MemorySessionDirectory } from './sessions.ts';
 
 const BASE = new URL('https://worker.test/mcp');
@@ -36,11 +36,6 @@ function todoHandler(
     executor: createLocalExecutor(schema, { rootValue: root }),
     ...options,
   });
-}
-
-interface TextResult {
-  content: Array<{ type: string; text: string }>;
-  isError?: boolean;
 }
 
 describe('createFetchHandler', () => {

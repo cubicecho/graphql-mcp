@@ -1,25 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import {
-  buildSchema,
-  type GraphQLObjectType,
-  type GraphQLOutputType,
-  Kind,
-  parse,
-  type SelectionSetNode,
-} from 'graphql';
+import { Kind, parse, type SelectionSetNode } from 'graphql';
 import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
-import { makeTodoSchema } from './fixtures.test.ts';
+import { fieldType, makeTodoSchema } from './fixtures.test.ts';
 import { buildOutputSchema } from './outputSchema.ts';
 import { buildSelectionSet } from './selection.ts';
 import { buildTools } from './tools.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
-
-function fieldType(sdl: string, field: string): GraphQLOutputType {
-  const schema = buildSchema(sdl);
-  return (schema.getQueryType() as GraphQLObjectType).getFields()[field].type;
-}
 
 /**
  * The object schema behind whatever list/nullable wrappers a field carries.

@@ -61,7 +61,7 @@ what it returns; one session lifecycle serves both transports."
 | R12 | Refactor [sweep] | Adds the missing doc blocks (30 functions) and missing `@param`/`@returns` tags (78 and 85 functions). | P4 sweep | — | open |
 | R13 | Refactor [sweep] | Shortens 54 doc blocks over four sentences and 25 body comments over two lines; the rationale already lives in AGENTS.md. | P19 sweep; source is 45% comment lines | decision | open |
 | R14 | Refactor [consistency] | Adds the house tsconfig flags and the `check:biome` / `check:types` script names. | Same commands and checks as other cubicecho repos | — | done |
-| T2 | Test [reuse] | Moves test helpers that exist in two or three test files (`connect`, `fieldType`, `unwrap`, result-body readers) into the shared fixtures file. | One place to change when the SDK client API moves | — | open |
+| T2 | Test [reuse] | Moves test helpers that exist in two or three test files (`connect`, `fieldType`, `unwrap`, result-body readers) into the shared fixtures file. | One place to change when the SDK client API moves | — | done |
 | T3 | Test [reliability] | Replaces the wall-clock comparison in the listing-cache test with a count of renders; it fails about one run in three on zod 3. | The peer-version CI leg stops failing at random | — | open |
 | A1 | API change | `registerGraphqlTools` takes an options object instead of five positional arguments; breaks every caller. | Same reason as R6 | decision | open |
 | A2 | API change | `GraphqlError`'s extra keys become `unknown` instead of `any`; consumers reading extra keys need a narrowing. | P18 | decision | open |

@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { buildSchema, type GraphQLObjectType } from 'graphql';
+import { fieldType } from './fixtures.test.ts';
 import { buildSelectionSet } from './selection.ts';
-
-function fieldType(sdl: string, field: string) {
-  const schema = buildSchema(sdl);
-  return (schema.getQueryType() as GraphQLObjectType).getFields()[field].type;
-}
 
 describe('buildSelectionSet', () => {
   test('scalar return types have no selection set', () => {

@@ -9,14 +9,9 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { buildSchema } from 'graphql';
 import { createLocalExecutor } from './executor.ts';
-import { makeTodoSchema } from './fixtures.test.ts';
+import { bodyOf, makeTodoSchema, type TextResult } from './fixtures.test.ts';
 import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
 import type { CustomTool } from './server.ts';
-
-interface TextResult {
-  content: Array<{ type: string; text: string }>;
-  isError?: boolean;
-}
 
 function makeTools(options: MetaToolsOptions = {}): Map<string, CustomTool> {
   const { schema, root } = makeTodoSchema();
@@ -36,8 +31,6 @@ async function call(
   assert.ok(tool, `no meta tool named ${name}`);
   return (await tool.handler(args, undefined)) as TextResult;
 }
-
-const body = (result: TextResult) => result.content[0]?.text ?? '';
 
 describe('buildMetaTools', () => {
   test('builds all four tools with the default prefix', () => {
@@ -64,7 +57,7 @@ describe('buildMetaTools', () => {
 
 describe('graphql_introspect', () => {
   test('with no argument prints callable root fields and every type name', async () => {
-    const out = body(await call(makeTools(), 'graphql_introspect'));
+    const out = bodyOf(await call(makeTools(), 'graphql_introspect'));
     assert.match(out, /type Query \{/);
     assert.match(out, /todos\(status: TodoStatus\): \[Todo!\]!/);
     assert.match(out, /type Mutation \{/);
@@ -72,7 +65,7 @@ describe('graphql_introspect', () => {
   });
 
   test('the overview hides root fields the rules deny', async () => {
-    const out = body(await call(makeTools({ exclude: ['Mutation.*'] }), 'graphql_introspect'));
+    const out = bodyOf(await call(makeTools({ exclude: ['Mutation.*'] }), 'graphql_introspect'));
     assert.doesNotMatch(out, /type Mutation \{/);
     assert.doesNotMatch(out, /createTodo/);
     // Non-root types are still listed — the rules gate calling, not reading.
@@ -80,7 +73,7 @@ describe('graphql_introspect', () => {
   });
 
   test('with a type name prints that type SDL', async () => {
-    const out = body(await call(makeTools(), 'graphql_introspect', { type: 'Todo' }));
+    const out = bodyOf(await call(makeTools(), 'graphql_introspect', { type: 'Todo' }));
     assert.match(out, /type Todo \{/);
     assert.match(out, /completed: Boolean!/);
   });
@@ -89,7 +82,7 @@ describe('graphql_introspect', () => {
     // The overview prints `createTodo(input: CreateTodoInput)` and stops there,
     // so this is the call an agent makes next — and the SDL alone still leaves
     // it to assemble the literal itself.
-    const out = body(await call(makeTools(), 'graphql_introspect', { type: 'CreateTodoInput' }));
+    const out = bodyOf(await call(makeTools(), 'graphql_introspect', { type: 'CreateTodoInput' }));
     assert.match(out, /input CreateTodoInput \{/);
     assert.match(out, /# Minimal JSON example \(required fields only\):/);
     assert.match(out, /# \{"userId":"string","description":"string"\}/);
@@ -97,22 +90,22 @@ describe('graphql_introspect', () => {
 
   test('an output type gets SDL and nothing else', async () => {
     // Only inputs have a shape a caller has to construct.
-    const out = body(await call(makeTools(), 'graphql_introspect', { type: 'Todo' }));
+    const out = bodyOf(await call(makeTools(), 'graphql_introspect', { type: 'Todo' }));
     assert.doesNotMatch(out, /Minimal JSON example/);
   });
 
   test('the overview stays example-free', async () => {
     // A whole-schema listing is the one place the budget cannot afford them,
     // and it is exactly what the per-type call above answers better.
-    const out = body(await call(makeTools(), 'graphql_introspect'));
+    const out = bodyOf(await call(makeTools(), 'graphql_introspect'));
     assert.doesNotMatch(out, /Minimal JSON example/);
   });
 
   test('an unknown type is an error with a suggestion', async () => {
     const result = await call(makeTools(), 'graphql_introspect', { type: 'Todoo' });
     assert.equal(result.isError, true);
-    assert.match(body(result), /Unknown type 'Todoo'/);
-    assert.match(body(result), /Did you mean 'Todo'/);
+    assert.match(bodyOf(result), /Unknown type 'Todoo'/);
+    assert.match(bodyOf(result), /Did you mean 'Todo'/);
   });
 
   test('introspection types are not reachable', async () => {
@@ -123,19 +116,19 @@ describe('graphql_introspect', () => {
 
 describe('graphql_search', () => {
   test('matches type and field names', async () => {
-    const out = body(await call(makeTools(), 'graphql_search', { query: 'todo' }));
+    const out = bodyOf(await call(makeTools(), 'graphql_search', { query: 'todo' }));
     assert.match(out, /type Todo/);
     assert.match(out, /Query\.todos\(/);
     assert.match(out, /Mutation\.createTodo\(/);
   });
 
   test('matches descriptions too', async () => {
-    const out = body(await call(makeTools(), 'graphql_search', { query: 'UUID' }));
+    const out = bodyOf(await call(makeTools(), 'graphql_search', { query: 'UUID' }));
     assert.match(out, /Todo\.id/);
   });
 
   test('hides root fields the rules deny', async () => {
-    const out = body(
+    const out = bodyOf(
       await call(makeTools({ exclude: ['createTodo'] }), 'graphql_search', { query: 'todo' }),
     );
     assert.doesNotMatch(out, /Mutation\.createTodo/);
@@ -143,14 +136,14 @@ describe('graphql_search', () => {
   });
 
   test('limit caps the number of hits', async () => {
-    const out = body(await call(makeTools(), 'graphql_search', { query: 'todo', limit: 2 }));
+    const out = bodyOf(await call(makeTools(), 'graphql_search', { query: 'todo', limit: 2 }));
     assert.equal(out.split('\n').length, 2);
   });
 
   test('reports a miss instead of erroring', async () => {
     const result = await call(makeTools(), 'graphql_search', { query: 'zzz' });
     assert.equal(result.isError, undefined);
-    assert.match(body(result), /No type or field matches 'zzz'/);
+    assert.match(bodyOf(result), /No type or field matches 'zzz'/);
   });
 });
 
@@ -160,7 +153,7 @@ describe('graphql_validate', () => {
       query: '{ todos { id } }',
     });
     assert.equal(result.isError, undefined);
-    assert.equal(body(result), 'Valid.');
+    assert.equal(bodyOf(result), 'Valid.');
   });
 
   test('reports validation errors', async () => {
@@ -168,21 +161,21 @@ describe('graphql_validate', () => {
       query: '{ todos { nope } }',
     });
     assert.equal(result.isError, true);
-    assert.match(body(result), /Invalid document:/);
-    assert.match(body(result), /Cannot query field "nope"/);
+    assert.match(bodyOf(result), /Invalid document:/);
+    assert.match(bodyOf(result), /Cannot query field "nope"/);
   });
 
   test('reports a syntax error distinctly', async () => {
     const result = await call(makeTools(), 'graphql_validate', { query: '{ todos {' });
     assert.equal(result.isError, true);
-    assert.match(body(result), /^Syntax error: /);
+    assert.match(bodyOf(result), /^Syntax error: /);
   });
 
   test('does not enforce the execute rules — validate only reads', async () => {
     const result = await call(makeTools({ exclude: ['createTodo'] }), 'graphql_validate', {
       query: 'mutation { createTodo(input: { userId: "u", description: "d" }) { id } }',
     });
-    assert.equal(body(result), 'Valid.');
+    assert.equal(bodyOf(result), 'Valid.');
   });
 });
 
@@ -192,7 +185,7 @@ describe('graphql_execute', () => {
       query: '{ todos { id description } }',
     });
     assert.equal(result.isError, false);
-    const { data } = JSON.parse(body(result));
+    const { data } = JSON.parse(bodyOf(result));
     assert.equal(data.todos.length, 2);
   });
 
@@ -201,7 +194,7 @@ describe('graphql_execute', () => {
       query: 'query One($id: String!) { todo(id: $id) { description } }',
       variables: { id: 'todo-2' },
     });
-    const { data } = JSON.parse(body(result));
+    const { data } = JSON.parse(bodyOf(result));
     assert.equal(data.todo.description, 'read the brief');
   });
 
@@ -211,7 +204,7 @@ describe('graphql_execute', () => {
         'mutation { createTodo(input: { userId: "u1", description: "fresh" }) { description } }',
     });
     assert.equal(result.isError, false);
-    const { data } = JSON.parse(body(result));
+    const { data } = JSON.parse(bodyOf(result));
     assert.equal(data.createTodo.description, 'fresh');
   });
 
@@ -226,19 +219,19 @@ describe('graphql_execute', () => {
     );
     const result = await call(tools, 'graphql_execute', { query: '{ todos { id } }' });
     assert.equal(result.isError, true);
-    assert.ok(JSON.parse(body(result)).errors);
+    assert.ok(JSON.parse(bodyOf(result)).errors);
   });
 
   test('rejects a syntax error before touching the executor', async () => {
     const result = await call(makeTools(), 'graphql_execute', { query: '{ todos {' });
     assert.equal(result.isError, true);
-    assert.match(body(result), /^Syntax error: /);
+    assert.match(bodyOf(result), /^Syntax error: /);
   });
 
   test('rejects a document that fails validation', async () => {
     const result = await call(makeTools(), 'graphql_execute', { query: '{ nope }' });
     assert.equal(result.isError, true);
-    assert.match(body(result), /Invalid document:/);
+    assert.match(bodyOf(result), /Invalid document:/);
   });
 
   test('requires operationName when the document defines several', async () => {
@@ -246,7 +239,7 @@ describe('graphql_execute', () => {
       query: 'query A { todos { id } } query B { todos { id } }',
     });
     assert.equal(result.isError, true);
-    assert.match(body(result), /multiple operations \(A, B\) — pass operationName/);
+    assert.match(bodyOf(result), /multiple operations \(A, B\) — pass operationName/);
   });
 
   test('picks the named operation', async () => {
@@ -254,7 +247,7 @@ describe('graphql_execute', () => {
       query: 'query A { todo(id: "todo-1") { id } } query B { todos { id } }',
       operationName: 'B',
     });
-    const { data } = JSON.parse(body(result));
+    const { data } = JSON.parse(bodyOf(result));
     assert.ok(Array.isArray(data.todos));
   });
 
@@ -264,7 +257,7 @@ describe('graphql_execute', () => {
       operationName: 'C',
     });
     assert.equal(result.isError, true);
-    assert.match(body(result), /No operation named 'C'/);
+    assert.match(bodyOf(result), /No operation named 'C'/);
   });
 
   test('refuses subscriptions, without reaching the executor', async () => {
@@ -283,7 +276,7 @@ describe('graphql_execute', () => {
     );
     const result = await call(tools, 'graphql_execute', { query: 'subscription { ticks }' });
     assert.equal(result.isError, true);
-    assert.match(body(result), /Subscriptions are not supported over MCP\./);
+    assert.match(bodyOf(result), /Subscriptions are not supported over MCP\./);
     assert.equal(called, false);
   });
 });
@@ -294,8 +287,8 @@ describe('graphql_execute rule enforcement', () => {
       query: 'mutation { createTodo(input: { userId: "u", description: "d" }) { id } }',
     });
     assert.equal(result.isError, true);
-    assert.match(body(result), /Not permitted: `createTodo`/);
-    assert.match(body(result), /graphql_introspect/);
+    assert.match(bodyOf(result), /Not permitted: `createTodo`/);
+    assert.match(bodyOf(result), /graphql_introspect/);
   });
 
   test('refuses a root field outside include', async () => {
@@ -303,7 +296,7 @@ describe('graphql_execute rule enforcement', () => {
       query: '{ todo(id: "todo-1") { id } }',
     });
     assert.equal(result.isError, true);
-    assert.match(body(result), /Not permitted: `todo`/);
+    assert.match(bodyOf(result), /Not permitted: `todo`/);
   });
 
   test('allows a root field inside include', async () => {
@@ -326,7 +319,7 @@ describe('graphql_execute rule enforcement', () => {
     const result = await call(makeTools({ include: ['nothing'] }), 'graphql_execute', {
       query: '{ todos { id } todo(id: "todo-1") { id } }',
     });
-    assert.match(body(result), /Not permitted: `todos`, `todo`/);
+    assert.match(bodyOf(result), /Not permitted: `todos`, `todo`/);
   });
 
   test('a root fragment spread cannot hide a denied field', async () => {
@@ -334,7 +327,7 @@ describe('graphql_execute rule enforcement', () => {
       query: '{ ...Roots } fragment Roots on Query { todo(id: "todo-1") { id } }',
     });
     assert.equal(result.isError, true);
-    assert.match(body(result), /Not permitted: `todo`/);
+    assert.match(bodyOf(result), /Not permitted: `todo`/);
   });
 
   test('a nested fragment spread cannot hide a denied field either', async () => {
@@ -343,7 +336,7 @@ describe('graphql_execute rule enforcement', () => {
         '{ ...Outer } fragment Outer on Query { ...Inner } fragment Inner on Query { todo(id: "x") { id } }',
     });
     assert.equal(result.isError, true);
-    assert.match(body(result), /Not permitted: `todo`/);
+    assert.match(bodyOf(result), /Not permitted: `todo`/);
   });
 
   test('a root inline fragment cannot hide a denied field', async () => {
@@ -351,7 +344,7 @@ describe('graphql_execute rule enforcement', () => {
       query: '{ ... on Query { todo(id: "todo-1") { id } } }',
     });
     assert.equal(result.isError, true);
-    assert.match(body(result), /Not permitted: `todo`/);
+    assert.match(bodyOf(result), /Not permitted: `todo`/);
   });
 
   test('__typename at the root is always permitted', async () => {
@@ -366,7 +359,7 @@ describe('graphql_execute rule enforcement', () => {
       query: 'mutation { createTodo(input: { userId: "u", description: "d" }) { id } }',
     });
     assert.equal(result.isError, true);
-    assert.match(body(result), /does not allow mutations/);
+    assert.match(bodyOf(result), /does not allow mutations/);
   });
 
   test('a Query-scoped rule does not gate a same-named mutation field', async () => {
@@ -375,7 +368,7 @@ describe('graphql_execute rule enforcement', () => {
       query: 'mutation { createTodo(input: { userId: "u", description: "d" }) { id } }',
     });
     assert.equal(result.isError, true);
-    assert.match(body(result), /Not permitted: `createTodo`/);
+    assert.match(bodyOf(result), /Not permitted: `createTodo`/);
   });
 });
 
@@ -400,7 +393,7 @@ describe('meta tool context and truncation', () => {
   });
 
   test('maxChars truncates a long result with a note', async () => {
-    const out = body(await call(makeTools({ maxChars: 40 }), 'graphql_introspect'));
+    const out = bodyOf(await call(makeTools({ maxChars: 40 }), 'graphql_introspect'));
     assert.match(out, /\[truncated \d+ of \d+ characters/);
     // The clamp keeps the budget plus the note.
     assert.ok(out.startsWith('type Query {'));
@@ -414,7 +407,10 @@ describe('meta tool context and truncation', () => {
     // a 30-char budget leaves no room for rows, and saying so costs more than
     // the budget. Validity wins over the budget — a body a client cannot parse
     // is worth nothing, however small.
-    const payload = JSON.parse(body(result)) as { data?: unknown; truncated?: { advice: string } };
+    const payload = JSON.parse(bodyOf(result)) as {
+      data?: unknown;
+      truncated?: { advice: string };
+    };
     assert.equal(payload.data, undefined);
     assert.match(payload.truncated?.advice ?? '', /narrow the query/);
   });
@@ -437,7 +433,7 @@ describe('graphql_introspect deprecation', () => {
     const tool = tools.find((t) => t.name === 'graphql_introspect');
     assert.ok(tool);
     const result = await tool.handler(args, {});
-    return (result.content[0] as { text: string }).text;
+    return bodyOf(result);
   }
 
   // On a schema large enough to need the meta tools, this listing can be the

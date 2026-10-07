@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { bodyOf } from './fixtures.test.ts';
 import {
   clamp,
   DEFAULT_MAX_CHARS,
@@ -9,11 +10,6 @@ import {
   text,
   toCallToolResult,
 } from './result.ts';
-
-/** The tool's text body — `content[0]` is always a text block here. */
-function bodyOf(result: CallToolResult): string {
-  return (result.content[0] as { text: string }).text;
-}
 
 function payloadOf(result: CallToolResult) {
   return JSON.parse(bodyOf(result));

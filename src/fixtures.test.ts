@@ -8,7 +8,13 @@
  * registers no tests of its own.
  */
 
-import { buildSchema, type GraphQLSchema, Source } from 'graphql';
+import {
+  buildSchema,
+  type GraphQLObjectType,
+  type GraphQLOutputType,
+  type GraphQLSchema,
+  Source,
+} from 'graphql';
 import type { McpFieldExtensions } from './tools.ts';
 
 export const TODO_SDL = /* GraphQL */ `
@@ -186,3 +192,20 @@ export const TODO_FRAGMENTS = new Source(
 `,
   'fragments.graphql',
 );
+
+/** A tool result as the suites read it: text blocks, and whether it failed. */
+export interface TextResult {
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+}
+
+/** The text of a tool result's first block, or `''` when it has none. */
+export function bodyOf(result: unknown): string {
+  return (result as TextResult).content[0]?.text ?? '';
+}
+
+/** The return type of one `Query` field in a schema built from `sdl`. */
+export function fieldType(sdl: string, field: string): GraphQLOutputType {
+  const schema = buildSchema(sdl);
+  return (schema.getQueryType() as GraphQLObjectType).getFields()[field].type;
+}
