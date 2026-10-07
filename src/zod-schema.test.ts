@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { buildSchema, type GraphQLObjectType } from 'graphql';
 import { z } from 'zod';
-import { argsToZodShape, type ZodShapeOptions } from './zodSchema.ts';
+import { argsToZodShape, type ZodShapeOptions } from './zod-schema.ts';
 
 const schema = buildSchema(/* GraphQL */ `
   input Filter { tag: String, limit: Int }

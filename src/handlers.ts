@@ -52,7 +52,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { messageOf } from './errors.ts';
 import { toCallToolResult } from './result.ts';
 import type { GraphqlError } from './types.ts';
-import type { AnyZodType } from './zodCompat.ts';
+import type { AnyZodType } from './zod-compat.ts';
 
 const TOOLS_LIST = 'tools/list';
 const TOOLS_CALL = 'tools/call';

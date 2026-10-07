@@ -11,7 +11,7 @@
  * arguments (we can't invent argument values) and types already on the current
  * path (cycle guard). An interface contributes only its own fields, not those of
  * its implementations — issue #11. `returnedFields` holds these rules once, for
- * this module and for `outputSchema.ts`.
+ * this module and for `output-schema.ts`.
  */
 
 import {

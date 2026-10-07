@@ -23,7 +23,7 @@ Concepts that have two owners today, and the single owner proposed:
 - **M1 — Session lifecycle.** `http.ts` and `fetch.ts` each resolve session options, look a
   session up, answer 404 with the owner, and mint a session with the same callbacks. To be: one
   owner of the lifecycle; each adapter only translates its request and response types.
-- **M2 — Returnable-field walk.** `selection.ts` and `outputSchema.ts` each decide which fields
+- **M2 — Returnable-field walk.** `selection.ts` and `output-schema.ts` each decide which fields
   are returned (skip fields with required arguments, stop at depth, stop on a cycle). The output
   schema is only true while both agree. To be: one walk, two renderers.
 - **M3 — Argument listing.** `tools.ts` and `operations.ts` each build the same "Arguments"
@@ -69,7 +69,7 @@ what it returns; one session lifecycle serves both transports."
 | B3 | Bug · low value | `createHttpExecutor` trusts the response body's shape; a JSON body that is not an object gives a confusing error (unverified). | Clearer failure message | — | done |
 | B4 | Bug · low value | The stateless HTTP path closes transport and server in a `close` listener without handling a rejection (unverified). | No stray rejection | — | done |
 | R15 | Refactor [consistency] · low value | Groups the eight scattered `DEFAULT_*` tunables in one `defaults.ts`, keeping every exported name. | P22 | — | done |
-| R16 | Refactor [consistency] · low value | Renames nine camelCase files to kebab-case and updates AGENTS.md's module list. | House file naming | — | open |
+| R16 | Refactor [consistency] · low value | Renames nine camelCase files to kebab-case and updates AGENTS.md's module list. | House file naming | — | done |
 | R17 | Refactor [consistency] · low value | Reformats to line width 120. | House formatter setting; touches every file | — | open |
 | R18 | Refactor [structure] · low value | Groups the flat 23-module `src/` into folders by concept. | P21; AGENTS.md documents the flat layout today | decision | open |
 | A3 | API change · low value | Exports named objects for the closed sets (`NameCase`, `NullBranches`, `MutationHints`, operation kind). | P16 for consumers | decision | open |
@@ -92,7 +92,7 @@ Status is `open`, `approved`, `declined` or `done`.
 
 ### R1 [reuse] — one returnable-field walk
 
-**File:** `src/selection.ts:76-104`, `src/outputSchema.ts:96-127`. Both `compositeFields`
+**File:** `src/selection.ts:76-104`, `src/output-schema.ts:96-127`. Both `compositeFields`
 apply the same three rules in the same order. A rule changed in one file makes the advertised
 output schema disagree with what the query returns. Target: a walk that yields
 (field, leaf | nested) decisions, owned by `selection.ts`; each module renders from it.
@@ -120,7 +120,7 @@ kind from AST (meta, operations); visible-type filter (meta ×2); truncation adv
 (sessions, eventStore); JSON-RPC error body (http, fetch — folds into R2 if approved).
 
 Done for ten pairs. Left alone: the LRU re-insert and evict-oldest loops in `sessions.ts` and
-`eventStore.ts` — two lines each over different maps, and sharing them needs a new module.
+`event-store.ts` — two lines each over different maps, and sharing them needs a new module.
 The JSON-RPC body went with R2.
 
 ### R5 [readability] — name the steps of the per-field pipeline
@@ -137,7 +137,7 @@ check sit in one closure. Target: `isExposed(field)`, `describeField`, `decorate
 
 ### R7 [pattern] — lookup tables for closed-set picks
 
-**File:** `src/meta.ts:41-43,96-111`, `src/argExample.ts:197-213`. `MetaToolName` and
+**File:** `src/meta.ts:41-43,96-111`, `src/arg-example.ts:197-213`. `MetaToolName` and
 `ALL_META_TOOLS` are typed twice by hand.
 
 ### R8 [sweep] — apply P15 (braced bodies)
@@ -190,13 +190,13 @@ moving what is unique into AGENTS.md first.
 
 ### T1 [pin] — selection and output schema agree
 
-**File:** `src/outputSchema.test.ts`. Only one case (depth 1) compares them today. Pin before R1.
+**File:** `src/output-schema.test.ts`. Only one case (depth 1) compares them today. Pin before R1.
 
 ### T2 [reuse] — shared test helpers
 
 **File:** `connect` in `server.test.ts`, `http.test.ts`, `fetch.test.ts`; `fieldType` in
-`selection.test.ts`, `outputSchema.test.ts`; `unwrap` in `zodSchema.test.ts`,
-`outputSchema.test.ts`; `parseResult`/`bodyOf`/`body` in `server.test.ts`, `result.test.ts`,
+`selection.test.ts`, `output-schema.test.ts`; `unwrap` in `zod-schema.test.ts`,
+`output-schema.test.ts`; `parseResult`/`bodyOf`/`body` in `server.test.ts`, `result.test.ts`,
 `meta.test.ts`. Owner: `src/fixtures.test.ts`.
 
 ### T3 [reliability] — the listing-cache timing test is flaky on zod 3

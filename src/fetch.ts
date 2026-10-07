@@ -33,7 +33,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { packageError } from './errors.ts';
-import type { EventStore } from './eventStore.ts';
+import type { EventStore } from './event-store.ts';
 import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
 import { closeQuietly, SESSION_ID_HEADER, SessionHost, type SessionOptions } from './sessions.ts';
 

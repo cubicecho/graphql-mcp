@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { buildSchema, type GraphQLArgument, type GraphQLObjectType } from 'graphql';
-import { buildArgExample, exampleForType, MAX_EXAMPLE_CHARS } from './argExample.ts';
+import { buildArgExample, exampleForType, MAX_EXAMPLE_CHARS } from './arg-example.ts';
 
 const schema = buildSchema(/* GraphQL */ `
   enum Direction {

@@ -31,13 +31,13 @@
  * zero-config.
  *
  * The events a session's stream has already sent are bounded separately, in
- * `eventStore.ts`, and belong to the session: they are what a client reconnects
+ * `event-store.ts`, and belong to the session: they are what a client reconnects
  * against, and they are released when the session here is.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { DEFAULT_CLAIM_TTL_MS, DEFAULT_IDLE_TIMEOUT_MS, DEFAULT_MAX_SESSIONS } from './defaults.ts';
-import { type EventStore, eventStoreFactory, type ReplayOption } from './eventStore.ts';
+import { type EventStore, eventStoreFactory, type ReplayOption } from './event-store.ts';
 
 /**
  * A shared record of which instance holds which session — identity and

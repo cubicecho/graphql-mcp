@@ -13,7 +13,7 @@
  *   `Mcp-Session-Id`, and is routed back to the same long-lived server on every
  *   later request. That is what makes an open SSE stream — and therefore
  *   server-initiated messages — possible, and each session buffers what it has
- *   sent so a dropped stream resumes rather than losing it (see `eventStore.ts`).
+ *   sent so a dropped stream resumes rather than losing it (see `event-store.ts`).
  *   It also pins a client to one process: an `McpServer` is a live object, so a
  *   session cannot be handed to another replica. Behind a load balancer that
  *   means sticky routing — and optionally a {@link SessionDirectory}, which

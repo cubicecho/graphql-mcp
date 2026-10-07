@@ -5,7 +5,7 @@ import { buildSchema, GraphQLInt, GraphQLObjectType, GraphQLSchema, GraphQLStrin
 import { z } from 'zod';
 import { makeTodoSchema, setMcpExtensions } from './fixtures.test.ts';
 import { applyNameCase, buildTools } from './tools.ts';
-import type { NullBranchesByType } from './zodSchema.ts';
+import type { NullBranchesByType } from './zod-schema.ts';
 
 describe('buildTools', () => {
   test('creates one tool per query and mutation field', () => {

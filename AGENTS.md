@@ -24,6 +24,7 @@ process and forward to a remote GraphQL endpoint.
 - **Formatting/linting:** [Biome](https://biomejs.dev/) (`npm run check`). Every `if`/loop body is a
   braced block (`useBlockStatements`), and a logic check is negated with `=== false`, not `!`
   (`no-negation.grit`; `!` stays for null guards).
+- **File names:** kebab-case (`zod-schema.ts`, `event-store.ts`).
 - **Dependencies:** `@graphql-tools/schema` (schema merging for the `extend`
   option) is the only runtime dependency. `@modelcontextprotocol/sdk`
   (`>=1.12`), `graphql` (`>=16`) and `zod` (`^3.25 || ^4.0`) are **peer deps** —
@@ -60,9 +61,9 @@ gate that catches type errors in test files.
 src/
   index.ts        — public API entry point (re-exports + package overview)
   types.ts        — GraphqlExecutor / GraphqlRequest / GraphqlResult, the execution seam
-  zodSchema.ts    — GraphQL args → Zod input schema (argsToZodShape)
+  zod-schema.ts    — GraphQL args → Zod input schema (argsToZodShape)
   selection.ts    — auto-built selection sets for return types (buildSelectionSet)
-  outputSchema.ts — return type → Zod schema for results (buildOutputSchema)
+  output-schema.ts — return type → Zod schema for results (buildOutputSchema)
   operation.ts    — per-field operation documents (buildOperation)
   rules.ts        — include/exclude pattern matching (compileRules)
   extend.ts       — MCP-only schema additions via mergeSchemas (extendSchemaForMcp, stripRootTypes)
@@ -73,16 +74,16 @@ src/
   executor.ts     — createLocalExecutor (in-process) / createHttpExecutor (forwarding)
   server.ts       — createMcpServer / createServerFactory / connectServer / registerGraphqlTools (+ custom tools)
   handlers.ts     — the SDK request handlers this package wraps (shareToolListing, guardToolArguments)
-  zodCompat.ts    — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
+  zod-compat.ts    — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
   defaults.ts     — every tunable default (depths, budgets, session and replay limits), values only
   errors.ts       — packageError (the `graphql-mcp: ` prefix) and messageOf (a caught value's text)
   version.ts      — VERSION, read from package.json (the version servers advertise)
   pagination.ts   — paging-argument detection for truncation hints (paginationHint)
-  argExample.ts   — a literal JSON example of one argument's shape (buildArgExample)
+  arg-example.ts   — a literal JSON example of one argument's shape (buildArgExample)
   sessions.ts     — the bounded session table behind stateful HTTP (SessionStore) and the
                     lifecycle both HTTP handlers drive it through (SessionHost)
                     plus SessionDirectory, which reports session ownership across instances
-  eventStore.ts   — the bounded SSE replay buffer behind resumability (MemoryEventStore)
+  event-store.ts   — the bounded SSE replay buffer behind resumability (MemoryEventStore)
   http.ts         — createHttpHandler for Node (IncomingMessage/ServerResponse)
   fetch.ts        — createFetchHandler for Request/Response runtimes
   *.test.ts       — co-located tests; fixtures.test.ts holds the shared "todos" schema
@@ -174,11 +175,11 @@ src/
   fragments first, so a root-level spread can't hide a denied field. Without
   that check a raw document would be a way around the allow-list; keep the two
   surfaces in sync when either changes.
-- **Stay zod-version-agnostic (`zodCompat.ts`).** The peer range spans v3 and
+- **Stay zod-version-agnostic (`zod-compat.ts`).** The peer range spans v3 and
   v4, whose type surfaces differ: v4's `ZodTypeAny` resolves to the core
   `$ZodType` (no `.parse`, no `.describe`) and its `ZodRawShape` is `Readonly`,
   so shapes built by assignment are rejected. Import `AnyZodType` and `ZodShape`
-  from `./zodCompat.ts` instead of either name from `zod`. In tests, assert on
+  from `./zod-compat.ts` instead of either name from `zod`. In tests, assert on
   an issue's `code` and `keys` rather than its message text, and search the
   whole rendered JSON Schema rather than `properties` — v4 hoists shared object
   schemas into `definitions` and leaves a `$ref` behind. CI runs the whole gate
@@ -189,7 +190,7 @@ src/
   `{ query, variables, operationName, context }` request and hands it to the
   executor; it never knows whether GraphQL runs in-process or over HTTP. The
   default is `createLocalExecutor(schema)`.
-- **Every input type is built once (`zodSchema.ts`'s `done` memo).** A generated
+- **Every input type is built once (`zod-schema.ts`'s `done` memo).** A generated
   CRUD schema filters through relations — a task by its runs, a run back by its
   task — and the same handful of filter types is reached by dozens of routes.
   GraphQL says that by *naming* a type; JSON Schema has to *write it out*, so a
@@ -200,7 +201,7 @@ src/
   is the memo for one already finished — deleting from `pending` is not the same
   thing, and conflating them is what caused the blow-up.
 - **A hoisted input type carries its GraphQL name (`withName` in
-  `zodCompat.ts`).** Left anonymous, v4's render keys `definitions` by position
+  `zod-compat.ts`).** Left anonymous, v4's render keys `definitions` by position
   — `__schema0`, `__schema7` — and the reader is a model, for whom the type name
   (`TaskFilters`, `StringFilter`) is the whole meaning. `.meta({ id })` is
   v4-only and returns a *clone*, so the return value is what goes into `done`
@@ -214,7 +215,7 @@ src/
   `server.test.ts` guards the invariant — a shared type appears exactly once —
   rather than a byte count, since where the copy lives differs by major.
 - **An argument's default is *advertised*, never applied (`withDefault` in
-  `zodCompat.ts`).** The JSON Schema `default` keyword is advisory — it takes no
+  `zod-compat.ts`).** The JSON Schema `default` keyword is advisory — it takes no
   part in validation — so it rides on `.meta()` rather than on Zod's
   `.default()`. `.default()` would substitute the value at parse time, which
   puts it into the GraphQL `variables`; the server would then receive an
@@ -233,7 +234,7 @@ src/
   "no preference" would silently get null. Under `nullBranches: 'never'` the
   warning is dropped, since null can no longer be sent at all.
 - **The shape of an argument goes in the prose, not only in the schema
-  (`argExample.ts`).** A controlled A/B on one consumer's 17-field surface
+  (`arg-example.ts`).** A controlled A/B on one consumer's 17-field surface
   (issue #21, reported 2026-09-02): a generated arm against a hand-written-
   operations arm, same schema, same model, same transport. `tools/list` was
   423,373 bytes against 12,609; the largest single tool 49,651 against 2,688;
@@ -262,7 +263,7 @@ src/
   answers better. A signature is not a contradiction of a signature-plus-example,
   so the two surfaces still agree.
 - **A nullable input position states its optionality twice, and the default
-  keeps it that way (`nullBranches` in `zodSchema.ts`).** A nullable argument is
+  keeps it that way (`nullBranches` in `zod-schema.ts`).** A nullable argument is
   left out of `required` *and* given an explicit null branch (`anyOf: [T, {type:
   'null'}]`, or `type: [X, 'null']` for a scalar). The second statement is the
   expensive one: on a filter-per-column schema those branches are roughly 40% of
@@ -296,7 +297,7 @@ src/
   for, is a mode that is a pure function of the *containing input type*
   which is what `nullBranches: { byType }` now is — one type, one mode, one id.
 - **`{ byType }` keys on the type *in the position*, not the one containing it
-  (`branchesAt` in `zodSchema.ts`).** The container reading is the obvious one
+  (`branchesAt` in `zod-schema.ts`).** The container reading is the obvious one
   and it is wrong: a top-level argument has no containing input type, so keying
   by the container leaves `where: TaskFilters` — the exact position that renders
   `anyOf: [{$ref}, {type: 'null'}]`, the shape with no draft-07 form — beyond
@@ -317,7 +318,7 @@ src/
   only the *function* form and leaves the object for `branchesAt`, and
   `withOperations`' `typeof === 'function'` test drops the field callback while
   passing the object through on purpose.
-- **`inputField` prunes during the walk, not after it (`zodSchema.ts`).** The
+- **`inputField` prunes during the walk, not after it (`zod-schema.ts`).** The
   cost `nullBranches` compresses is sometimes a field that should not be
   advertised at all: a generated CRUD schema emits a relation filter per foreign
   key, and those point at each other, so one `where` argument drags in the filter
@@ -370,7 +371,7 @@ src/
   undeclared key (the caller cannot; the message says so, or an agent loops).
   A patch setting both `mapArgs` and `inputSchema` without a `description` is
   refused in `applyPatch` at boot, because the generated prose — down to the
-  `shape:` literal from `argExample.ts` — would confidently describe arguments
+  `shape:` literal from `arg-example.ts` — would confidently describe arguments
   the tool now rejects. Regenerating that prose from the advertised Zod shape
   would mean walking zod across the v3/v4 split; the throw is the cheaper guard.
 - **Selection sets are auto-generated** (`buildSelectionSet`): all scalar/enum
@@ -382,12 +383,12 @@ src/
   generated tool's description ends with the exact selection it will get back —
   otherwise the agent assumes the full return type and plans around fields that
   never arrive.
-- **`outputSchema.ts` mirrors `selection.ts`.** A descriptor's `outputSchema` is
+- **`output-schema.ts` mirrors `selection.ts`.** A descriptor's `outputSchema` is
   a Zod schema for what the generated operation actually returns, so it obeys the
   same skip/depth/cycle rules and is driven by the *same* `selectionDepth` —
   there is no separate depth option, because a schema describing fields the query
   never selects would be wrong. The rules live once, in `returnedFields`
-  (`selection.ts`), which both modules walk; a test in `outputSchema.test.ts`
+  (`selection.ts`), which both modules walk; a test in `output-schema.test.ts`
   compares the two path by path.
 - **One place formats results: `result.ts`.** Generated tools and the `execute`
   meta tool both hand their `GraphqlResult` to `toCallToolResult`, so success,
@@ -440,7 +441,7 @@ src/
   `sendToolListChanged` — retires the cache permanently, because from then on two
   servers can disagree about what they expose. `registerGeneratedTool` hoists its
   `z.object(shape).strict()` for the same reason (a `WeakMap` on the shape).
-- **A session's stream is resumable, and the buffer is bounded** (`eventStore.ts`).
+- **A session's stream is resumable, and the buffer is bounded** (`event-store.ts`).
   The SDK writes SSE event ids only when given an `eventStore`, so without one a
   dropped connection loses whatever was in flight — which is the work a stateful
   session exists to deliver. Each session gets its own `MemoryEventStore`
@@ -549,7 +550,7 @@ npm install --no-save zod@^3.25 graphql@^17 && npm test   # `npm ci` to restore
 Two ways a change passes locally and fails CI:
 
 - **zod 3 has no `.meta()`.** The v4-only affordances that ride on it (the JSON
-  Schema `default` keyword and `$ref` names — see `zodCompat.ts`) degrade to
+  Schema `default` keyword and `$ref` names — see `zod-compat.ts`) degrade to
   no-ops on v3, so an assertion about rendered metadata passes under the
   lockfile and fails the v3 leg. Guard those with the `HAS_META` constant the
   test files define, and assert the tool *prose* unconditionally.

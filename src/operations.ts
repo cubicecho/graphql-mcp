@@ -57,14 +57,14 @@ import {
   type ToolDescriptor,
 } from './tools.ts';
 import type { OperationKind } from './types.ts';
-import type { AnyZodType, ZodShape } from './zodCompat.ts';
+import type { AnyZodType, ZodShape } from './zod-compat.ts';
 import {
   argsToZodShape,
   type InputFieldFilter,
   type NullBranchesSetting,
   type ScalarMapping,
   type ZodShapeOptions,
-} from './zodSchema.ts';
+} from './zod-schema.ts';
 
 /**
  * One document, as source text, a named `Source`, or an already-parsed AST.

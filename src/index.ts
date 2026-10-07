@@ -59,8 +59,8 @@ export type {
   ReplayOption,
   ReplayOptions,
   StreamId,
-} from './eventStore.ts';
-export { eventStoreFactory, MemoryEventStore } from './eventStore.ts';
+} from './event-store.ts';
+export { eventStoreFactory, MemoryEventStore } from './event-store.ts';
 export type { HttpExecutorOptions, LocalExecutorOptions } from './executor.ts';
 export { createHttpExecutor, createLocalExecutor } from './executor.ts';
 export type { SchemaExtension } from './extend.ts';
@@ -89,7 +89,7 @@ export type {
   OperationsInput,
 } from './operations.ts';
 export { buildOperationTools } from './operations.ts';
-export { buildOutputSchema } from './outputSchema.ts';
+export { buildOutputSchema } from './output-schema.ts';
 export type { Pagination, PaginationStyle } from './pagination.ts';
 export { detectPagination, paginationHint } from './pagination.ts';
 export type { ExecutorRequest } from './result.ts';
@@ -139,7 +139,7 @@ export type {
   ToolAnnotations,
 } from './types.ts';
 export { VERSION } from './version.ts';
-export type { AnyZodType, ZodShape } from './zodCompat.ts';
+export type { AnyZodType, ZodShape } from './zod-compat.ts';
 export type {
   InputFieldFilter,
   NullBranches,
@@ -149,5 +149,5 @@ export type {
   ScalarMapping,
   ScalarResolver,
   ZodShapeOptions,
-} from './zodSchema.ts';
-export { argsToZodShape } from './zodSchema.ts';
+} from './zod-schema.ts';
+export { argsToZodShape } from './zod-schema.ts';

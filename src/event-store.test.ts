@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { DEFAULT_MAX_EVENTS_PER_STREAM, DEFAULT_MAX_STREAMS } from './defaults.ts';
-import { type EventStore, eventStoreFactory, MemoryEventStore } from './eventStore.ts';
+import { type EventStore, eventStoreFactory, MemoryEventStore } from './event-store.ts';
 
 /** A distinguishable JSON-RPC message. */
 function note(n: number): JSONRPCMessage {

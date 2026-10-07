@@ -3,7 +3,7 @@
  * would still be a working server. Values only, so this module runs no code.
  */
 
-import type { NullBranches } from './zodSchema.ts';
+import type { NullBranches } from './zod-schema.ts';
 
 /** Object levels a selection descends. The selection, its operation and the output schema share it. */
 export const DEFAULT_SELECTION_DEPTH = 2;

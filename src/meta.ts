@@ -32,7 +32,7 @@ import {
   validate,
 } from 'graphql';
 import { z } from 'zod';
-import { exampleForType } from './argExample.ts';
+import { exampleForType } from './arg-example.ts';
 import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_LIMIT } from './defaults.ts';
 import { messageOf } from './errors.ts';
 import { kindOf } from './operation.ts';

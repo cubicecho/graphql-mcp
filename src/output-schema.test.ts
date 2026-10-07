@@ -4,10 +4,10 @@ import { Kind, parse, type SelectionSetNode } from 'graphql';
 import { z } from 'zod';
 import { createLocalExecutor } from './executor.ts';
 import { fieldType, makeTodoSchema } from './fixtures.test.ts';
-import { buildOutputSchema } from './outputSchema.ts';
+import { buildOutputSchema } from './output-schema.ts';
 import { buildSelectionSet } from './selection.ts';
 import { buildTools } from './tools.ts';
-import type { AnyZodType, ZodShape } from './zodCompat.ts';
+import type { AnyZodType, ZodShape } from './zod-compat.ts';
 
 /**
  * The object schema behind whatever list/nullable wrappers a field carries.

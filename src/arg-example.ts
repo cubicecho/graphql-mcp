@@ -28,7 +28,7 @@ import type {
 } from 'graphql';
 import { getNamedType, isEnumType, isInputObjectType, isListType, isNonNullType } from 'graphql';
 import { DEFAULT_EXAMPLE_DEPTH } from './defaults.ts';
-import { defaultJsonOf } from './zodSchema.ts';
+import { defaultJsonOf } from './zod-schema.ts';
 
 /**
  * Longest example that still earns its place in a description. Past this an

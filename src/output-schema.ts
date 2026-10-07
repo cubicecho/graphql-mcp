@@ -33,7 +33,7 @@ import {
 import { z } from 'zod';
 import { DEFAULT_SELECTION_DEPTH } from './defaults.ts';
 import { returnedFields } from './selection.ts';
-import type { AnyZodType, ZodShape } from './zodCompat.ts';
+import type { AnyZodType, ZodShape } from './zod-compat.ts';
 import {
   describe,
   enumSchema,
@@ -41,7 +41,7 @@ import {
   type ScalarResolver,
   scalarSchema,
   toResolver,
-} from './zodSchema.ts';
+} from './zod-schema.ts';
 
 /**
  * Builds the Zod schema for a field's return `type`, mirroring the selection set

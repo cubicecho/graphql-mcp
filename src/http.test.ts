@@ -357,7 +357,7 @@ describe('createHttpHandler close()', () => {
  * A dropped SSE stream and a reconnect claiming `Last-Event-ID`, driven over raw
  * HTTP rather than through the SDK client — the client reconnects on its own
  * schedule, and the point here is what the *server* does when it is asked to
- * resume. See `eventStore.ts`.
+ * resume. See `event-store.ts`.
  */
 describe('resuming a dropped stream', () => {
   const PROTOCOL = '2025-11-25';

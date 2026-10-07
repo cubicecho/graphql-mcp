@@ -11,7 +11,7 @@
 
 import type { GraphQLArgument, GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
 import { isNonNullType, print } from 'graphql';
-import { buildArgExample } from './argExample.ts';
+import { buildArgExample } from './arg-example.ts';
 import {
   DEFAULT_EXAMPLE_DEPTH,
   DEFAULT_NULL_BRANCHES,
@@ -19,11 +19,11 @@ import {
 } from './defaults.ts';
 import { packageError } from './errors.ts';
 import { buildOperation } from './operation.ts';
-import { buildOutputSchema } from './outputSchema.ts';
+import { buildOutputSchema } from './output-schema.ts';
 import { paginationHint } from './pagination.ts';
 import { compileRules } from './rules.ts';
 import type { OperationKind, ToolAnnotations } from './types.ts';
-import type { AnyZodType, ZodShape } from './zodCompat.ts';
+import type { AnyZodType, ZodShape } from './zod-compat.ts';
 import {
   argsToZodShape,
   branchesAt,
@@ -31,7 +31,7 @@ import {
   type NullBranchesSetting,
   type ScalarMapping,
   type ZodShapeOptions,
-} from './zodSchema.ts';
+} from './zod-schema.ts';
 
 /**
  * Turns a tool's validated arguments into the variables its operation sends.
@@ -822,7 +822,7 @@ export function describeArguments(
  * Exported for sibling modules that render an argument line of their own, so
  * there is one renderer to change rather than two that drift apart. Not
  * re-exported from `index.ts` — this is an internal seam, not public API
- * (the `builtinScalar`/`toResolver` precedent in `zodSchema.ts`).
+ * (the `builtinScalar`/`toResolver` precedent in `zod-schema.ts`).
  */
 export function describeArgument(
   arg: GraphQLArgument,

@@ -39,7 +39,7 @@ import {
 import { z } from 'zod';
 import { DEFAULT_NULL_BRANCHES } from './defaults.ts';
 import { packageError } from './errors.ts';
-import { type AnyZodType, withDefault, withName, type ZodShape } from './zodCompat.ts';
+import { type AnyZodType, withDefault, withName, type ZodShape } from './zod-compat.ts';
 
 /**
  * Zod schemas keyed by GraphQL scalar name — the same shape scalar-map
@@ -199,7 +199,7 @@ const SCALAR_BUILDERS: Record<string, () => AnyZodType> = {
  * The opaque case carries the scalar's *own* SDL description, because that is
  * where the wire format is documented (`"""An ISO-8601 timestamp.""" scalar
  * DateTime`). Describing it as nothing but its name leaves an agent guessing at
- * a format the schema spells out. Shared with `outputSchema.ts` so both sides
+ * a format the schema spells out. Shared with `output-schema.ts` so both sides
  * describe a scalar identically.
  *
  * @param type - The scalar type to map.
@@ -360,7 +360,7 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
 }
 
 /**
- * Attaches a schema description when there is one. Exported for `outputSchema.ts`.
+ * Attaches a schema description when there is one. Exported for `output-schema.ts`.
  *
  * @param schema - The schema to describe.
  * @param [description] - The GraphQL description, if the schema declares one.
@@ -406,7 +406,7 @@ export function enumSchema(type: GraphQLEnumType): AnyZodType {
  * form. A programmatically built schema carries no AST, so the coerced value is
  * the fallback.
  *
- * Exported for `argExample.ts`, which needs the same JSON form for the same
+ * Exported for `arg-example.ts`, which needs the same JSON form for the same
  * reason — an example printing an enum's internal value would be one an agent
  * cannot send. Not re-exported from `index.ts`.
  */

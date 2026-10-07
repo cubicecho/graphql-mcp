@@ -44,7 +44,7 @@ import { runExecutor, toCallToolResult } from './result.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from './tools.ts';
 import type { GraphqlExecutor, ToolAnnotations } from './types.ts';
 import { VERSION } from './version.ts';
-import type { AnyZodType, ZodShape } from './zodCompat.ts';
+import type { AnyZodType, ZodShape } from './zod-compat.ts';
 
 /** The handler signature for a custom tool: validated args plus the MCP `extra`. */
 export type ToolHandler = (
