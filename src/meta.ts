@@ -169,7 +169,7 @@ function introspectTool(
  */
 function withShapeExample(type: GraphQLNamedType): string {
   const sdl = printType(type);
-  if (!isInputObjectType(type)) {
+  if (isInputObjectType(type) === false) {
     return sdl;
   }
   const example = exampleForType(type);
@@ -442,7 +442,8 @@ function search(
     if (matches(type.name, type.description)) {
       hits.push(`${kindWord(type)} ${type.name}${describeSuffix(type.description)}`);
     }
-    if (!isObjectType(type) && !isInterfaceType(type) && !isInputObjectType(type)) {
+    const hasFields = isObjectType(type) || isInterfaceType(type) || isInputObjectType(type);
+    if (hasFields === false) {
       continue;
     }
     const kind = rootKinds.get(type.name);
@@ -498,7 +499,7 @@ function describeSuffix(description?: string | null): string {
 
 function typeNames(schema: GraphQLSchema): string[] {
   return Object.values(schema.getTypeMap())
-    .filter((type) => !isHiddenType(type))
+    .filter((type) => isHiddenType(type) === false)
     .map((type) => type.name);
 }
 

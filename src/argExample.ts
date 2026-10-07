@@ -57,7 +57,7 @@ export function exampleForType(
   if (depth < 1) {
     return undefined;
   }
-  if (!isInputObjectType(getNamedType(type))) {
+  if (isInputObjectType(getNamedType(type)) === false) {
     return undefined;
   }
   const value = renderType(type, depth, new Set(), true);
@@ -121,7 +121,7 @@ function renderNamed(
   path: ReadonlySet<string>,
   top = false,
 ): unknown | typeof ABANDON {
-  if (!isInputObjectType(type)) {
+  if (isInputObjectType(type) === false) {
     return leafValue(type);
   }
   // A type that contains itself has no finite literal. Reached through a
@@ -136,7 +136,7 @@ function renderNamed(
   let required = 0;
 
   for (const field of fields) {
-    if (!isNonNullType(field.type)) {
+    if (isNonNullType(field.type) === false) {
       continue;
     }
     required += 1;
@@ -177,7 +177,7 @@ function renderNamed(
     // the rule at every level collapses that to `{}` and suppresses the whole
     // example — the `orderBy`/`where` win this fallback exists for.
     const worthShowing = !top || isStructural(value);
-    if (value !== ABANDON && worthShowing && !isEmptyShape(value)) {
+    if (value !== ABANDON && worthShowing && isEmptyShape(value) === false) {
       shape[first.name] = value;
     }
   }

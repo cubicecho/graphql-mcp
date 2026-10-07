@@ -89,8 +89,8 @@ describe('stripRootTypes', () => {
     for (const kept of ['Todo', 'User', 'CreateTodoInput', 'TodoStatus']) {
       assert.ok(names.includes(kept), `expected ${kept} to survive`);
     }
-    assert.ok(!names.includes('Query'));
-    assert.ok(!names.includes('Mutation'));
+    assert.notEqual(names.includes('Query'), true);
+    assert.notEqual(names.includes('Mutation'), true);
   });
 
   test('preserves custom scalar behaviour', () => {

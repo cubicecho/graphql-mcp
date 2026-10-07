@@ -129,7 +129,7 @@ export function toCallToolResult(
 ): CallToolResult {
   const errors = result.errors ?? [];
   const hasData = hasUsableData(result.data);
-  const failed = errors.length > 0 && !hasData;
+  const failed = errors.length > 0 && hasData === false;
 
   /** The envelope around whatever `data` survived, serialized. */
   const envelope = (data: unknown, truncated?: TruncationRecord): string => {

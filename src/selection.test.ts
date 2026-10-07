@@ -49,7 +49,7 @@ describe('buildSelectionSet', () => {
     // that whole field rather than recursing, so it never appears.
     const result = buildSelectionSet(type, 5);
     assert.equal(result, '{ id todos { id __typename } __typename }');
-    assert.ok(!result.includes('createdBy'));
+    assert.notEqual(result.includes('createdBy'), true);
   });
 
   test('unwraps NonNull and List wrappers', () => {

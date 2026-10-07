@@ -449,7 +449,10 @@ describe('createMcpServer', () => {
 
     // The generated mutation tools are gone…
     const { tools } = await client.listTools();
-    assert.ok(!tools.some((t) => t.name === 'create_todo'));
+    assert.notEqual(
+      tools.some((t) => t.name === 'create_todo'),
+      true,
+    );
 
     // …and the raw-document path can't reach them either.
     const result = (await client.callTool({
@@ -632,21 +635,21 @@ describe('a call that omits its arguments', () => {
   test('a no-argument tool is callable with no arguments at all', async () => {
     const client = await connectTolerant(server());
     const result = parseResult(await client.callTool({ name: 'schedule' }));
-    assert.ok(!result.isError, JSON.stringify(result));
+    assert.notEqual(result.isError, true, JSON.stringify(result));
     assert.deepEqual(result.data, { schedule: null });
   });
 
   test('so is a tool whose arguments are all optional', async () => {
     const client = await connectTolerant(server());
     const result = parseResult(await client.callTool({ name: 'tasks' }));
-    assert.ok(!result.isError, JSON.stringify(result));
+    assert.notEqual(result.isError, true, JSON.stringify(result));
     assert.deepEqual(result.data, { tasks: null });
   });
 
   test('arguments that are sent still reach the operation', async () => {
     const client = await connectTolerant(server());
     const result = parseResult(await client.callTool({ name: 'tasks', arguments: { limit: 3 } }));
-    assert.ok(!result.isError, JSON.stringify(result));
+    assert.notEqual(result.isError, true, JSON.stringify(result));
   });
 
   test('a request that is not a tool call passes through untouched', async () => {
@@ -1259,7 +1262,10 @@ describe('the tool listing is rendered once per factory', () => {
     });
     const mutated = factory();
     const client = await connect(mutated);
-    assert.ok(!(await client.listTools()).tools.some((t) => t.name === 'late'));
+    assert.notEqual(
+      (await client.listTools()).tools.some((t) => t.name === 'late'),
+      true,
+    );
 
     mutated.registerTool('late', { description: 'registered after the first listing' }, () => ({
       content: [{ type: 'text' as const, text: 'ok' }],
@@ -1269,7 +1275,10 @@ describe('the tool listing is rendered once per factory', () => {
     assert.ok((await client.listTools()).tools.some((t) => t.name === 'late'));
     // ...and a sibling that never had it does not inherit a stale listing.
     const sibling = await connect(factory());
-    assert.ok(!(await sibling.listTools()).tools.some((t) => t.name === 'late'));
+    assert.notEqual(
+      (await sibling.listTools()).tools.some((t) => t.name === 'late'),
+      true,
+    );
     await client.close();
     await sibling.close();
   });

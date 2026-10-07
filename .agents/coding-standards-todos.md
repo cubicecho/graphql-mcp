@@ -55,13 +55,14 @@ what it returns; one session lifecycle serves both transports."
 | R6 | Refactor [pattern] | Internal functions taking 5–7 positional arguments take one named-field object instead. | Call sites stop depending on argument order | — | open |
 | R7 | Refactor [pattern] | The meta-tool `switch` and the example-leaf `switch` become lookup tables, and the meta-tool name list and its type are derived from one source. | P24, P14: a new meta tool is one entry | — | open |
 | R8 | Refactor [sweep] | Braces every single-line `if`/`for` body (128 in source, 17 in tests) and turns the lint rule on. | P15 sweep | — | done |
-| R9 | Refactor [sweep] | Rewrites 36 logic negations (`!x`) as named positive conditions and turns the lint plugin on. | P20 sweep | R8 | open |
+| R9 | Refactor [sweep] | Rewrites 36 logic negations (`!x`) as named positive conditions and turns the lint plugin on. | P20 sweep | R8 | done |
 | R10 | Refactor [sweep] | Names the magic values: 10 numbers plus repeated strings (error prefix, session header, JSON-RPC codes, the search limit that is also typed into its description). | P16 sweep | — | open |
 | R11 | Refactor [sweep] | Removes the type assertions that a narrower type makes unnecessary (about 12 of 28) and gives each remaining one a stated reason. | P17 sweep | — | open |
 | R12 | Refactor [sweep] | Adds the missing doc blocks (30 functions) and missing `@param`/`@returns` tags (78 and 85 functions). | P4 sweep | — | open |
 | R13 | Refactor [sweep] | Shortens 54 doc blocks over four sentences and 25 body comments over two lines; the rationale already lives in AGENTS.md. | P19 sweep; source is 45% comment lines | decision | open |
 | R14 | Refactor [consistency] | Adds the house tsconfig flags and the `check:biome` / `check:types` script names. | Same commands and checks as other cubicecho repos | — | open |
 | T2 | Test [reuse] | Moves test helpers that exist in two or three test files (`connect`, `fieldType`, `unwrap`, result-body readers) into the shared fixtures file. | One place to change when the SDK client API moves | — | open |
+| T3 | Test [reliability] | Replaces the wall-clock comparison in the listing-cache test with a count of renders; it fails about one run in three on zod 3. | The peer-version CI leg stops failing at random | — | open |
 | A1 | API change | `registerGraphqlTools` takes an options object instead of five positional arguments; breaks every caller. | Same reason as R6 | decision | open |
 | A2 | API change | `GraphqlError`'s extra keys become `unknown` instead of `any`; consumers reading extra keys need a narrowing. | P18 | decision | open |
 | B2 | Bug · low value | Three `messageOf` copies differ: only one turns an empty message or a thrown plain object into readable text. Is that intended? | Consistent error text | — | open |
@@ -197,6 +198,12 @@ moving what is unique into AGENTS.md first.
 `selection.test.ts`, `outputSchema.test.ts`; `unwrap` in `zodSchema.test.ts`,
 `outputSchema.test.ts`; `parseResult`/`bodyOf`/`body` in `server.test.ts`, `result.test.ts`,
 `meta.test.ts`. Owner: `src/fixtures.test.ts`.
+
+### T3 [reliability] — the listing-cache timing test is flaky on zod 3
+
+**File:** `src/server.test.ts` ("the second listing costs a fraction of the first"). Asserts
+`withCache * 2 < withoutCache` on wall-clock time. On `zod@^3.25` + `graphql@^17` it failed 2 of
+4 runs on 2026-10-07 while every other test passed. Found during R9; not caused by it.
 
 ---
 

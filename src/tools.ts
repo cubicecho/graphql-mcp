@@ -827,7 +827,8 @@ export function describeArgument(
   // only warn about null where null can still be sent (`nullBranches: 'never'`
   // rejects it outright, so the warning would describe an impossible call).
   if (fallback) {
-    const nullable = !isNonNullType(arg.type) && branchesAt(nullBranches, arg.type) !== 'never';
+    const nullable =
+      isNonNullType(arg.type) === false && branchesAt(nullBranches, arg.type) !== 'never';
     parts.push(
       nullable
         ? `(omit for the default \`${fallback}\`; an explicit \`null\` is sent as null)`
@@ -885,11 +886,13 @@ export function annotationsFor(
   mutationHints: MutationHints = 'uniform',
 ): ToolAnnotations {
   const isQuery = kind === 'query';
-  const byName = !isQuery && mutationHints === 'byName';
+  const isMutation = isQuery === false;
+  const byName = isMutation && mutationHints === 'byName';
+  const isAdditive = byName && ADDITIVE_PREFIX.test(fieldName);
   return {
     title,
     readOnlyHint: isQuery,
-    destructiveHint: !isQuery && !(byName && ADDITIVE_PREFIX.test(fieldName)),
+    destructiveHint: isMutation && isAdditive === false,
     idempotentHint: isQuery || (byName && REMOVING_PREFIX.test(fieldName)),
     // Tools reach a GraphQL backend, whose data lives outside this server.
     openWorldHint: true,

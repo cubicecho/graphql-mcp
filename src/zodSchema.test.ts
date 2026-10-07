@@ -460,7 +460,7 @@ describe('inputField', () => {
     JSON.stringify(toJsonSchemaCompat(z.object(shape as Parameters<typeof z.object>[0])));
 
   const noRelations: ZodShapeOptions = {
-    inputField: (field) => !/ListRelationFilter/.test(String(field.type)),
+    inputField: (field) => /ListRelationFilter/.test(String(field.type)) === false,
   };
 
   test('a pruned field is gone from the advertised schema', () => {
@@ -510,7 +510,8 @@ describe('inputField', () => {
     // `StringFilter.contains` goes only where it is reached through TaskFilters.
     const rendered = render(
       argsOf('tasks', {
-        inputField: (field, parent) => !(parent.name === 'StringFilter' && field.name === 'eq'),
+        inputField: (field, parent) =>
+          (parent.name === 'StringFilter' && field.name === 'eq') === false,
       }),
     );
     assert.doesNotMatch(rendered, /"eq"/);

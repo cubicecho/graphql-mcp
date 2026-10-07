@@ -327,7 +327,7 @@ function toArgument(schema: GraphQLSchema, variable: VariableDefinitionNode): Gr
   // Unreachable in practice — `validate` rejects a variable whose type isn't an
   // input type before this runs — but the cast has to be justified by a check
   // rather than by a comment.
-  if (!type || !isInputType(type)) {
+  if (!type || isInputType(type) === false) {
     throw new Error(`graphql-mcp: variable \`$${name}\` is not a GraphQL input type.`);
   }
   return {

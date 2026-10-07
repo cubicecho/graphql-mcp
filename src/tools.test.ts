@@ -199,7 +199,7 @@ describe('buildTools extensions.mcp metadata', () => {
     const { schema } = makeTodoSchema();
     setMcpExtensions(schema, 'Mutation', 'setCompleted', { hidden: true });
     const names = buildTools(schema).map((t) => t.name);
-    assert.ok(!names.includes('set_completed'));
+    assert.notEqual(names.includes('set_completed'), true);
     assert.equal(names.length, 3);
   });
 
@@ -251,7 +251,7 @@ describe('buildTools extensions.mcp metadata', () => {
     const shallow = tools.find((t) => t.name === 'todo');
     const deep = tools.find((t) => t.name === 'todos');
     // Depth 1 stops before the nested `createdBy` user object.
-    assert.ok(!shallow?.query.includes('createdBy'));
+    assert.notEqual(shallow?.query.includes('createdBy'), true);
     assert.ok(deep?.query.includes('createdBy'));
   });
 });
@@ -376,7 +376,7 @@ describe('buildTools outputSchema', () => {
     assert.ok(deep);
     // Depth 1 selects no nested objects, so `createdBy` is absent from both the
     // query and the schema; depth 2 selects it in both.
-    assert.ok(!shallow.query.includes('createdBy'));
+    assert.notEqual(shallow.query.includes('createdBy'), true);
     assert.throws(() => shallow.outputSchema.parse({ __typename: 'Todo', createdBy: {} }));
     assert.ok(deep.query.includes('createdBy'));
     assert.deepEqual(
@@ -402,7 +402,7 @@ describe('buildTools outputSchema', () => {
     setMcpExtensions(schema, 'Query', 'todo', { selectionDepth: 1 });
     const todo = buildTools(schema).find((t) => t.name === 'todo');
     assert.ok(todo);
-    assert.ok(!todo.query.includes('createdBy'));
+    assert.notEqual(todo.query.includes('createdBy'), true);
     assert.throws(() => todo.outputSchema.parse({ __typename: 'Todo', createdBy: {} }));
   });
 });

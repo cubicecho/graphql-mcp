@@ -57,10 +57,11 @@ export function stripRootTypes(schema: GraphQLSchema): GraphQLSchema {
       .filter((type) => type != null)
       .map((type) => type.name),
   );
-  const types = Object.values(schema.getTypeMap()).filter(
-    (type) =>
-      !rootNames.has(type.name) && !isIntrospectionType(type) && !isSpecifiedScalarType(type),
-  );
+  const types = Object.values(schema.getTypeMap()).filter((type) => {
+    const isBuiltIn = isIntrospectionType(type) || isSpecifiedScalarType(type);
+    const isDropped = rootNames.has(type.name) || isBuiltIn;
+    return isDropped === false;
+  });
   return new GraphQLSchema({ types, directives: schema.getDirectives() });
 }
 

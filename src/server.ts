@@ -427,7 +427,7 @@ function withArguments<T>(message: T): T {
     return message;
   }
   const request = message as { method?: unknown; params?: Record<string, unknown> };
-  if (typeof request.method !== 'string' || !OPTIONAL_ARGUMENTS.has(request.method)) {
+  if (typeof request.method !== 'string' || OPTIONAL_ARGUMENTS.has(request.method) === false) {
     return message;
   }
   if (!request.params || typeof request.params !== 'object') {
@@ -528,7 +528,7 @@ async function toVariables(
       return { failure: failureOf(message, BAD_INPUT, maxChars) };
     }
     const declared = new Set(descriptor.argNames);
-    const undeclared = Object.keys(source).filter((key) => !declared.has(key));
+    const undeclared = Object.keys(source).filter((key) => declared.has(key) === false);
     if (undeclared.length) {
       // graphql-js drops an undeclared variable without a word, so left alone
       // this is a call that succeeds with the mapped intent discarded. Say it is
