@@ -154,6 +154,7 @@ export function guardToolArguments(
   }
 
   handlers.set(TOOLS_CALL, async (request, extra) => {
+    // Cast: a raw request; `name` and `arguments` are checked below before use.
     const params = (request as { params?: { name?: unknown; arguments?: unknown } }).params;
     const schema = typeof params?.name === 'string' ? validators.get(params.name) : undefined;
     if (!schema) {
@@ -181,6 +182,7 @@ interface ZodIssue {
  * the SDK's message carries).
  */
 function inputErrors(error: unknown): GraphqlError[] {
+  // Cast: a `ZodError` under either major has `issues`; anything else has none.
   const issues = (error as { issues?: ReadonlyArray<ZodIssue> } | undefined)?.issues;
   if (!issues?.length) {
     return [{ message: messageOf(error), extensions: { code: BAD_INPUT } }];

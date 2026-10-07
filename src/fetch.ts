@@ -95,6 +95,7 @@ let ctorPromise: Promise<WebTransportCtor> | undefined;
 async function loadTransport(): Promise<WebTransportCtor> {
   ctorPromise ??= import('@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js')
     .then(
+      // Cast: the SDK's class is read through the structural type this file declares for it.
       (module) => module.WebStandardStreamableHTTPServerTransport as unknown as WebTransportCtor,
     )
     .catch((cause) => {

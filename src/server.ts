@@ -358,6 +358,7 @@ function runServerDecorator(server: McpServer, hook: ServerDecorator | undefined
       { cause },
     );
   }
+  // Cast: the hook is typed `void`; this reads what an async one actually returned.
   if (result && typeof (result as { then?: unknown }).then === 'function') {
     throw packageError(
       'decorateServer must be synchronous. The server is connected the moment it ' +
@@ -430,6 +431,7 @@ function withArguments<T>(message: T): T {
   if (!message || typeof message !== 'object') {
     return message;
   }
+  // Cast: a raw JSON-RPC message; each property is checked below before use.
   const request = message as { method?: unknown; params?: Record<string, unknown> };
   if (typeof request.method !== 'string' || OPTIONAL_ARGUMENTS.has(request.method) === false) {
     return message;
@@ -440,6 +442,7 @@ function withArguments<T>(message: T): T {
   if (request.params.arguments !== undefined) {
     return message;
   }
+  // Cast: the same message with one field filled in, so still a `T`.
   return { ...request, params: { ...request.params, arguments: {} } } as T;
 }
 
@@ -612,5 +615,6 @@ function registerCustomTool(server: McpServer, tool: CustomTool): void {
 }
 
 async function resolveContext(context: unknown | ContextFactory, extra: unknown): Promise<unknown> {
+  // Cast: `typeof` narrows `unknown` to `Function`, not to the factory's signature.
   return typeof context === 'function' ? await (context as ContextFactory)(extra) : context;
 }

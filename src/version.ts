@@ -18,6 +18,7 @@ export const VERSION: string = readVersion();
 
 function readVersion(): string {
   try {
+    // Cast: `require` of JSON is untyped; the field is checked below.
     const pkg = requireJson('../package.json') as { version?: string };
     return pkg.version ?? '0.0.0';
   } catch {

@@ -41,6 +41,7 @@ export function createLocalExecutor(
       rootValue: options.rootValue,
       contextValue: context ?? options.contextValue,
     });
+    // Cast: graphql-js's result type is this one with narrower `extensions`.
     return result as GraphqlResult;
   };
 }
@@ -84,6 +85,7 @@ export function createHttpExecutor(
         ],
       };
     }
+    // Cast: the endpoint's body is trusted to be a GraphQL response.
     return (await response.json()) as GraphqlResult;
   };
 }

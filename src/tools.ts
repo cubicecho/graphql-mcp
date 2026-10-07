@@ -618,12 +618,8 @@ function applyPatch(
         'which this tool no longer accepts — set `description` in the same patch.',
     );
   }
-  const merged: ToolDescriptor = { ...descriptor };
-  for (const [key, value] of Object.entries(patch)) {
-    if (value !== undefined) {
-      (merged as unknown as Record<string, unknown>)[key] = value;
-    }
-  }
+  const set = Object.entries(patch).filter(([, value]) => value !== undefined);
+  const merged: ToolDescriptor = Object.assign({ ...descriptor }, Object.fromEntries(set));
   if (patch.annotations) {
     merged.annotations = { ...descriptor.annotations, ...patch.annotations };
   }

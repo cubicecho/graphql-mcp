@@ -159,7 +159,7 @@ function introspectTool(
     },
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     handler: (args) => {
-      const typeName = args.type as string | undefined;
+      const typeName = stringOf(args.type);
       if (!typeName) {
         return text(overview(schema, allows), maxChars);
       }
@@ -220,7 +220,7 @@ function searchTool(
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     handler: (args) => {
       const needle = String(args.query).toLowerCase();
-      const limit = (args.limit as number | undefined) ?? SEARCH_LIMIT;
+      const limit = typeof args.limit === 'number' ? args.limit : SEARCH_LIMIT;
       const hits = search(schema, needle, limit, allows);
       if (!hits.length) {
         return text(`No type or field matches '${args.query}'.`, maxChars);
@@ -298,7 +298,7 @@ function executeTool(
         return invalidDocument(errors);
       }
 
-      const operationName = args.operationName as string | undefined;
+      const operationName = stringOf(args.operationName);
       const picked = pickOperation(parsed.document, operationName);
       if ('error' in picked) {
         return errorText(picked.error);
@@ -328,6 +328,7 @@ function executeTool(
       const context = await deps.resolveContext?.(extra);
       const result = await runExecutor(deps.executor, {
         query,
+        // Cast: the input schema has already checked this is a record.
         variables: (args.variables as Record<string, unknown> | undefined) ?? {},
         ...(operationName ? { operationName } : {}),
         context,
@@ -395,7 +396,12 @@ function pickOperation(
     return { error: `The document defines multiple operations (${names}) — pass operationName.` };
   }
   // Length is exactly 1 here.
-  return { operation: operations[0] as OperationDefinitionNode };
+  return { operation: operations[0] };
+}
+
+/** An optional string argument; the tool's input schema has already checked it. */
+function stringOf(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
 }
 
 function tryParse(query: string): { document: DocumentNode } | { error: string } {

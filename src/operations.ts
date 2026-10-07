@@ -26,10 +26,11 @@
 import {
   type DocumentNode,
   type GraphQLArgument,
-  type GraphQLInputType,
+  GraphQLError,
   type GraphQLSchema,
   isInputType,
   Kind,
+  type NameNode,
   NoUnusedFragmentsRule,
   type OperationDefinitionNode,
   parse,
@@ -135,9 +136,7 @@ export function buildOperationTools(
   operations: OperationsInput,
   options: BuildOperationToolsOptions = {},
 ): ToolDescriptor[] {
-  const sources = Array.isArray(operations)
-    ? (operations as ReadonlyArray<OperationSource>)
-    : [operations as OperationSource];
+  const sources = isSourceList(operations) ? operations : [operations];
   if (!sources.length) {
     return [];
   }
@@ -148,9 +147,10 @@ export function buildOperationTools(
   // `separateOperations` keys by operation name, and an anonymous operation
   // keys as `''` — so the check has to run over the definitions, before the
   // split silently collapses two anonymous operations into one entry.
-  const definitions = merged.definitions.filter(isOperation);
-  for (const definition of definitions) {
+  const definitions: NamedOperation[] = [];
+  for (const definition of merged.definitions.filter(isOperation)) {
     assertUsable(definition);
+    definitions.push(definition);
   }
   if (!definitions.length) {
     throw packageError(
@@ -160,10 +160,17 @@ export function buildOperationTools(
   }
 
   const separated = separateOperations(merged);
-  return definitions.map((definition) => {
-    const name = definition.name?.value as string;
-    return toDescriptor(schema, definition, separated[name] as DocumentNode, options);
-  });
+  return definitions.map((definition) =>
+    toDescriptor(schema, definition, separated[definition.name.value], options),
+  );
+}
+
+/** An operation {@link assertUsable} has passed: it has a name. */
+type NamedOperation = OperationDefinitionNode & { name: NameNode };
+
+/** `Array.isArray` alone does not narrow a readonly array out of a union. */
+function isSourceList(operations: OperationsInput): operations is ReadonlyArray<OperationSource> {
+  return Array.isArray(operations);
 }
 
 /** Parses every source into one document, keeping each node's original `loc`. */
@@ -172,24 +179,26 @@ function mergeDocuments(sources: ReadonlyArray<OperationSource>): DocumentNode {
   return { kind: Kind.DOCUMENT, definitions };
 }
 
+/** Already parsed, as opposed to text or a named `Source` still to parse. */
+function isDocument(source: OperationSource): source is DocumentNode {
+  return typeof source === 'object' && 'kind' in source && source.kind === Kind.DOCUMENT;
+}
+
 /** Parses one source, re-throwing a syntax error with the package's prefix. */
 function toDocument(source: OperationSource): DocumentNode {
-  if (typeof source === 'object' && 'kind' in source && source.kind === Kind.DOCUMENT) {
-    return source as DocumentNode;
+  if (isDocument(source)) {
+    return source;
   }
   try {
-    return parse(source as string | Source);
+    return parse(source);
   } catch (error) {
     // A `GraphQLError` carries the source it was thrown against, which is the
     // whole reason the option accepts a `Source`: without one the message says
     // *what* is wrong and gives no way to find *which file* it is wrong in.
-    const at = error as {
-      locations?: ReadonlyArray<{ line: number; column: number }>;
-      source?: { name: string };
-    };
+    const at = error instanceof GraphQLError ? error : undefined;
     throw packageError(
       `could not parse an \`operations\` document — ${messageOf(error)}` +
-        locationOf(at.locations?.[0], at.source?.name),
+        locationOf(at?.locations?.[0], at?.source?.name),
       { cause: error },
     );
   }
@@ -218,7 +227,7 @@ function assertValid(schema: GraphQLSchema, document: DocumentNode): void {
 }
 
 /** Refuses the two operation shapes that cannot become a tool. */
-function assertUsable(definition: OperationDefinitionNode): void {
+function assertUsable(definition: OperationDefinitionNode): asserts definition is NamedOperation {
   const where = locationOf(definition.loc?.startToken, definition.loc?.source.name);
   if (!definition.name) {
     throw packageError(
@@ -237,11 +246,11 @@ function assertUsable(definition: OperationDefinitionNode): void {
 /** Projects one operation into a descriptor. */
 function toDescriptor(
   schema: GraphQLSchema,
-  definition: OperationDefinitionNode,
+  definition: NamedOperation,
   document: DocumentNode,
   options: BuildOperationToolsOptions,
 ): ToolDescriptor {
-  const operationName = definition.name?.value as string;
+  const operationName = definition.name.value;
   const kind = kindOf(definition);
   const variables = definition.variableDefinitions ?? [];
   const args = variables.map((variable) => toArgument(schema, variable));
@@ -306,6 +315,7 @@ function toInputSchema(
       return;
     }
     const name = args[index].name;
+    // Cast: every Zod schema has `optional()`; the cross-major alias does not declare it.
     shape[name] = (shape[name] as AnyZodType & { optional(): AnyZodType }).optional();
   });
   return shape;
@@ -334,7 +344,7 @@ function toArgument(schema: GraphQLSchema, variable: VariableDefinitionNode): Gr
   return {
     name,
     description: leadingComments(variable).join(' ') || undefined,
-    type: type as GraphQLInputType,
+    type,
     defaultValue: undefined,
     deprecationReason: undefined,
     extensions: Object.create(null),
