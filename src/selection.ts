@@ -10,7 +10,8 @@
  * Two things are deliberately skipped (see issue #12): fields that require
  * arguments (we can't invent argument values) and types already on the current
  * path (cycle guard). An interface contributes only its own fields, not those of
- * its implementations — issue #11, which `outputSchema.ts` must move in step with.
+ * its implementations — issue #11. `returnedFields` holds these rules once, for
+ * this module and for `outputSchema.ts`.
  */
 
 import {
@@ -72,13 +73,39 @@ function selectionFor(named: GraphQLNamedType, depth: number, path: ReadonlySet<
   return '';
 }
 
-/** Joins the selectable fields of an object/interface type, always ending with `__typename`. */
-function compositeFields(
+/** One field the returnable-field walk kept, with what a renderer needs to descend into it. */
+export interface ReturnedField {
+  /** The field's name on its parent type. */
+  name: string;
+  /** The field's declared return type, wrappers included. */
+  type: GraphQLOutputType;
+  /** Its description from the schema, if any. */
+  description: string | null | undefined;
+  /** The return type with list and non-null wrappers removed. */
+  named: GraphQLNamedType;
+  /** `true` for a scalar or enum, which takes no selection of its own. */
+  isLeaf: boolean;
+  /** Object levels left for rendering `named`. */
+  depth: number;
+  /** Type names already on the way down to `named`. */
+  path: ReadonlySet<string>;
+}
+
+/**
+ * Decides which fields of a composite type come back. This is the single rule
+ * set behind both the selection set and the output schema describing it.
+ *
+ * @param type - The object or interface type whose fields are walked.
+ * @param depth - Object levels left, counting `type` itself.
+ * @param path - Type names already on the way down to `type`.
+ * @returns The kept fields in schema order; `__typename` is the renderer's to add.
+ */
+export function returnedFields(
   type: GraphQLObjectType | GraphQLInterfaceType,
   depth: number,
   path: ReadonlySet<string>,
-): string {
-  const selected: string[] = [];
+): ReturnedField[] {
+  const returned: ReturnedField[] = [];
   const nextPath = new Set(path).add(type.name);
   for (const [name, field] of Object.entries(type.getFields())) {
     // Can't auto-select a field that requires arguments we don't have.
@@ -86,17 +113,33 @@ function compositeFields(
       continue;
     }
     const named = getNamedType(field.type);
+    const shared = { name, type: field.type, description: field.description, named };
     if (isScalarType(named) || isEnumType(named)) {
-      selected.push(name);
+      returned.push({ ...shared, isLeaf: true, depth, path });
       continue;
     }
     // A composite field: only descend if we have depth left and aren't cycling.
     if (depth <= 1 || path.has(named.name)) {
       continue;
     }
-    const sub = selectionFor(named, depth - 1, nextPath);
-    if (sub) {
-      selected.push(`${name} ${sub}`);
+    returned.push({ ...shared, isLeaf: false, depth: depth - 1, path: nextPath });
+  }
+  return returned;
+}
+
+/** Joins the selectable fields of an object/interface type, always ending with `__typename`. */
+function compositeFields(
+  type: GraphQLObjectType | GraphQLInterfaceType,
+  depth: number,
+  path: ReadonlySet<string>,
+): string {
+  const selected: string[] = [];
+  for (const field of returnedFields(type, depth, path)) {
+    const sub = selectionFor(field.named, field.depth, field.path);
+    if (field.isLeaf) {
+      selected.push(field.name);
+    } else if (sub) {
+      selected.push(`${field.name} ${sub}`);
     }
   }
   selected.push('__typename');

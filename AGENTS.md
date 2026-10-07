@@ -379,7 +379,9 @@ src/
   a Zod schema for what the generated operation actually returns, so it obeys the
   same skip/depth/cycle rules and is driven by the *same* `selectionDepth` —
   there is no separate depth option, because a schema describing fields the query
-  never selects would be wrong. Change one module and change the other.
+  never selects would be wrong. The rules live once, in `returnedFields`
+  (`selection.ts`), which both modules walk; a test in `outputSchema.test.ts`
+  compares the two path by path.
 - **One place formats results: `result.ts`.** Generated tools and the `execute`
   meta tool both hand their `GraphqlResult` to `toCallToolResult`, so success,
   failure, and size read the same everywhere. Three rules live there, all about

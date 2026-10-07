@@ -4,10 +4,9 @@
  *
  * It must mirror `selection.ts` exactly, because the selection set is what the
  * tool actually asks for: a schema describing fields the query never fetches
- * would be a lie. So the same three rules apply, for the same reasons — fields
- * requiring arguments are skipped, composite fields past `maxDepth` or already
- * on the current path are *omitted* (not stubbed), and `__typename` is always
- * present.
+ * would be a lie. So both walk the same `returnedFields` — fields requiring
+ * arguments are skipped, composite fields past `maxDepth` or already on the
+ * current path are *omitted* (not stubbed) — and both always add `__typename`.
  *
  * Wrappers are carried over faithfully: `List` → `z.array(...)`, `NonNull` →
  * required, and a nullable field → `.nullable()` (GraphQL includes a selected
@@ -32,7 +31,7 @@ import {
   isUnionType,
 } from 'graphql';
 import { z } from 'zod';
-import { DEFAULT_SELECTION_DEPTH } from './selection.ts';
+import { DEFAULT_SELECTION_DEPTH, returnedFields } from './selection.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
 import { builtinScalar, type ScalarMapping, type ScalarResolver, toResolver } from './zodSchema.ts';
 
@@ -100,26 +99,10 @@ function compositeFields(
   scalar: ScalarResolver,
 ): ZodShape {
   const shape: ZodShape = {};
-  const nextPath = new Set(path).add(type.name);
-  for (const [name, field] of Object.entries(type.getFields())) {
-    // Can't auto-select a field that requires arguments we don't have.
-    if (field.args.some((arg) => isNonNullType(arg.type) && arg.defaultValue === undefined)) {
-      continue;
-    }
-    const named = getNamedType(field.type);
-    if (isScalarType(named) || isEnumType(named)) {
-      const leaf = schemaFor(named, depth, path, scalar);
-      if (leaf) shape[name] = describe(wrapField(field.type, leaf), field.description);
-      continue;
-    }
-    // A composite field: only descend if we have depth left and aren't cycling.
-    // Otherwise it is left out entirely — the query won't select it either.
-    if (depth <= 1 || path.has(named.name)) {
-      continue;
-    }
-    const sub = schemaFor(named, depth - 1, nextPath, scalar);
-    if (sub) {
-      shape[name] = describe(wrapField(field.type, sub), field.description);
+  for (const field of returnedFields(type, depth, path)) {
+    const inner = schemaFor(field.named, field.depth, field.path, scalar);
+    if (inner) {
+      shape[field.name] = describe(wrapField(field.type, inner), field.description);
     }
   }
   shape.__typename = isObjectType(type) ? z.literal(type.name) : z.string();
