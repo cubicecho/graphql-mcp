@@ -42,12 +42,12 @@ import {
   validate,
 } from 'graphql';
 import { z } from 'zod';
-import { buildArgExample, DEFAULT_EXAMPLE_DEPTH } from './argExample.ts';
+import { DEFAULT_EXAMPLE_DEPTH } from './argExample.ts';
 import { paginationHint } from './pagination.ts';
 import {
   annotationsFor,
   applyNameCase,
-  describeArgument,
+  describeArguments,
   humanize,
   type MutationHints,
   type NameCase,
@@ -358,22 +358,9 @@ function buildDescription(
   const lines: string[] = [];
   const comments = leadingComments(definition);
   lines.push(comments.join('\n') || `The \`${operationName}\` ${kind}.`);
-  if (args.length) {
-    // The same renderer and the same caveat the generated path uses, so a
-    // curated tool and a generated one read identically argument for argument.
-    const examples = args.map((arg) => buildArgExample(arg, exampleDepth));
-    lines.push('');
-    lines.push(
-      examples.some(Boolean)
-        ? 'Arguments (`shape:` shows a minimal JSON example — required fields only):'
-        : 'Arguments:',
-    );
-    args.forEach((arg, index) => {
-      lines.push(`- ${describeArgument(arg, nullBranches)}`);
-      const example = examples[index];
-      if (example) lines.push(`  shape: ${example}`);
-    });
-  }
+  // The same renderer and the same caveat the generated path uses, so a
+  // curated tool and a generated one read identically argument for argument.
+  lines.push(...describeArguments(args, nullBranches, exampleDepth));
   lines.push('');
   lines.push('Runs this operation (written by hand — the selection is not requestable):');
   lines.push(query);

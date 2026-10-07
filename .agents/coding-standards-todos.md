@@ -49,7 +49,7 @@ what it returns; one session lifecycle serves both transports."
 | T1 | Test [pin] | Adds a test that the generated selection and the output schema name exactly the same fields at depths 1–3 on the fixture schema. | Protects R1; guards a hand-synced pair today | — | done |
 | R1 | Refactor [reuse] | Selection set and output schema are produced from one walk over returnable fields instead of two copies of the rules. | M2 | T1 | done |
 | R2 | Refactor [reuse] | The HTTP and fetch handlers share one session lifecycle; each keeps only its request/response translation. | M1 | — | open |
-| R3 | Refactor [reuse] | Generated tools and operation tools build the "Arguments" part of a description with one function. | M3 | — | open |
+| R3 | Refactor [reuse] | Generated tools and operation tools build the "Arguments" part of a description with one function. | M3 | — | done |
 | R4 | Refactor [sweep] | Merges 12 small helper pairs that exist twice (describe, enum-to-zod, scalar lookup, error text, kind-from-operation, and others). | P6 sweep | — | open |
 | R5 | Refactor [readability] | Splits the 60-line closure inside `buildTools` into named steps and renames single-letter parameters. | The hottest file (24 commits/yr) reads as its pipeline | — | open |
 | R6 | Refactor [pattern] | Internal functions taking 5–7 positional arguments take one named-field object instead. | Call sites stop depending on argument order | — | open |

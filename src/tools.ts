@@ -657,24 +657,7 @@ function buildDescription(
   }
   lines.push('');
   lines.push(`GraphQL ${kind}: \`${field.name}\` → \`${field.type.toString()}\``);
-  if (field.args.length) {
-    const examples = field.args.map((arg) => buildArgExample(arg, exampleDepth));
-    lines.push('');
-    // The caveat rides on the header, once per tool rather than once per
-    // argument, and only where there is an example for it to qualify.
-    lines.push(
-      examples.some(Boolean)
-        ? 'Arguments (`shape:` shows a minimal JSON example — required fields only):'
-        : 'Arguments:',
-    );
-    field.args.forEach((arg, index) => {
-      lines.push(`- ${describeArgument(arg, nullBranches)}`);
-      // Its own line, never appended to the argument line: the default there is
-      // a GraphQL literal, and two syntaxes running together read as one.
-      const example = examples[index];
-      if (example) lines.push(`  shape: ${example}`);
-    });
-  }
+  lines.push(...describeArguments(field.args, nullBranches, exampleDepth));
   // The return type alone doesn't tell an agent which fields arrive: the
   // selection is built automatically and truncated at `selectionDepth`, so a
   // nested object may come back with only some of its fields. Show the real
@@ -685,6 +668,40 @@ function buildDescription(
     lines.push(selection);
   }
   return lines.join('\n');
+}
+
+/**
+ * The "Arguments" block of a tool description: a header, then one line per
+ * argument with its `shape:` example beneath it. Exported for sibling modules
+ * on the same terms as {@link describeArgument}.
+ *
+ * @param args - The arguments to list, in declaration order.
+ * @param nullBranches - The null-branch setting the input schema was built at.
+ * @param exampleDepth - Object levels a `shape:` example descends; `0` omits them.
+ * @returns The block's lines, led by a blank separator; empty when there are no arguments.
+ */
+export function describeArguments(
+  args: ReadonlyArray<GraphQLArgument>,
+  nullBranches: NullBranchesSetting,
+  exampleDepth: number,
+): string[] {
+  if (args.length === 0) {
+    return [];
+  }
+  const examples = args.map((arg) => buildArgExample(arg, exampleDepth));
+  // The caveat rides on the header, once per tool rather than once per
+  // argument, and only where there is an example for it to qualify.
+  const header = examples.some(Boolean)
+    ? 'Arguments (`shape:` shows a minimal JSON example — required fields only):'
+    : 'Arguments:';
+  // An example takes its own line, never appended to the argument line: the
+  // default there is a GraphQL literal, and two syntaxes together read as one.
+  const listed = args.flatMap((arg, index) => {
+    const line = `- ${describeArgument(arg, nullBranches)}`;
+    const example = examples[index];
+    return example ? [line, `  shape: ${example}`] : [line];
+  });
+  return ['', header, ...listed];
 }
 
 /**
