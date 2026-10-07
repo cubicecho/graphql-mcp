@@ -39,10 +39,7 @@ import { DEFAULT_SELECTION_DEPTH } from './defaults.ts';
  *   the return type only; `2` (default) also expands one level of nested objects.
  * @returns The selection set string, or `''` for a leaf return type.
  */
-export function buildSelectionSet(
-  type: GraphQLOutputType,
-  maxDepth = DEFAULT_SELECTION_DEPTH,
-): string {
+export function buildSelectionSet(type: GraphQLOutputType, maxDepth = DEFAULT_SELECTION_DEPTH): string {
   return selectionFor(getNamedType(type), maxDepth, new Set());
 }
 

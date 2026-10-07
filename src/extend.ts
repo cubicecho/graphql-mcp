@@ -81,10 +81,7 @@ export function stripRootTypes(schema: GraphQLSchema): GraphQLSchema {
  * @throws If `typesOnly` is set but the result has no `Query` type — with the
  *   base root types dropped, `typeDefs` has to declare the operation surface.
  */
-export function extendSchemaForMcp(
-  schema: GraphQLSchema,
-  extension: SchemaExtension,
-): GraphQLSchema {
+export function extendSchemaForMcp(schema: GraphQLSchema, extension: SchemaExtension): GraphQLSchema {
   const base = extension.typesOnly ? stripRootTypes(schema) : schema;
   const merged = mergeSchemas({
     schemas: [base],

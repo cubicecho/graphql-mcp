@@ -12,11 +12,7 @@
 import type { GraphQLArgument, GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
 import { isNonNullType, print } from 'graphql';
 import { buildArgExample } from './arg-example.ts';
-import {
-  DEFAULT_EXAMPLE_DEPTH,
-  DEFAULT_NULL_BRANCHES,
-  DEFAULT_SELECTION_DEPTH,
-} from './defaults.ts';
+import { DEFAULT_EXAMPLE_DEPTH, DEFAULT_NULL_BRANCHES, DEFAULT_SELECTION_DEPTH } from './defaults.ts';
 import { packageError } from './errors.ts';
 import { buildOperation } from './operation.ts';
 import { buildOutputSchema } from './output-schema.ts';
@@ -420,10 +416,7 @@ export interface BuildToolsOptions {
  *   `extensions.mcp.name`, `decorate`, or a filtering option. Also if an
  *   `include`/`exclude` pattern has a prefix other than `Query`/`Mutation`.
  */
-export function buildTools(
-  schema: GraphQLSchema,
-  options: BuildToolsOptions = {},
-): ToolDescriptor[] {
+export function buildTools(schema: GraphQLSchema, options: BuildToolsOptions = {}): ToolDescriptor[] {
   const { includeQueries = true, includeMutations = true } = options;
   const isExposed = exposureOf(options);
   const roots: ReadonlyArray<[GraphQLObjectType | null | undefined, OperationKind]> = [
@@ -480,9 +473,7 @@ function mcpExtensionsOf(field: RootField): McpFieldExtensions | undefined {
  *   `exclude` and `filter`.
  * @returns A predicate over a root field and its kind.
  */
-function exposureOf(
-  options: BuildToolsOptions,
-): (field: RootField, kind: OperationKind) => boolean {
+function exposureOf(options: BuildToolsOptions): (field: RootField, kind: OperationKind) => boolean {
   const { includeDeprecated = true } = options;
   // A present-but-empty `include` denies everything (matching `compileRules([])`);
   // only an omitted `include` keeps every field.
@@ -602,10 +593,7 @@ function decorated(descriptor: ToolDescriptor, decoration: Decoration): ToolDesc
  * `annotations.title` unless the patch sets that itself — the SDK advertises
  * both, so they must not drift apart.
  */
-function applyPatch(
-  descriptor: ToolDescriptor,
-  patch: ToolDescriptor | Partial<ToolDescriptor>,
-): ToolDescriptor {
+function applyPatch(descriptor: ToolDescriptor, patch: ToolDescriptor | Partial<ToolDescriptor>): ToolDescriptor {
   // Setting `inputSchema` says the advertised shape is no longer the field's
   // arguments; leaving `description` says the prose still describes the old
   // ones — down to the `shape:` examples, which would confidently show a
@@ -633,10 +621,7 @@ function applyPatch(
 }
 
 /** Overlays `field.extensions.mcp` metadata onto the SDL-derived descriptor. */
-function applyExtensions(
-  descriptor: ToolDescriptor,
-  extensions: McpFieldExtensions,
-): ToolDescriptor {
+function applyExtensions(descriptor: ToolDescriptor, extensions: McpFieldExtensions): ToolDescriptor {
   let description = extensions.description ?? descriptor.description;
   if (extensions.appendDescription) {
     description = `${description}\n\n${extensions.appendDescription}`;
@@ -837,8 +822,7 @@ export function describeArgument(
   // only warn about null where null can still be sent (`nullBranches: 'never'`
   // rejects it outright, so the warning would describe an impossible call).
   if (fallback) {
-    const nullable =
-      isNonNullType(arg.type) === false && branchesAt(nullBranches, arg.type) !== 'never';
+    const nullable = isNonNullType(arg.type) === false && branchesAt(nullBranches, arg.type) !== 'never';
     parts.push(
       nullable
         ? `(omit for the default \`${fallback}\`; an explicit \`null\` is sent as null)`

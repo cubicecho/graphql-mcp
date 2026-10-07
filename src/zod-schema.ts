@@ -105,10 +105,7 @@ export type NullBranchesSetting = NullBranches | NullBranchesByType;
  * builder does — prose that warns about sending an explicit `null` where the
  * schema now rejects one is a tool that lies about itself.
  */
-export function branchesAt(
-  setting: NullBranchesSetting | undefined,
-  type: GraphQLInputType,
-): NullBranches {
+export function branchesAt(setting: NullBranchesSetting | undefined, type: GraphQLInputType): NullBranches {
   if (setting === undefined) {
     return DEFAULT_NULL_BRANCHES;
   }
@@ -179,10 +176,7 @@ export interface ZodShapeOptions {
  * Decides whether one field of an input object is advertised. See
  * {@link ZodShapeOptions.inputField}.
  */
-export type InputFieldFilter = (
-  field: GraphQLInputField,
-  parent: GraphQLInputObjectType,
-) => boolean;
+export type InputFieldFilter = (field: GraphQLInputField, parent: GraphQLInputObjectType) => boolean;
 
 const SCALAR_BUILDERS: Record<string, () => AnyZodType> = {
   Int: () => z.number().int(),
@@ -210,9 +204,7 @@ export function builtinScalar(type: GraphQLScalarType): AnyZodType {
     return builder();
   }
   const hint = type.description?.trim();
-  return z
-    .any()
-    .describe(hint ? `Custom scalar ${type.name} — ${hint}` : `Custom scalar ${type.name}`);
+  return z.any().describe(hint ? `Custom scalar ${type.name} — ${hint}` : `Custom scalar ${type.name}`);
 }
 
 /** Recursion state: the input-object cycle guard, the memo, and the render options. */
@@ -267,11 +259,7 @@ export function toResolver(mapping: ScalarMapping | undefined): ScalarResolver {
  * in a JSON array — so `.nullable()` is the only way to say `[String]` permits
  * nulls, and dropping it there would change the type rather than compress it.
  */
-function fieldToZod(
-  type: GraphQLInputType,
-  ctx: Ctx,
-  position: 'property' | 'element',
-): AnyZodType {
+function fieldToZod(type: GraphQLInputType, ctx: Ctx, position: 'property' | 'element'): AnyZodType {
   if (isNonNullType(type)) {
     return baseToZod(type.ofType, ctx);
   }
@@ -333,10 +321,7 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
         // reached only through a pruned field never enters `definitions`.
         continue;
       }
-      shape[name] = withArgDefault(
-        describe(fieldToZod(field.type, ctx, 'property'), field.description),
-        field,
-      );
+      shape[name] = withArgDefault(describe(fieldToZod(field.type, ctx, 'property'), field.description), field);
     }
     ctx.pending.delete(type.name);
     // `.strict()`, not the default `strip`: the JSON Schema the SDK renders from
@@ -423,10 +408,7 @@ export function defaultJsonOf(source: GraphQLArgument | GraphQLInputField): unkn
  * Advisory only — see {@link withDefault} for why this is metadata rather than
  * a Zod `.default()`.
  */
-function withArgDefault(
-  schema: AnyZodType,
-  source: GraphQLArgument | GraphQLInputField,
-): AnyZodType {
+function withArgDefault(schema: AnyZodType, source: GraphQLArgument | GraphQLInputField): AnyZodType {
   const value = defaultJsonOf(source);
   return value === undefined ? schema : withDefault(schema, value);
 }
@@ -441,10 +423,7 @@ function withArgDefault(
  * @param options - Scalar mapping overrides.
  * @returns A Zod raw shape; empty (`{}`) for a field with no arguments.
  */
-export function argsToZodShape(
-  args: ReadonlyArray<GraphQLArgument>,
-  options: ZodShapeOptions = {},
-): ZodShape {
+export function argsToZodShape(args: ReadonlyArray<GraphQLArgument>, options: ZodShapeOptions = {}): ZodShape {
   // Both maps live for this call only: the memo is keyed by type name alone, and
   // a different `scalars` mapping or `nullBranches` setting would give the same
   // name a different schema.
@@ -457,10 +436,7 @@ export function argsToZodShape(
   };
   const shape: ZodShape = {};
   for (const arg of args) {
-    shape[arg.name] = withArgDefault(
-      describe(fieldToZod(arg.type, ctx, 'property'), arg.description),
-      arg,
-    );
+    shape[arg.name] = withArgDefault(describe(fieldToZod(arg.type, ctx, 'property'), arg.description), arg);
   }
   return shape;
 }

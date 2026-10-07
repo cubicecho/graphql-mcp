@@ -40,15 +40,12 @@ export function compileRules(patterns: readonly string[]): RuleMatcher {
     const prefix = pattern.slice(0, dot);
     const kind = PREFIX_KINDS[prefix];
     if (!kind) {
-      throw packageError(
-        `invalid rule pattern '${pattern}' — prefix must be 'Query' or 'Mutation'.`,
-      );
+      throw packageError(`invalid rule pattern '${pattern}' — prefix must be 'Query' or 'Mutation'.`);
     }
     return { kind, regex: globToRegex(pattern.slice(dot + 1)) };
   });
 
-  return (fieldName, kind) =>
-    compiled.some((rule) => (!rule.kind || rule.kind === kind) && rule.regex.test(fieldName));
+  return (fieldName, kind) => compiled.some((rule) => (!rule.kind || rule.kind === kind) && rule.regex.test(fieldName));
 }
 
 /** `delete*` → `/^delete.*$/` — escape everything, then let `*` match any run. */

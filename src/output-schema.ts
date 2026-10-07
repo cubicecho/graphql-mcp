@@ -81,9 +81,7 @@ function schemaFor(
   if (isUnionType(named)) {
     // The selection set emits an inline fragment per member, so a result matches
     // exactly one member — told apart by the `__typename` literal each carries.
-    const members = named
-      .getTypes()
-      .map((member) => z.object(compositeFields(member, depth, path, scalar)));
+    const members = named.getTypes().map((member) => z.object(compositeFields(member, depth, path, scalar)));
     const [first, second, ...rest] = members;
     if (!first) {
       return undefined;

@@ -28,10 +28,7 @@ export interface LocalExecutorOptions {
  * @param schema - The executable schema to run against.
  * @param options - Default root/context values.
  */
-export function createLocalExecutor(
-  schema: GraphQLSchema,
-  options: LocalExecutorOptions = {},
-): GraphqlExecutor {
+export function createLocalExecutor(schema: GraphQLSchema, options: LocalExecutorOptions = {}): GraphqlExecutor {
   return async ({ query, variables, operationName, context }) => {
     const result = await execute({
       schema,
@@ -65,14 +62,10 @@ export interface HttpExecutorOptions {
  * @param endpoint - The GraphQL endpoint URL.
  * @param options - Header and `fetch` overrides.
  */
-export function createHttpExecutor(
-  endpoint: string,
-  options: HttpExecutorOptions = {},
-): GraphqlExecutor {
+export function createHttpExecutor(endpoint: string, options: HttpExecutorOptions = {}): GraphqlExecutor {
   const doFetch = options.fetch ?? globalThis.fetch;
   return async ({ query, variables, operationName, context }) => {
-    const extra =
-      typeof options.headers === 'function' ? options.headers(context) : options.headers;
+    const extra = typeof options.headers === 'function' ? options.headers(context) : options.headers;
     const response = await doFetch(endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json', ...extra },

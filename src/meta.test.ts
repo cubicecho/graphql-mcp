@@ -15,10 +15,7 @@ import type { CustomTool } from './server.ts';
 
 function makeTools(options: MetaToolsOptions = {}): Map<string, CustomTool> {
   const { schema, root } = makeTodoSchema();
-  const tools = buildMetaTools(
-    { schema, executor: createLocalExecutor(schema, { rootValue: root }) },
-    options,
-  );
+  const tools = buildMetaTools({ schema, executor: createLocalExecutor(schema, { rootValue: root }) }, options);
   return new Map(tools.map((tool) => [tool.name, tool]));
 }
 
@@ -128,9 +125,7 @@ describe('graphql_search', () => {
   });
 
   test('hides root fields the rules deny', async () => {
-    const out = bodyOf(
-      await call(makeTools({ exclude: ['createTodo'] }), 'graphql_search', { query: 'todo' }),
-    );
+    const out = bodyOf(await call(makeTools({ exclude: ['createTodo'] }), 'graphql_search', { query: 'todo' }));
     assert.doesNotMatch(out, /Mutation\.createTodo/);
     assert.match(out, /Query\.todos\(/);
   });
@@ -200,8 +195,7 @@ describe('graphql_execute', () => {
 
   test('runs a mutation when allowed', async () => {
     const result = await call(makeTools(), 'graphql_execute', {
-      query:
-        'mutation { createTodo(input: { userId: "u1", description: "fresh" }) { description } }',
+      query: 'mutation { createTodo(input: { userId: "u1", description: "fresh" }) { description } }',
     });
     assert.equal(result.isError, false);
     const { data } = JSON.parse(bodyOf(result));
@@ -332,8 +326,7 @@ describe('graphql_execute rule enforcement', () => {
 
   test('a nested fragment spread cannot hide a denied field either', async () => {
     const result = await call(makeTools({ exclude: ['todo'] }), 'graphql_execute', {
-      query:
-        '{ ...Outer } fragment Outer on Query { ...Inner } fragment Inner on Query { todo(id: "x") { id } }',
+      query: '{ ...Outer } fragment Outer on Query { ...Inner } fragment Inner on Query { todo(id: "x") { id } }',
     });
     assert.equal(result.isError, true);
     assert.match(bodyOf(result), /Not permitted: `todo`/);

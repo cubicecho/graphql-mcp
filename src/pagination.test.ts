@@ -86,10 +86,7 @@ describe('detectPagination', () => {
   });
 
   test('does not mistake ordinary arguments for paging', () => {
-    assert.equal(
-      detectPagination(argsOf('id: String!, status: String, orderBy: String')),
-      undefined,
-    );
+    assert.equal(detectPagination(argsOf('id: String!, status: String, orderBy: String')), undefined);
   });
 });
 
@@ -110,10 +107,7 @@ describe('paginationHint', () => {
   });
 
   test('drops the second clause when there is only a limiter', () => {
-    assert.equal(
-      paginationHint(argsOf('first: Int')),
-      'This field paginates: pass `first` to cap the page size.',
-    );
+    assert.equal(paginationHint(argsOf('first: Int')), 'This field paginates: pass `first` to cap the page size.');
   });
 
   test('is undefined for a field that does not paginate', () => {

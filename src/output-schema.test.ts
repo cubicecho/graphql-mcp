@@ -55,13 +55,9 @@ describe('buildOutputSchema leaf types', () => {
   });
 
   test('the scalars option retypes custom scalars on the output side', () => {
-    const schema = buildOutputSchema(
-      fieldType('scalar DateTime type Query { at: DateTime! }', 'at'),
-      2,
-      {
-        DateTime: z.string(),
-      },
-    );
+    const schema = buildOutputSchema(fieldType('scalar DateTime type Query { at: DateTime! }', 'at'), 2, {
+      DateTime: z.string(),
+    });
     assert.equal(schema.parse('2026-08-30'), '2026-08-30');
     assert.throws(() => schema.parse(123));
   });
@@ -69,9 +65,7 @@ describe('buildOutputSchema leaf types', () => {
 
 describe('buildOutputSchema object types', () => {
   test('scalar leaves are typed and __typename is a literal', () => {
-    const schema = buildOutputSchema(
-      fieldType('type T { a: String b: Int! } type Query { t: T! }', 't'),
-    );
+    const schema = buildOutputSchema(fieldType('type T { a: String b: Int! } type Query { t: T! }', 't'));
     const shape = unwrap(schema).shape;
     assert.equal(shape.a.parse('hello'), 'hello');
     assert.equal(shape.b.parse(42), 42);
@@ -244,11 +238,7 @@ function selectedPaths(selectionSet: SelectionSetNode, prefix = ''): string[] {
 /** Dotted paths of every key an output schema describes, union members flattened into their parent. */
 function describedPaths(schema: AnyZodType, prefix = ''): string[] {
   let current: AnyZodType = schema;
-  while (
-    current instanceof z.ZodNullable ||
-    current instanceof z.ZodOptional ||
-    current instanceof z.ZodArray
-  ) {
+  while (current instanceof z.ZodNullable || current instanceof z.ZodOptional || current instanceof z.ZodArray) {
     current = (current instanceof z.ZodArray ? current.element : current.unwrap()) as AnyZodType;
   }
   if (current instanceof z.ZodUnion) {

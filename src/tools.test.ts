@@ -35,12 +35,7 @@ describe('buildTools', () => {
   test("nameCase: 'preserve' keeps the field name verbatim", () => {
     const { schema } = makeTodoSchema();
     const tools = buildTools(schema, { nameCase: 'preserve' });
-    assert.deepEqual(tools.map((t) => t.name).sort(), [
-      'createTodo',
-      'setCompleted',
-      'todo',
-      'todos',
-    ]);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ['createTodo', 'setCompleted', 'todo', 'todos']);
   });
 
   test('the title and description keep the real field name', () => {
@@ -66,10 +61,7 @@ describe('buildTools', () => {
     });
     const names = tools.map((t) => t.name);
     assert.ok(names.includes('fetch_one_todo'));
-    assert.ok(
-      names.includes('create_todo'),
-      `expected the default casing, got ${names.join(', ')}`,
-    );
+    assert.ok(names.includes('create_todo'), `expected the default casing, got ${names.join(', ')}`);
   });
 
   test('declining still respects nameCase, rather than the built-in default', () => {
@@ -261,14 +253,9 @@ describe('buildTools decorate', () => {
     const { schema } = makeTodoSchema();
     const tools = buildTools(schema, {
       decorate: (descriptor, _field, kind) =>
-        kind === 'mutation'
-          ? { description: `${descriptor.description}\n\nAsk before writing.` }
-          : undefined,
+        kind === 'mutation' ? { description: `${descriptor.description}\n\nAsk before writing.` } : undefined,
     });
-    assert.match(
-      tools.find((t) => t.name === 'create_todo')?.description ?? '',
-      /Ask before writing\.$/,
-    );
+    assert.match(tools.find((t) => t.name === 'create_todo')?.description ?? '', /Ask before writing\.$/);
     assert.doesNotMatch(tools.find((t) => t.name === 'todo')?.description ?? '', /Ask before/);
   });
 
@@ -291,10 +278,7 @@ describe('buildTools decorate', () => {
 
   test('a rename collision introduced by decorate throws', () => {
     const { schema } = makeTodoSchema();
-    assert.throws(
-      () => buildTools(schema, { decorate: () => ({ name: 'same' }) }),
-      /duplicate tool name 'same'/,
-    );
+    assert.throws(() => buildTools(schema, { decorate: () => ({ name: 'same' }) }), /duplicate tool name 'same'/);
   });
 
   test('a patched title also updates annotations.title', () => {
@@ -310,8 +294,7 @@ describe('buildTools decorate', () => {
   test('patched annotations merge over the defaults', () => {
     const { schema } = makeTodoSchema();
     const tools = buildTools(schema, {
-      decorate: (d) =>
-        d.kind === 'mutation' ? { annotations: { destructiveHint: false } } : undefined,
+      decorate: (d) => (d.kind === 'mutation' ? { annotations: { destructiveHint: false } } : undefined),
     });
     const createTodo = tools.find((t) => t.name === 'create_todo');
     assert.equal(createTodo?.annotations.destructiveHint, false);
@@ -509,16 +492,11 @@ describe('buildTools argument defaults', () => {
   test('a nullable default says that an explicit null is not a request for it', () => {
     // GraphQL treats a passed `null` as null, not as "use the default". An agent
     // reading "default: 10" and sending null to mean "no preference" gets null.
-    assert.match(
-      description(),
-      /`limit`: `Int` \(omit for the default `10`; an explicit `null` is sent as null\)/,
-    );
+    assert.match(description(), /`limit`: `Int` \(omit for the default `10`; an explicit `null` is sent as null\)/);
   });
 
   test("nullBranches: 'never' drops the null caveat, since null can no longer be sent", () => {
-    const list = buildTools(buildSchema(sdl), { nullBranches: 'never' }).find(
-      (t) => t.name === 'list',
-    );
+    const list = buildTools(buildSchema(sdl), { nullBranches: 'never' }).find((t) => t.name === 'list');
     assert.match(list?.description ?? '', /`limit`: `Int` \(omit for the default `10`\)/);
     assert.doesNotMatch(list?.description ?? '', /explicit `null`/);
   });
@@ -621,9 +599,7 @@ describe('buildTools per-field selection depth', () => {
   });
 
   test('a callback sets the depth per field', () => {
-    const tools = byName(
-      buildTools(schema, { selectionDepth: (field) => (field.name === 'tasks' ? 1 : 2) }),
-    );
+    const tools = byName(buildTools(schema, { selectionDepth: (field) => (field.name === 'tasks' ? 1 : 2) }));
 
     const tasks = tools.get('tasks');
     const triggers = tools.get('triggers');
@@ -683,10 +659,7 @@ describe('buildTools per-field selection depth', () => {
     assert.equal(triggers?.selectionDepth, 2);
     assert.match(triggers?.query ?? '', /task \{/);
     assert.match(triggers?.description ?? '', /task \{/);
-    assert.equal(
-      triggers?.outputSchema.safeParse([{ id: '1', cron: '*', __typename: 'Trigger' }]).success,
-      false,
-    );
+    assert.equal(triggers?.outputSchema.safeParse([{ id: '1', cron: '*', __typename: 'Trigger' }]).success, false);
     // The undecorated neighbour is untouched.
     assert.equal(tools.get('tasks')?.selectionDepth, 1);
     assert.doesNotMatch(tools.get('tasks')?.query ?? '', /runs \{/);
@@ -789,13 +762,9 @@ describe('buildTools argument shape examples', () => {
   });
 
   test('a callback sets the depth per field', () => {
-    const tools = byName(
-      buildTools(schema, { exampleDepth: (field) => (field.name === 'tasks' ? 0 : 3) }),
-    );
+    const tools = byName(buildTools(schema, { exampleDepth: (field) => (field.name === 'tasks' ? 0 : 3) }));
     assert.deepEqual(examples(tools.get('tasks')?.description ?? ''), []);
-    assert.deepEqual(examples(tools.get('create_task')?.description ?? ''), [
-      ['input', '{"name":"string"}'],
-    ]);
+    assert.deepEqual(examples(tools.get('create_task')?.description ?? ''), [['input', '{"name":"string"}']]);
   });
 
   test('extensions.mcp.exampleDepth beats the option', () => {
@@ -983,9 +952,7 @@ describe('mutationHints', () => {
 
   const hintsOf = (mutationHints?: 'uniform' | 'byName') => {
     const tools = buildTools(schema, mutationHints ? { mutationHints } : {});
-    return new Map(
-      tools.map((t) => [t.name, [t.annotations.destructiveHint, t.annotations.idempotentHint]]),
-    );
+    return new Map(tools.map((t) => [t.name, [t.annotations.destructiveHint, t.annotations.idempotentHint]]));
   };
 
   test('every mutation is destructive by default', () => {
@@ -1051,8 +1018,7 @@ describe('mutationHints', () => {
     const tools = new Map(
       buildTools(annotated, {
         mutationHints: 'byName',
-        decorate: (d) =>
-          d.name === 'delete_task' ? { annotations: { idempotentHint: false } } : undefined,
+        decorate: (d) => (d.name === 'delete_task' ? { annotations: { idempotentHint: false } } : undefined),
       }).map((t) => [t.name, t]),
     );
     assert.equal(tools.get('create_task')?.annotations.destructiveHint, true);

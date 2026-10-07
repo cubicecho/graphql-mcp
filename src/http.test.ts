@@ -73,12 +73,7 @@ describe('createHttpHandler', () => {
   test('lists the schema tools over HTTP', async () => {
     const client = await connect(server.url);
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((t) => t.name).sort(), [
-      'create_todo',
-      'set_completed',
-      'todo',
-      'todos',
-    ]);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ['create_todo', 'set_completed', 'todo', 'todos']);
     await client.close();
   });
 
@@ -111,9 +106,7 @@ describe('createHttpHandler', () => {
     const client = await connect(server.url);
     await client.callTool({ name: 'todos', arguments: {} });
     // The executor saw a context built from contextFromRequest (auth header absent ⇒ null).
-    assert.ok(
-      seenContexts.some((ctx) => ctx !== undefined && (ctx as { auth: unknown }).auth === null),
-    );
+    assert.ok(seenContexts.some((ctx) => ctx !== undefined && (ctx as { auth: unknown }).auth === null));
     await client.close();
   });
 });
@@ -159,12 +152,7 @@ describe('createHttpHandler with decorateServer', () => {
   test('the generated tools are untouched', async () => {
     const client = await connect(hosted.url);
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((t) => t.name).sort(), [
-      'create_todo',
-      'set_completed',
-      'todo',
-      'todos',
-    ]);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ['create_todo', 'set_completed', 'todo', 'todos']);
     await client.close();
   });
 });
@@ -205,9 +193,7 @@ describe('createHttpHandler without a body parser', () => {
 
   before(async () => {
     const { schema, root } = makeTodoSchema();
-    hosted = await hostRaw(
-      createHttpHandler({ schema, executor: createLocalExecutor(schema, { rootValue: root }) }),
-    );
+    hosted = await hostRaw(createHttpHandler({ schema, executor: createLocalExecutor(schema, { rootValue: root }) }));
   });
 
   after(() => hosted.close());
@@ -382,12 +368,7 @@ describe('resuming a dropped stream', () => {
   }
 
   /** One request, resolved as soon as the first bytes of the body land. */
-  function raw(
-    url: URL,
-    method: string,
-    headers: Record<string, string>,
-    body?: string,
-  ): Promise<RawResponse> {
+  function raw(url: URL, method: string, headers: Record<string, string>, body?: string): Promise<RawResponse> {
     return new Promise((resolve, reject) => {
       const req = http.request(url, { method, headers }, (res) => {
         let settled = false;
@@ -445,10 +426,7 @@ describe('resuming a dropped stream', () => {
    * assertion would otherwise leave an HTTP server listening and an SSE stream
    * open, and the test process would hang instead of reporting the failure.
    */
-  async function withSessions(
-    replay: boolean | undefined,
-    body: (url: URL) => Promise<void>,
-  ): Promise<void> {
+  async function withSessions(replay: boolean | undefined, body: (url: URL) => Promise<void>): Promise<void> {
     const { schema, root } = makeTodoSchema();
     const handler = createHttpHandler({
       schema,
@@ -513,10 +491,7 @@ describe('createHttpHandler with a session directory', () => {
    * simulate a load balancer but to pin down what an instance says about a
    * session id it does not hold.
    */
-  async function withInstance(
-    directory: SessionDirectory,
-    body: (url: URL) => Promise<void>,
-  ): Promise<void> {
+  async function withInstance(directory: SessionDirectory, body: (url: URL) => Promise<void>): Promise<void> {
     const handler = createHttpHandler({
       schema,
       executor,

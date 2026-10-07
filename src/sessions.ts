@@ -163,9 +163,7 @@ export const SESSION_OWNER_HEADER = 'Mcp-Session-Owner';
  *   {@link SessionStore.elsewhere}, or `undefined` if it is simply gone.
  */
 export function sessionNotFound(owner?: string): string {
-  return owner === undefined
-    ? 'Session not found'
-    : `Session not found on this instance; it is held by '${owner}'`;
+  return owner === undefined ? 'Session not found' : `Session not found on this instance; it is held by '${owner}'`;
 }
 
 /** Response headers to accompany {@link sessionNotFound}. */
@@ -483,9 +481,7 @@ export class SessionHost<T extends SessionTransport> {
    * @param sessions - `true` for the defaults, an options object, or falsy for stateless.
    * @returns The host, or `undefined` when the handler is stateless.
    */
-  static from<T extends SessionTransport>(
-    sessions: boolean | SessionOptions | undefined,
-  ): SessionHost<T> | undefined {
+  static from<T extends SessionTransport>(sessions: boolean | SessionOptions | undefined): SessionHost<T> | undefined {
     const options = sessions === true ? {} : sessions || undefined;
     return options ? new SessionHost<T>(options) : undefined;
   }

@@ -5,9 +5,7 @@ import { buildOperation } from './operation.ts';
 
 function field(sdl: string, root: 'Query' | 'Mutation', name: string) {
   const schema = buildSchema(sdl);
-  const type = (root === 'Query' ? schema.getQueryType() : schema.getMutationType()) as
-    | GraphQLObjectType
-    | undefined;
+  const type = (root === 'Query' ? schema.getQueryType() : schema.getMutationType()) as GraphQLObjectType | undefined;
   if (!type) {
     throw new Error('missing root type');
   }
@@ -25,10 +23,7 @@ describe('buildOperation', () => {
     const op = buildOperation('mutation', f);
     assert.equal(op.operationName, 'make');
     assert.deepEqual(op.argNames, ['input']);
-    assert.equal(
-      op.query,
-      'mutation make($input: In!) {\n  make(input: $input) { id __typename }\n}',
-    );
+    assert.equal(op.query, 'mutation make($input: In!) {\n  make(input: $input) { id __typename }\n}');
   });
 
   test('argument-less scalar query has no var block and no selection set', () => {

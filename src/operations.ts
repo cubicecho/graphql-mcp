@@ -159,9 +159,7 @@ export function buildOperationTools(
   }
 
   const separated = separateOperations(merged);
-  return definitions.map((definition) =>
-    toDescriptor(schema, definition, separated[definition.name.value], options),
-  );
+  return definitions.map((definition) => toDescriptor(schema, definition, separated[definition.name.value], options));
 }
 
 /** An operation {@link assertUsable} has passed: it has a name. */
@@ -438,9 +436,7 @@ function leadingComments(node: { loc?: OperationDefinitionNode['loc'] }): string
 }
 
 /** Narrows a definition to an operation. */
-function isOperation(
-  definition: DocumentNode['definitions'][number],
-): definition is OperationDefinitionNode {
+function isOperation(definition: DocumentNode['definitions'][number]): definition is OperationDefinitionNode {
   return definition.kind === Kind.OPERATION_DEFINITION;
 }
 

@@ -58,10 +58,7 @@ const TASK_SDL = /* GraphQL */ `
 `;
 
 /** Builds descriptors from one source over {@link TASK_SDL}. */
-function tasks(
-  document: string,
-  options: Parameters<typeof buildOperationTools>[2] = {},
-): ToolDescriptor[] {
+function tasks(document: string, options: Parameters<typeof buildOperationTools>[2] = {}): ToolDescriptor[] {
   return buildOperationTools(buildSchema(TASK_SDL), new Source(document, 'ops.graphql'), options);
 }
 
@@ -135,10 +132,7 @@ describe('buildOperationTools', () => {
     // the operations alone must not — that is what proves the merge is load
     // bearing rather than incidental.
     const { schema } = makeTodoSchema();
-    assert.throws(
-      () => buildOperationTools(schema, TODO_OPERATIONS),
-      /Unknown fragment "TodoFields"/,
-    );
+    assert.throws(() => buildOperationTools(schema, TODO_OPERATIONS), /Unknown fragment "TodoFields"/);
   });
 
   test('an unused fragment is allowed, because a shared fragment file has some', () => {
@@ -172,10 +166,7 @@ describe('buildOperationTools', () => {
     }`);
     assert.match(tool.description, /omit for the default `OPEN`/);
     if (HAS_META) {
-      assert.match(
-        JSON.stringify(toJsonSchemaCompat(z.object(tool.inputSchema))),
-        /"default":"OPEN"/,
-      );
+      assert.match(JSON.stringify(toJsonSchemaCompat(z.object(tool.inputSchema))), /"default":"OPEN"/);
     }
   });
 
@@ -239,10 +230,7 @@ describe('buildOperationTools', () => {
   test('the description ends with the operation it will run', () => {
     const tool = named(todoOperations(), 'one_todo');
     assert.match(tool.description, /Runs this operation \(written by hand/);
-    assert.ok(
-      tool.description.includes(tool.query),
-      'the printed query is not in the description verbatim',
-    );
+    assert.ok(tool.description.includes(tool.query), 'the printed query is not in the description verbatim');
   });
 });
 
@@ -261,10 +249,7 @@ describe('buildOperationTools comment attachment', () => {
   });
 
   test('an operation with no comment falls back to a generic summary', () => {
-    assert.equal(
-      named(todoOperations(), 'one_todo').description.split('\n')[0],
-      'The `oneTodo` query.',
-    );
+    assert.equal(named(todoOperations(), 'one_todo').description.split('\n')[0], 'The `oneTodo` query.');
   });
 
   test('a blank line ends the block, so a file header is not captured', () => {
@@ -345,10 +330,7 @@ describe('buildOperationTools refusals', () => {
   test('sources that define no operation at all are refused', () => {
     // The bad-glob case: it would otherwise boot a server with no tools and no
     // hint about why.
-    assert.throws(
-      () => tasks('fragment Spare on Task { id }'),
-      /none of them defined an operation/,
-    );
+    assert.throws(() => tasks('fragment Spare on Task { id }'), /none of them defined an operation/);
   });
 
   test('no operations configured at all is not an error', () => {

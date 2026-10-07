@@ -104,8 +104,7 @@ export interface TruncationRecord {
   advice: string;
 }
 
-const PARTIAL_NOTE =
-  'Partial result: some fields failed and are null in `data`; the rest is valid. See `errors`.';
+const PARTIAL_NOTE = 'Partial result: some fields failed and are null in `data`; the rest is valid. See `errors`.';
 
 /**
  * Wraps a GraphQL result as an MCP tool result.
@@ -124,11 +123,7 @@ const PARTIAL_NOTE =
  * @param hint - Optional advice added to the `truncated` record — {@link paginationHint}
  *   supplies one naming the field's paging argument.
  */
-export function toCallToolResult(
-  result: GraphqlResult,
-  maxChars = DEFAULT_MAX_CHARS,
-  hint?: string,
-): CallToolResult {
+export function toCallToolResult(result: GraphqlResult, maxChars = DEFAULT_MAX_CHARS, hint?: string): CallToolResult {
   const errors = result.errors ?? [];
   const hasData = hasUsableData(result.data);
   const failed = errors.length > 0 && hasData === false;
@@ -210,9 +205,7 @@ function capArrays(value: unknown, keep: number, counter: { dropped: number }): 
     return value.slice(0, keep).map((item) => capArrays(item, keep, counter));
   }
   if (isPlainObject(value)) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, capArrays(item, keep, counter)]),
-    );
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, capArrays(item, keep, counter)]));
   }
   return value;
 }
@@ -231,16 +224,10 @@ function countItems(value: unknown): number {
 /** The longest array anywhere under `value` — the upper bound for the bisection. */
 function longestArray(value: unknown): number {
   if (Array.isArray(value)) {
-    return value.reduce<number>(
-      (longest, item) => Math.max(longest, longestArray(item)),
-      value.length,
-    );
+    return value.reduce<number>((longest, item) => Math.max(longest, longestArray(item)), value.length);
   }
   if (isPlainObject(value)) {
-    return Object.values(value).reduce<number>(
-      (longest, item) => Math.max(longest, longestArray(item)),
-      0,
-    );
+    return Object.values(value).reduce<number>((longest, item) => Math.max(longest, longestArray(item)), 0);
   }
   return 0;
 }
@@ -285,10 +272,7 @@ export type ExecutorRequest = Omit<GraphqlRequest, 'variables'> & {
  * @param executor - Where the operation runs.
  * @param request - The GraphQL request to run.
  */
-export async function runExecutor(
-  executor: GraphqlExecutor,
-  request: ExecutorRequest,
-): Promise<GraphqlResult> {
+export async function runExecutor(executor: GraphqlExecutor, request: ExecutorRequest): Promise<GraphqlResult> {
   try {
     return await executor({ ...request, variables: request.variables ?? {} });
   } catch (cause) {

@@ -13,13 +13,7 @@ import { buildSchema } from 'graphql';
 import { z } from 'zod';
 import { DEFAULT_MAX_CHARS } from './defaults.ts';
 import { createLocalExecutor } from './executor.ts';
-import {
-  bodyOf,
-  makeTodoSchema,
-  type TextResult,
-  TODO_FRAGMENTS,
-  TODO_OPERATIONS,
-} from './fixtures.test.ts';
+import { bodyOf, makeTodoSchema, type TextResult, TODO_FRAGMENTS, TODO_OPERATIONS } from './fixtures.test.ts';
 import { runExecutor, toCallToolResult } from './index.ts';
 import {
   type CreateMcpServerOptions,
@@ -50,12 +44,7 @@ describe('createMcpServer', () => {
     const client = await connect(server);
 
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((t) => t.name).sort(), [
-      'create_todo',
-      'set_completed',
-      'todo',
-      'todos',
-    ]);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ['create_todo', 'set_completed', 'todo', 'todos']);
     const createTodo = tools.find((t) => t.name === 'create_todo');
     // The input schema reached the client as JSON Schema derived from the args.
     assert.equal(createTodo?.inputSchema.type, 'object');
@@ -117,10 +106,7 @@ describe('createMcpServer', () => {
     const result = await client.callTool({ name: 'todo', arguments: { id: 'todo-1' } });
     const { isError, data } = parseResult(result);
     assert.equal(isError, false);
-    assert.deepEqual(
-      (data as { todo: { description: string } }).todo.description,
-      'write the wrapper',
-    );
+    assert.deepEqual((data as { todo: { description: string } }).todo.description, 'write the wrapper');
     await client.close();
   });
 
@@ -138,10 +124,7 @@ describe('createMcpServer', () => {
       arguments: { input: { userId: 'user-2', description: 'new task' } },
     });
     const { data } = parseResult(result);
-    assert.equal(
-      (data as { createTodo: { description: string } }).createTodo.description,
-      'new task',
-    );
+    assert.equal((data as { createTodo: { description: string } }).createTodo.description, 'new task');
     assert.equal(store.length, before + 1);
     await client.close();
   });
@@ -182,9 +165,7 @@ describe('createMcpServer', () => {
 
   test('a partial result stays usable instead of being flagged an error', async () => {
     // One row resolves, the next throws — GraphQL returns data *and* errors.
-    const schema = buildSchema(
-      'type Item { id: String! boom: String } type Query { items: [Item!]! }',
-    );
+    const schema = buildSchema('type Item { id: String! boom: String } type Query { items: [Item!]! }');
     const server = createMcpServer({
       schema,
       executor: createLocalExecutor(schema, {
@@ -571,8 +552,7 @@ describe('truncated results point at the paging argument', () => {
       maxChars: 200,
     });
     const client = await connect(server);
-    const body = ((await client.callTool({ name: 'feed', arguments: {} })) as TextResult).content[0]
-      .text;
+    const body = ((await client.callTool({ name: 'feed', arguments: {} })) as TextResult).content[0].text;
     // Without this, an agent told only "truncated" can do nothing but re-run
     // the identical call and get the identical oversized page.
     const { truncated } = JSON.parse(body) as { truncated: { totalItems: number; advice: string } };
@@ -587,8 +567,7 @@ describe('truncated results point at the paging argument', () => {
       executor: createLocalExecutor(schema, { rootValue: root }),
     });
     const client = await connect(server);
-    const body = ((await client.callTool({ name: 'feed', arguments: {} })) as TextResult).content[0]
-      .text;
+    const body = ((await client.callTool({ name: 'feed', arguments: {} })) as TextResult).content[0].text;
     assert.doesNotMatch(body, /truncated|paginates/);
     await client.close();
   });
@@ -601,8 +580,7 @@ describe('truncated results point at the paging argument', () => {
       maxChars: 120,
     });
     const client = await connect(server);
-    const body = ((await client.callTool({ name: 'todos', arguments: {} })) as TextResult)
-      .content[0].text;
+    const body = ((await client.callTool({ name: 'todos', arguments: {} })) as TextResult).content[0].text;
     const { truncated } = JSON.parse(body) as { truncated: { advice: string } };
     assert.equal(truncated.advice, 'narrow the query or request fewer fields');
     await client.close();
@@ -617,8 +595,7 @@ describe('a call that omits its arguments', () => {
     }
   `);
 
-  const server = () =>
-    createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' });
+  const server = () => createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' });
 
   async function connectTolerant(mcp: McpServer): Promise<Client> {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -663,11 +640,9 @@ describe('a call that omits its arguments', () => {
   // uncallable by a client that correctly sends nothing.
   test('a prompt with an empty argument schema is gettable with no arguments at all', async () => {
     const mcp = server();
-    mcp.registerPrompt(
-      'triage',
-      { title: 'Triage', description: 'How to triage a task.', argsSchema: {} },
-      () => ({ messages: [{ role: 'user', content: { type: 'text', text: 'Triage it.' } }] }),
-    );
+    mcp.registerPrompt('triage', { title: 'Triage', description: 'How to triage a task.', argsSchema: {} }, () => ({
+      messages: [{ role: 'user', content: { type: 'text', text: 'Triage it.' } }],
+    }));
     const client = await connectTolerant(mcp);
     const result = await client.getPrompt({ name: 'triage' });
     assert.equal(result.messages.length, 1);
@@ -804,9 +779,7 @@ describe('mapArgs', () => {
   test('the guard still rejects a key the replaced schema does not advertise', async () => {
     const { server } = spied(flatten);
     const client = await connect(server);
-    const result = parseResult(
-      await client.callTool({ name: 'tasks', arguments: { id: 'x', where: {} } }),
-    );
+    const result = parseResult(await client.callTool({ name: 'tasks', arguments: { id: 'x', where: {} } }));
     assert.equal(result.isError, true);
     const [error] = result.errors as Array<{ extensions: { code: string } }>;
     assert.equal(error.extensions.code, 'BAD_INPUT');
@@ -891,11 +864,9 @@ describe('decorateServer', () => {
     });
 
   const addPrompt = (server: McpServer) =>
-    server.registerPrompt(
-      'triage',
-      { title: 'Triage', description: 'How to triage a task.', argsSchema: {} },
-      () => ({ messages: [{ role: 'user', content: { type: 'text', text: 'Triage it.' } }] }),
-    );
+    server.registerPrompt('triage', { title: 'Triage', description: 'How to triage a task.', argsSchema: {} }, () => ({
+      messages: [{ role: 'user', content: { type: 'text', text: 'Triage it.' } }],
+    }));
 
   // The whole reason the hook runs where it does. The SDK refuses to register a
   // capability once a transport is attached, so a prompt added after `connect`
@@ -933,8 +904,7 @@ describe('decorateServer', () => {
       content: [{ type: 'text' as const, text: 'ok' }],
     }));
 
-  const names = async (client: Client) =>
-    (await client.listTools()).tools.map((tool) => tool.name).sort();
+  const names = async (client: Client) => (await client.listTools()).tools.map((tool) => tool.name).sort();
 
   test('a tool registered in the hook is listed alongside the generated ones', async () => {
     const client = await connect(factory((server) => registerTool(server, 'ping'))());
@@ -1075,10 +1045,7 @@ describe('tool definitions stay small for a schema that filters through relation
       createMcpServer({ schema, executor: createLocalExecutor(schema), name: 't', version: '0' }),
     );
     const { tools } = await client.listTools();
-    const advertised = tools.find((tool) => tool.name === 'tasks')?.inputSchema as Record<
-      string,
-      unknown
-    >;
+    const advertised = tools.find((tool) => tool.name === 'tasks')?.inputSchema as Record<string, unknown>;
     // The fallback name for a hoisted anonymous schema is its position, which
     // carries nothing: an agent reading a `where` argument has to resolve
     // `#/definitions/__schema7` by hand, fifteen times, with nothing to anchor
@@ -1352,9 +1319,7 @@ describe('a rejected argument reads like every other failure', () => {
       },
     });
     assert.equal(parseResult(result).isError, false);
-    assert.deepEqual(seen, [
-      { limit: 2, filter: { title: 't', priority: 'LOW', steps: [{ name: 'a', order: 1 }] } },
-    ]);
+    assert.deepEqual(seen, [{ limit: 2, filter: { title: 't', priority: 'LOW', steps: [{ name: 'a', order: 1 }] } }]);
     await client.close();
   });
 
@@ -1386,10 +1351,7 @@ describe('a rejected argument reads like every other failure', () => {
       arguments: { count: 'two' },
     })) as TextResult;
     assert.equal(bad.isError, true);
-    assert.equal(
-      (JSON.parse(bad.content[0].text).errors as InputError[])[0].extensions?.code,
-      'BAD_INPUT',
-    );
+    assert.equal((JSON.parse(bad.content[0].text).errors as InputError[])[0].extensions?.code, 'BAD_INPUT');
     await client.close();
   });
 
@@ -1444,9 +1406,7 @@ describe('operations', () => {
 
   test('an operation runs end to end, sending its variables', async () => {
     const client = await connect(curated());
-    const result = parseResult(
-      await client.callTool({ name: 'one_todo', arguments: { id: 'todo-1' } }),
-    );
+    const result = parseResult(await client.callTool({ name: 'one_todo', arguments: { id: 'todo-1' } }));
     const data = result.data as { todo: { id: string; description: string } };
     assert.equal(data.todo.id, 'todo-1');
     // The hand-written selection, and only it: `completed` is spread in, and
@@ -1514,9 +1474,7 @@ describe('operations', () => {
   });
 
   test('operations and metaTools coexist, and execute still enforces include', async () => {
-    const client = await connect(
-      curated({ include: ['todos'], includeMutations: false, metaTools: true }),
-    );
+    const client = await connect(curated({ include: ['todos'], includeMutations: false, metaTools: true }));
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name);
     assert.ok(names.includes('list_todos'), 'the curated tool is missing');

@@ -8,13 +8,7 @@
  * registers no tests of its own.
  */
 
-import {
-  buildSchema,
-  type GraphQLObjectType,
-  type GraphQLOutputType,
-  type GraphQLSchema,
-  Source,
-} from 'graphql';
+import { buildSchema, type GraphQLObjectType, type GraphQLOutputType, type GraphQLSchema, Source } from 'graphql';
 import type { McpFieldExtensions } from './tools.ts';
 
 export const TODO_SDL = /* GraphQL */ `

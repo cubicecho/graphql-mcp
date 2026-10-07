@@ -171,9 +171,7 @@ describe('argsToZodShape recursive inputs', () => {
     const { filter } = argsFor('find');
     // A child missing the required `value` must fail; `z.any()` would accept it.
     assert.throws(() => filter.parse({ node: { value: 'a', children: [{}] } }));
-    assert.throws(() =>
-      filter.parse({ node: { value: 'a', children: [{ value: 'b', children: [{ value: 1 }] }] } }),
-    );
+    assert.throws(() => filter.parse({ node: { value: 'a', children: [{ value: 'b', children: [{ value: 1 }] }] } }));
   });
 
   test('an omitted nullable recursive field is allowed', () => {
@@ -452,10 +450,7 @@ describe('inputField', () => {
     }
   `);
   const argsOf = (fieldName: string, options?: ZodShapeOptions) =>
-    argsToZodShape(
-      (schema.getQueryType() as GraphQLObjectType).getFields()[fieldName].args,
-      options,
-    );
+    argsToZodShape((schema.getQueryType() as GraphQLObjectType).getFields()[fieldName].args, options);
   const render = (shape: Record<string, unknown>) =>
     JSON.stringify(toJsonSchemaCompat(z.object(shape as Parameters<typeof z.object>[0])));
 
@@ -475,11 +470,7 @@ describe('inputField', () => {
     // visited, so it cannot be left behind as an orphan `definitions` entry
     // that costs bytes while nothing references it.
     const rendered = render(argsOf('tasks', noRelations));
-    for (const orphan of [
-      'TriggerListRelationFilter',
-      'TaskListRelationFilter',
-      'TriggerFilters',
-    ]) {
+    for (const orphan of ['TriggerListRelationFilter', 'TaskListRelationFilter', 'TriggerFilters']) {
       assert.doesNotMatch(rendered, new RegExp(orphan), `${orphan} survived the prune`);
     }
   });
@@ -510,8 +501,7 @@ describe('inputField', () => {
     // `StringFilter.contains` goes only where it is reached through TaskFilters.
     const rendered = render(
       argsOf('tasks', {
-        inputField: (field, parent) =>
-          (parent.name === 'StringFilter' && field.name === 'eq') === false,
+        inputField: (field, parent) => (parent.name === 'StringFilter' && field.name === 'eq') === false,
       }),
     );
     assert.doesNotMatch(rendered, /"eq"/);
@@ -526,9 +516,7 @@ describe('inputField', () => {
     // Degenerate but coherent: the argument survives and accepts `{}`. Better
     // than a throw, which would punish a broad predicate for a type the caller
     // may never have meant to reach.
-    const rendered = render(
-      argsOf('tasks', { inputField: (_field, parent) => parent.name !== 'StringFilter' }),
-    );
+    const rendered = render(argsOf('tasks', { inputField: (_field, parent) => parent.name !== 'StringFilter' }));
     // Asserted as the empty shape rather than by name: `withName` is a no-op on
     // zod 3, so the type has no `definitions` entry to point at there.
     assert.match(rendered, /"properties":\{\}/);
@@ -561,9 +549,7 @@ describe('nullBranches byType', () => {
   `);
   const args = (schema.getType('Mutation') as GraphQLObjectType).getFields().updateTask.args;
   const render = (options?: ZodShapeOptions) =>
-    JSON.stringify(
-      toJsonSchemaCompat(z.object(argsToZodShape(args, options) as Parameters<typeof z.object>[0])),
-    );
+    JSON.stringify(toJsonSchemaCompat(z.object(argsToZodShape(args, options) as Parameters<typeof z.object>[0])));
   /** The null branches surviving anywhere in the rendered schema. */
   const branches = (rendered: string) => (rendered.match(/"null"/g) ?? []).length;
 
@@ -601,10 +587,7 @@ describe('nullBranches byType', () => {
 
   test("'never' everywhere matches the plain string form exactly", () => {
     // The object form is a widening, not a second implementation.
-    assert.equal(
-      render({ nullBranches: { byType: () => 'never' } }),
-      render({ nullBranches: 'never' }),
-    );
+    assert.equal(render({ nullBranches: { byType: () => 'never' } }), render({ nullBranches: 'never' }));
     assert.equal(render({ nullBranches: { byType: () => 'always' } }), render());
   });
 
@@ -620,10 +603,7 @@ describe('nullBranches byType', () => {
     // The `$ref`-plus-null combinator — the shape with no legal draft-07 form —
     // is gone from every filter position. It survives on `set`, and that is the
     // trade being made rather than a leak: `TaskUpdate` was asked for `'always'`.
-    assert.doesNotMatch(
-      byType,
-      /\{"\$ref":"[^"]*(?:TaskFilters|StringFilter)"\},\{"type":"null"\}/,
-    );
+    assert.doesNotMatch(byType, /\{"\$ref":"[^"]*(?:TaskFilters|StringFilter)"\},\{"type":"null"\}/);
   });
 
   test('a list of a governed type follows that type', () => {

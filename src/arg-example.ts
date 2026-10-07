@@ -20,12 +20,7 @@
  * be expanded — the only case is a cycle — the whole example is abandoned.
  */
 
-import type {
-  GraphQLArgument,
-  GraphQLInputField,
-  GraphQLInputType,
-  GraphQLNamedType,
-} from 'graphql';
+import type { GraphQLArgument, GraphQLInputField, GraphQLInputType, GraphQLNamedType } from 'graphql';
 import { getNamedType, isEnumType, isInputObjectType, isListType, isNonNullType } from 'graphql';
 import { DEFAULT_EXAMPLE_DEPTH } from './defaults.ts';
 import { defaultJsonOf } from './zod-schema.ts';
@@ -53,10 +48,7 @@ const ABANDON = Symbol('abandon');
  * useful one: the type isn't an input object, the budget is spent, the result
  * would be an empty object, or it grew past {@link MAX_EXAMPLE_CHARS}.
  */
-export function exampleForType(
-  type: GraphQLInputType,
-  depth: number = DEFAULT_EXAMPLE_DEPTH,
-): string | undefined {
+export function exampleForType(type: GraphQLInputType, depth: number = DEFAULT_EXAMPLE_DEPTH): string | undefined {
   if (depth < 1) {
     return undefined;
   }
@@ -83,10 +75,7 @@ export function exampleForType(
  * description already prints that default as the GraphQL literal a caller would
  * write, and two literals in two syntaxes on adjacent lines read as one.
  */
-export function buildArgExample(
-  arg: GraphQLArgument,
-  depth: number = DEFAULT_EXAMPLE_DEPTH,
-): string | undefined {
+export function buildArgExample(arg: GraphQLArgument, depth: number = DEFAULT_EXAMPLE_DEPTH): string | undefined {
   const fallback = defaultJsonOf(arg);
   if (fallback !== null && typeof fallback === 'object') {
     return undefined;
@@ -204,11 +193,7 @@ function isEmptyShape(value: unknown): boolean {
 }
 
 /** A field's own default wins: it is both accurate and what the server assumes. */
-function renderField(
-  field: GraphQLInputField,
-  depth: number,
-  path: ReadonlySet<string>,
-): unknown | typeof ABANDON {
+function renderField(field: GraphQLInputField, depth: number, path: ReadonlySet<string>): unknown | typeof ABANDON {
   const fallback = defaultJsonOf(field);
   if (fallback !== undefined) {
     return fallback;

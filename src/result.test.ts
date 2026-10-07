@@ -105,15 +105,12 @@ describe('toCallToolResult error condensing', () => {
   });
 
   test('drops an empty path array too', () => {
-    const error = payloadOf(
-      toCallToolResult({ data: null, errors: [{ message: 'kaboom', path: [] }] }),
-    ).errors[0];
+    const error = payloadOf(toCallToolResult({ data: null, errors: [{ message: 'kaboom', path: [] }] })).errors[0];
     assert.deepEqual(error, { message: 'kaboom' });
   });
 
   test('omits path and extensions when absent rather than emitting nulls', () => {
-    const error = payloadOf(toCallToolResult({ data: null, errors: [{ message: 'plain' }] }))
-      .errors[0];
+    const error = payloadOf(toCallToolResult({ data: null, errors: [{ message: 'plain' }] })).errors[0];
     assert.deepEqual(error, { message: 'plain' });
   });
 });
@@ -141,8 +138,7 @@ describe('toCallToolResult size clamping', () => {
   test('rows are dropped evenly, so the result keeps its shape', () => {
     // Draining the biggest collection first would leave one field full and the
     // other empty, which reads as though the second returned nothing.
-    const some = (prefix: string) =>
-      Array.from({ length: 200 }, (_, i) => ({ id: `${prefix}-${i}` }));
+    const some = (prefix: string) => Array.from({ length: 200 }, (_, i) => ({ id: `${prefix}-${i}` }));
     const result = toCallToolResult({ data: { tasks: some('task'), runs: some('run') } }, 2_000);
     const data = (payloadOf(result) as { data: { tasks: unknown[]; runs: unknown[] } }).data;
     assert.ok(data.tasks.length > 0 && data.runs.length > 0);
@@ -166,8 +162,7 @@ describe('toCallToolResult size clamping', () => {
 });
 
 describe('a clamped result keeps its diagnostics', () => {
-  const rows = () =>
-    Array.from({ length: 400 }, (_, i) => ({ id: `row-${i}`, blob: 'y'.repeat(80) }));
+  const rows = () => Array.from({ length: 400 }, (_, i) => ({ id: `row-${i}`, blob: 'y'.repeat(80) }));
 
   test('errors survive a clamp, and so does the failure flag', () => {
     // `errors` serializes after `data`, so a clamp that sliced the string threw
@@ -208,10 +203,7 @@ describe('a clamped result keeps its diagnostics', () => {
     // may produce a body a client cannot read.
     for (const budget of [80, 200, 500, 1_000, 5_000, 20_000]) {
       const result = toCallToolResult({ data: { rows: rows() } }, budget);
-      assert.doesNotThrow(
-        () => JSON.parse(bodyOf(result)),
-        `budget ${budget} produced unparseable JSON`,
-      );
+      assert.doesNotThrow(() => JSON.parse(bodyOf(result)), `budget ${budget} produced unparseable JSON`);
     }
   });
 

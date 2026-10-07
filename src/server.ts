@@ -47,10 +47,7 @@ import { VERSION } from './version.ts';
 import type { AnyZodType, ZodShape } from './zod-compat.ts';
 
 /** The handler signature for a custom tool: validated args plus the MCP `extra`. */
-export type ToolHandler = (
-  args: Record<string, unknown>,
-  extra: unknown,
-) => CallToolResult | Promise<CallToolResult>;
+export type ToolHandler = (args: Record<string, unknown>, extra: unknown) => CallToolResult | Promise<CallToolResult>;
 
 /**
  * A user-supplied tool. If its `name` matches a generated tool, it replaces that
@@ -212,9 +209,7 @@ export type ServerFactory = (contextOverride?: unknown | ContextFactory) => McpS
  * @returns A {@link ServerFactory}.
  */
 export function createServerFactory(options: CreateMcpServerOptions): ServerFactory {
-  const schema = options.extend
-    ? extendSchemaForMcp(options.schema, options.extend)
-    : options.schema;
+  const schema = options.extend ? extendSchemaForMcp(options.schema, options.extend) : options.schema;
   const descriptors = withOperations(schema, buildTools(schema, options), options);
   const executor = options.executor ?? createLocalExecutor(schema);
   const customTools = options.tools ?? [];
@@ -241,10 +236,7 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
     });
     // Built per call: `execute` closes over this call's GraphQL context.
     const metaTools = metaOptions
-      ? buildMetaTools(
-          { schema, executor, resolveContext: (extra) => resolveContext(context, extra) },
-          metaOptions,
-        )
+      ? buildMetaTools({ schema, executor, resolveContext: (extra) => resolveContext(context, extra) }, metaOptions)
       : [];
     // Later wins by name: user `tools` override meta tools, both override generated ones.
     const byName = new Map<string, CustomTool>();

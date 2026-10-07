@@ -143,11 +143,7 @@ export const BAD_TOOL_CONFIG = 'BAD_TOOL_CONFIG';
  * @param validators - The schema per tool name; see {@link ToolValidators}.
  * @param maxChars - Character budget for the rendered error body.
  */
-export function guardToolArguments(
-  server: McpServer,
-  validators: ToolValidators,
-  maxChars: number,
-): void {
+export function guardToolArguments(server: McpServer, validators: ToolValidators, maxChars: number): void {
   const handlers = requestHandlers(server);
   const call = handlers?.get(TOOLS_CALL);
   if (!handlers || !call) {
@@ -223,6 +219,5 @@ function argumentPath(path: ReadonlyArray<PropertyKey> | undefined): string {
  * the SDK moved it, and every caller here treats that as "leave the SDK alone".
  */
 function requestHandlers(server: McpServer): Map<string, RawRequestHandler> | undefined {
-  return (server.server as unknown as { _requestHandlers?: Map<string, RawRequestHandler> })
-    ._requestHandlers;
+  return (server.server as unknown as { _requestHandlers?: Map<string, RawRequestHandler> })._requestHandlers;
 }

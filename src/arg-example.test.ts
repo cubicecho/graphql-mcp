@@ -95,11 +95,7 @@ const schema = buildSchema(/* GraphQL */ `
 `);
 
 const args = (fieldName: string): Map<string, GraphQLArgument> =>
-  new Map(
-    (schema.getQueryType() as GraphQLObjectType)
-      .getFields()
-      [fieldName].args.map((arg) => [arg.name, arg]),
-  );
+  new Map((schema.getQueryType() as GraphQLObjectType).getFields()[fieldName].args.map((arg) => [arg.name, arg]));
 
 const inputType = (name: string) => schema.getType(name) as never;
 
@@ -115,10 +111,7 @@ describe('buildArgExample', () => {
     // A required-only rule renders `{}` here, which teaches nothing — and this
     // is exactly the shape that caused the measured failures: an optional outer
     // object wrapping a required inner one.
-    assert.equal(
-      buildArgExample(args('filtered').get('where') as GraphQLArgument),
-      '{"name":{"eq":"string"}}',
-    );
+    assert.equal(buildArgExample(args('filtered').get('where') as GraphQLArgument), '{"name":{"eq":"string"}}');
   });
 
   test('an all-optional object whose first field is a scalar gets no example', () => {
@@ -134,19 +127,13 @@ describe('buildArgExample', () => {
   test('the fallback survives when the first field is a list of objects', () => {
     // Structural is the test, not "is an object" — a list wrapping an object
     // shows the same nesting one field deeper.
-    assert.equal(
-      buildArgExample(args('updated').get('listFirst') as GraphQLArgument),
-      '{"tags":[{"eq":"string"}]}',
-    );
+    assert.equal(buildArgExample(args('updated').get('listFirst') as GraphQLArgument), '{"tags":[{"eq":"string"}]}');
   });
 
   test('narrowing the fallback leaves the filter it was built for alone', () => {
     // The `where` on the same field still renders: its first field is an
     // object, so there is nesting to show.
-    assert.equal(
-      buildArgExample(args('updated').get('where') as GraphQLArgument),
-      '{"name":{"eq":"string"}}',
-    );
+    assert.equal(buildArgExample(args('updated').get('where') as GraphQLArgument), '{"name":{"eq":"string"}}');
   });
 
   test('a list renders one element, and an enum renders a member name', () => {
@@ -161,10 +148,7 @@ describe('buildArgExample', () => {
   test("a field's own default is preferred over a placeholder", () => {
     // Accurate, and the enum default arrives as its SDL name rather than
     // whatever internal value the schema happens to bind to it.
-    assert.equal(
-      buildArgExample(args('created').get('defaults') as GraphQLArgument),
-      '{"limit":25,"dir":"DESC"}',
-    );
+    assert.equal(buildArgExample(args('created').get('defaults') as GraphQLArgument), '{"limit":25,"dir":"DESC"}');
   });
 
   test('an optional cycle drops the field rather than the example', () => {

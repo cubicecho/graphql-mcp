@@ -145,10 +145,7 @@ function introspectTool({ prefix, deps, allows, maxChars }: MetaToolContext): Cu
       "name to see that type's fields. Use this before writing a document for " +
       `\`${prefix}execute\`.`,
     inputSchema: {
-      type: z
-        .string()
-        .optional()
-        .describe('Type name to print (e.g. `Todo`). Omit for the schema overview.'),
+      type: z.string().optional().describe('Type name to print (e.g. `Todo`). Omit for the schema overview.'),
     },
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     handler: (args) => {
@@ -246,13 +243,7 @@ function validateTool({ prefix, deps }: MetaToolContext): CustomTool {
   };
 }
 
-function executeTool({
-  prefix,
-  deps,
-  allows,
-  allowMutations,
-  maxChars,
-}: MetaToolContext): CustomTool {
+function executeTool({ prefix, deps, allows, allowMutations, maxChars }: MetaToolContext): CustomTool {
   return {
     name: `${prefix}execute`,
     title: 'Execute GraphQL Operation',
@@ -427,12 +418,7 @@ function overview(schema: GraphQLSchema, allows: RuleMatcher): string {
   return lines.join('\n');
 }
 
-function search(
-  schema: GraphQLSchema,
-  needle: string,
-  limit: number,
-  allows: RuleMatcher,
-): string[] {
+function search(schema: GraphQLSchema, needle: string, limit: number, allows: RuleMatcher): string[] {
   const rootKinds = new Map<string, OperationKind>();
   const queryType = schema.getQueryType();
   const mutationType = schema.getMutationType();
@@ -489,9 +475,7 @@ function signature(field: GraphQLField<any, any>): string {
   // builds its own lines and so has to add it back. On a schema large enough to
   // need the meta tools this listing may be the agent's whole view of the root
   // fields, and a deprecated field that reads as ordinary gets picked.
-  const deprecated = field.deprecationReason
-    ? ` @deprecated(reason: ${JSON.stringify(field.deprecationReason)})`
-    : '';
+  const deprecated = field.deprecationReason ? ` @deprecated(reason: ${JSON.stringify(field.deprecationReason)})` : '';
   return `${field.name}${args}: ${field.type}${deprecated}`;
 }
 
@@ -522,8 +506,7 @@ function typeNames(schema: GraphQLSchema): string[] {
 function suggest(input: string, candidates: string[]): string {
   const lower = input.toLowerCase();
   const near = candidates.filter(
-    (name) =>
-      name.toLowerCase().startsWith(lower.slice(0, 3)) || name.toLowerCase().includes(lower),
+    (name) => name.toLowerCase().startsWith(lower.slice(0, 3)) || name.toLowerCase().includes(lower),
   );
   return near.length
     ? ` Did you mean ${near

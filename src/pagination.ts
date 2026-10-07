@@ -68,8 +68,7 @@ export function detectPagination(args: readonly GraphQLArgument[]): Pagination |
   const has = (name?: string) => Boolean(name && byLower.has(name));
 
   const matched =
-    CONVENTIONS.find((c) => has(c.limit) && has(c.next)) ??
-    CONVENTIONS.find((c) => has(c.limit) || has(c.next));
+    CONVENTIONS.find((c) => has(c.limit) && has(c.next)) ?? CONVENTIONS.find((c) => has(c.limit) || has(c.next));
   if (!matched) {
     return undefined;
   }

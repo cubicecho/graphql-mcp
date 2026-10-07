@@ -27,9 +27,7 @@ async function connect(handler: McpFetchHandler): Promise<Client> {
 }
 
 /** A handler over the todos fixture, with the executor already wired up. */
-function todoHandler(
-  options: Partial<Parameters<typeof createFetchHandler>[0]> = {},
-): McpFetchHandler {
+function todoHandler(options: Partial<Parameters<typeof createFetchHandler>[0]> = {}): McpFetchHandler {
   const { schema, root } = makeTodoSchema();
   return createFetchHandler({
     schema,
@@ -62,12 +60,7 @@ describe('createFetchHandler', () => {
     const handler = todoHandler();
     const client = await connect(handler);
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((t) => t.name).sort(), [
-      'create_todo',
-      'set_completed',
-      'todo',
-      'todos',
-    ]);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ['create_todo', 'set_completed', 'todo', 'todos']);
     await client.close();
     await handler.close();
   });
