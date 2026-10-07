@@ -51,7 +51,7 @@ what it returns; one session lifecycle serves both transports."
 | R2 | Refactor [reuse] | The HTTP and fetch handlers share one session lifecycle; each keeps only its request/response translation. | M1 | — | done |
 | R3 | Refactor [reuse] | Generated tools and operation tools build the "Arguments" part of a description with one function. | M3 | — | done |
 | R4 | Refactor [sweep] | Merges 12 small helper pairs that exist twice (describe, enum-to-zod, scalar lookup, error text, kind-from-operation, and others). | P6 sweep | — | done |
-| R5 | Refactor [readability] | Splits the 60-line closure inside `buildTools` into named steps and renames single-letter parameters. | The hottest file (24 commits/yr) reads as its pipeline | — | open |
+| R5 | Refactor [readability] | Splits the 60-line closure inside `buildTools` into named steps and renames single-letter parameters. | The hottest file (24 commits/yr) reads as its pipeline | — | done |
 | R6 | Refactor [pattern] | Internal functions taking 5–7 positional arguments take one named-field object instead. | Call sites stop depending on argument order | — | open |
 | R7 | Refactor [pattern] | The meta-tool `switch` and the example-leaf `switch` become lookup tables, and the meta-tool name list and its type are derived from one source. | P24, P14: a new meta tool is one entry | — | open |
 | R8 | Refactor [sweep] | Braces every single-line `if`/`for` body (128 in source, 17 in tests) and turns the lint rule on. | P15 sweep | — | open |

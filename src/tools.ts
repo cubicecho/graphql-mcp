@@ -420,63 +420,27 @@ export function buildTools(
   schema: GraphQLSchema,
   options: BuildToolsOptions = {},
 ): ToolDescriptor[] {
-  const { includeQueries = true, includeMutations = true, includeDeprecated = true } = options;
-  // A present-but-empty `include` denies everything (matching `compileRules([])`);
-  // only an omitted `include` keeps every field.
-  const included = options.include ? compileRules(options.include) : null;
-  const excluded = options.exclude ? compileRules(options.exclude) : null;
+  const { includeQueries = true, includeMutations = true } = options;
+  const isExposed = exposureOf(options);
+  const roots: ReadonlyArray<[GraphQLObjectType | null | undefined, OperationKind]> = [
+    [includeQueries ? schema.getQueryType() : undefined, 'query'],
+    [includeMutations ? schema.getMutationType() : undefined, 'mutation'],
+  ];
   const descriptors: ToolDescriptor[] = [];
   const seen = new Set<string>();
-
-  const collect = (root: GraphQLObjectType | null | undefined, kind: OperationKind) => {
-    if (!root) return;
-    for (const field of Object.values(root.getFields())) {
-      if (!includeDeprecated && field.deprecationReason) continue;
-      if (excluded?.(field.name, kind)) continue;
-      if (included && !included(field.name, kind)) continue;
-      if (options.filter && !options.filter(field, kind)) continue;
-      const ext = (field.extensions as { mcp?: McpFieldExtensions } | undefined)?.mcp;
-      if (ext?.hidden) continue;
-
-      const baseName =
-        options.toolName?.(field, kind) ?? applyNameCase(field.name, options.nameCase);
-      const built: DescriptorOptions = {
-        name: baseName,
-        kind,
-        selectionDepth: ext?.selectionDepth ?? depthFor(options.selectionDepth, field, kind),
-        shape: {
-          scalars: options.scalars,
-          nullBranches: ext?.nullBranches ?? branchesFor(options.nullBranches, field, kind),
-          inputField: options.inputField,
-        },
-        mutationHints: options.mutationHints ?? 'uniform',
-        exampleDepth: ext?.exampleDepth ?? depthFor(options.exampleDepth, field, kind),
-      };
-      let descriptor = toDescriptor(field, built);
-      if (ext) descriptor = applyExtensions(descriptor, ext);
-      const patch = options.decorate?.(descriptor, field, kind);
-      if (patch) {
-        // A patched depth changes what the operation selects and a patched
-        // null-branch mode changes the input schema *and* the argument prose, so
-        // everything derived from either is rebuilt rather than left describing
-        // the old one. Both patched values are resolved before the comparison:
-        // rebuilding on one while forwarding the descriptor's stale copy of the
-        // other would silently reset whichever the patch didn't mention.
-        const depth = patch.selectionDepth ?? descriptor.selectionDepth;
-        const branches = patch.nullBranches ?? descriptor.nullBranches;
-        if (depth !== descriptor.selectionDepth || branches !== descriptor.nullBranches) {
-          descriptor = toDescriptor(field, {
-            ...built,
-            selectionDepth: depth,
-            shape: { ...built.shape, nullBranches: branches },
-          });
-          if (ext) descriptor = applyExtensions(descriptor, ext);
-        }
-        // The patch is then applied over the rebuilt descriptor, so an explicit
-        // `query` or `description` alongside it still wins.
-        descriptor = applyPatch(descriptor, patch);
+  for (const [root, kind] of roots) {
+    for (const field of Object.values(root?.getFields() ?? {})) {
+      const extensions = mcpExtensionsOf(field);
+      if (isExposed(field, kind) === false || extensions?.hidden) {
+        continue;
       }
-
+      const built = descriptorOptionsFor(field, kind, extensions, options);
+      const descriptor = decorated(describeField(field, built, extensions), {
+        field,
+        built,
+        extensions,
+        decorate: options.decorate,
+      });
       if (seen.has(descriptor.name)) {
         throw new Error(
           `graphql-mcp: duplicate tool name '${descriptor.name}'. A query and mutation field ` +
@@ -488,11 +452,143 @@ export function buildTools(
       seen.add(descriptor.name);
       descriptors.push(descriptor);
     }
-  };
-
-  if (includeQueries) collect(schema.getQueryType(), 'query');
-  if (includeMutations) collect(schema.getMutationType(), 'mutation');
+  }
   return descriptors;
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
+type RootField = GraphQLField<any, any>;
+
+/**
+ * Reads a field's `extensions.mcp` metadata.
+ *
+ * @param field - A root field.
+ * @returns The metadata, or `undefined` when the field carries none.
+ */
+function mcpExtensionsOf(field: RootField): McpFieldExtensions | undefined {
+  return (field.extensions as { mcp?: McpFieldExtensions } | undefined)?.mcp;
+}
+
+/**
+ * Compiles the filtering options into one question: does this field become a tool?
+ *
+ * @param options - The `buildTools` options; reads `includeDeprecated`, `include`,
+ *   `exclude` and `filter`.
+ * @returns A predicate over a root field and its kind.
+ */
+function exposureOf(
+  options: BuildToolsOptions,
+): (field: RootField, kind: OperationKind) => boolean {
+  const { includeDeprecated = true } = options;
+  // A present-but-empty `include` denies everything (matching `compileRules([])`);
+  // only an omitted `include` keeps every field.
+  const included = options.include ? compileRules(options.include) : undefined;
+  const excluded = options.exclude ? compileRules(options.exclude) : undefined;
+  return (field, kind) => {
+    const isDeprecated = Boolean(field.deprecationReason);
+    if (isDeprecated && includeDeprecated === false) {
+      return false;
+    }
+    if (excluded?.(field.name, kind)) {
+      return false;
+    }
+    if (included && included(field.name, kind) === false) {
+      return false;
+    }
+    return options.filter === undefined || Boolean(options.filter(field, kind));
+  };
+}
+
+/**
+ * Resolves everything {@link toDescriptor} needs for one field: its name and the
+ * per-field settings, where `extensions.mcp` wins over the `buildTools` options.
+ *
+ * @param field - The root field.
+ * @param kind - Whether it came from `Query` or `Mutation`.
+ * @param extensions - The field's `extensions.mcp`, if any.
+ * @param options - The `buildTools` options.
+ * @returns The options the descriptor is built — and, after a patch, rebuilt — with.
+ */
+function descriptorOptionsFor(
+  field: RootField,
+  kind: OperationKind,
+  extensions: McpFieldExtensions | undefined,
+  options: BuildToolsOptions,
+): DescriptorOptions {
+  return {
+    name: options.toolName?.(field, kind) ?? applyNameCase(field.name, options.nameCase),
+    kind,
+    selectionDepth: extensions?.selectionDepth ?? depthFor(options.selectionDepth, field, kind),
+    shape: {
+      scalars: options.scalars,
+      nullBranches: extensions?.nullBranches ?? branchesFor(options.nullBranches, field, kind),
+      inputField: options.inputField,
+    },
+    mutationHints: options.mutationHints ?? 'uniform',
+    exampleDepth: extensions?.exampleDepth ?? depthFor(options.exampleDepth, field, kind),
+  };
+}
+
+/**
+ * Builds a field's descriptor and overlays its `extensions.mcp` metadata.
+ *
+ * @param field - The root field.
+ * @param built - The options from {@link descriptorOptionsFor}.
+ * @param extensions - The field's `extensions.mcp`, if any.
+ * @returns The descriptor before any `decorate` patch.
+ */
+function describeField(
+  field: RootField,
+  built: DescriptorOptions,
+  extensions: McpFieldExtensions | undefined,
+): ToolDescriptor {
+  const descriptor = toDescriptor(field, built);
+  return extensions ? applyExtensions(descriptor, extensions) : descriptor;
+}
+
+/** What {@link decorated} needs beyond the descriptor itself. */
+interface Decoration {
+  /** The root field the descriptor was built from. */
+  field: RootField;
+  /** The options it was built with, reused for a rebuild. */
+  built: DescriptorOptions;
+  /** The field's `extensions.mcp`, reapplied after a rebuild. */
+  extensions: McpFieldExtensions | undefined;
+  /** The `buildTools` `decorate` callback, if any. */
+  decorate: BuildToolsOptions['decorate'];
+}
+
+/**
+ * Applies the `decorate` callback's patch, rebuilding the descriptor first when
+ * the patch changes its selection depth or null-branch mode.
+ *
+ * @param descriptor - The descriptor from {@link describeField}.
+ * @param decoration - The field, its build options and the callback.
+ * @returns The patched descriptor, or `descriptor` when there is no patch.
+ */
+function decorated(descriptor: ToolDescriptor, decoration: Decoration): ToolDescriptor {
+  const { field, built, extensions, decorate } = decoration;
+  const patch = decorate?.(descriptor, field, built.kind);
+  if (!patch) {
+    return descriptor;
+  }
+  // A patched depth changes what the operation selects and a patched null-branch
+  // mode changes the input schema *and* the argument prose, so everything derived
+  // from either is rebuilt. Both are resolved before the comparison: forwarding a
+  // stale copy of the one the patch didn't mention would silently reset it.
+  const depth = patch.selectionDepth ?? descriptor.selectionDepth;
+  const branches = patch.nullBranches ?? descriptor.nullBranches;
+  const isUnchanged = depth === descriptor.selectionDepth && branches === descriptor.nullBranches;
+  const base = isUnchanged
+    ? descriptor
+    : describeField(
+        field,
+        { ...built, selectionDepth: depth, shape: { ...built.shape, nullBranches: branches } },
+        extensions,
+      );
+  // The patch goes over the rebuilt descriptor, so an explicit `query` or
+  // `description` alongside it still wins.
+  return applyPatch(base, patch);
 }
 
 /**
@@ -503,7 +599,7 @@ export function buildTools(
  * both, so they must not drift apart.
  */
 function applyPatch(
-  d: ToolDescriptor,
+  descriptor: ToolDescriptor,
   patch: ToolDescriptor | Partial<ToolDescriptor>,
 ): ToolDescriptor {
   // Setting `inputSchema` says the advertised shape is no longer the field's
@@ -516,16 +612,16 @@ function applyPatch(
   // trips it.
   if (patch.mapArgs && patch.inputSchema && patch.description === undefined) {
     throw new Error(
-      `graphql-mcp: tool '${d.name}' sets \`mapArgs\` and \`inputSchema\` without a ` +
+      `graphql-mcp: tool '${descriptor.name}' sets \`mapArgs\` and \`inputSchema\` without a ` +
         "`description`. The generated description still lists the field's own arguments, " +
         'which this tool no longer accepts — set `description` in the same patch.',
     );
   }
-  const merged: ToolDescriptor = { ...d };
+  const merged: ToolDescriptor = { ...descriptor };
   for (const [key, value] of Object.entries(patch)) {
     if (value !== undefined) (merged as unknown as Record<string, unknown>)[key] = value;
   }
-  if (patch.annotations) merged.annotations = { ...d.annotations, ...patch.annotations };
+  if (patch.annotations) merged.annotations = { ...descriptor.annotations, ...patch.annotations };
   if (patch.title !== undefined && patch.annotations?.title === undefined) {
     merged.annotations = { ...merged.annotations, title: patch.title };
   }
@@ -533,18 +629,22 @@ function applyPatch(
 }
 
 /** Overlays `field.extensions.mcp` metadata onto the SDL-derived descriptor. */
-function applyExtensions(d: ToolDescriptor, ext: McpFieldExtensions): ToolDescriptor {
-  let description = ext.description ?? d.description;
-  if (ext.appendDescription) description = `${description}\n\n${ext.appendDescription}`;
+function applyExtensions(
+  descriptor: ToolDescriptor,
+  extensions: McpFieldExtensions,
+): ToolDescriptor {
+  let description = extensions.description ?? descriptor.description;
+  if (extensions.appendDescription)
+    description = `${description}\n\n${extensions.appendDescription}`;
   return {
-    ...d,
-    name: ext.name ?? d.name,
-    title: ext.title ?? d.title,
+    ...descriptor,
+    name: extensions.name ?? descriptor.name,
+    title: extensions.title ?? descriptor.title,
     description,
     annotations: {
-      ...d.annotations,
-      ...(ext.title ? { title: ext.title } : {}),
-      ...ext.annotations,
+      ...descriptor.annotations,
+      ...(extensions.title ? { title: extensions.title } : {}),
+      ...extensions.annotations,
     },
   };
 }
@@ -575,11 +675,7 @@ interface DescriptorOptions {
   exampleDepth?: number;
 }
 
-function toDescriptor(
-  // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
-  field: GraphQLField<any, any>,
-  options: DescriptorOptions,
-): ToolDescriptor {
+function toDescriptor(field: RootField, options: DescriptorOptions): ToolDescriptor {
   const {
     name,
     kind,
@@ -617,8 +713,7 @@ function toDescriptor(
 /** A depth for one field: a callback is asked, a number is taken as-is. */
 function depthFor(
   depth: SelectionDepth | ExampleDepth | undefined,
-  // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant to depth
-  field: GraphQLField<any, any>,
+  field: RootField,
   kind: OperationKind,
 ): number | undefined {
   return typeof depth === 'function' ? depth(field, kind) : depth;
@@ -631,8 +726,7 @@ function depthFor(
  */
 function branchesFor(
   nullBranches: NullBranchesOption | undefined,
-  // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
-  field: GraphQLField<any, any>,
+  field: RootField,
   kind: OperationKind,
 ): NullBranchesSetting | undefined {
   return typeof nullBranches === 'function' ? nullBranches(field, kind) : nullBranches;
@@ -640,8 +734,7 @@ function branchesFor(
 
 /** Composes a tool description from the field's SDL: docstring, signature, args, and result. */
 function buildDescription(
-  // biome-ignore lint/suspicious/noExplicitAny: a root field's source/context types are irrelevant here
-  field: GraphQLField<any, any>,
+  field: RootField,
   kind: OperationKind,
   selection: string,
   nullBranches: NullBranchesSetting = DEFAULT_NULL_BRANCHES,
