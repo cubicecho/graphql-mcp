@@ -50,7 +50,7 @@ what it returns; one session lifecycle serves both transports."
 | R1 | Refactor [reuse] | Selection set and output schema are produced from one walk over returnable fields instead of two copies of the rules. | M2 | T1 | done |
 | R2 | Refactor [reuse] | The HTTP and fetch handlers share one session lifecycle; each keeps only its request/response translation. | M1 | — | done |
 | R3 | Refactor [reuse] | Generated tools and operation tools build the "Arguments" part of a description with one function. | M3 | — | done |
-| R4 | Refactor [sweep] | Merges 12 small helper pairs that exist twice (describe, enum-to-zod, scalar lookup, error text, kind-from-operation, and others). | P6 sweep | — | open |
+| R4 | Refactor [sweep] | Merges 12 small helper pairs that exist twice (describe, enum-to-zod, scalar lookup, error text, kind-from-operation, and others). | P6 sweep | — | done |
 | R5 | Refactor [readability] | Splits the 60-line closure inside `buildTools` into named steps and renames single-letter parameters. | The hottest file (24 commits/yr) reads as its pipeline | — | open |
 | R6 | Refactor [pattern] | Internal functions taking 5–7 positional arguments take one named-field object instead. | Call sites stop depending on argument order | — | open |
 | R7 | Refactor [pattern] | The meta-tool `switch` and the example-leaf `switch` become lookup tables, and the meta-tool name list and its type are derived from one source. | P24, P14: a new meta tool is one entry | — | open |
@@ -117,6 +117,10 @@ kind from AST (meta, operations); visible-type filter (meta ×2); truncation adv
 ×2); bad-input error envelope (server `toVariables` ×2); `_requestHandlers` cast (handlers
 ×2, a helper already exists); camel-split regex (tools ×2); LRU re-insert and evict-oldest
 (sessions, eventStore); JSON-RPC error body (http, fetch — folds into R2 if approved).
+
+Done for ten pairs. Left alone: the LRU re-insert and evict-oldest loops in `sessions.ts` and
+`eventStore.ts` — two lines each over different maps, and sharing them needs a new module.
+The JSON-RPC body went with R2.
 
 ### R5 [readability] — name the steps of the per-field pipeline
 

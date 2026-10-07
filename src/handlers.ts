@@ -82,9 +82,7 @@ export interface ToolListingCache {
  * @param cache - The cache shared by every server from the same factory.
  */
 export function shareToolListing(server: McpServer, cache: ToolListingCache): void {
-  const handlers = (
-    server.server as unknown as { _requestHandlers?: Map<string, RawRequestHandler> }
-  )._requestHandlers;
+  const handlers = requestHandlers(server);
   const render = handlers?.get(TOOLS_LIST);
   if (!handlers || !render) return;
 

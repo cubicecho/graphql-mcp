@@ -501,12 +501,7 @@ async function toVariables(
       // throws is usually something the caller can act on — `BAD_INPUT` is the
       // code an agent already knows to read as "fix your arguments".
       const message = error instanceof Error ? error.message : String(error);
-      return {
-        failure: toCallToolResult(
-          { errors: [{ message, extensions: { code: BAD_INPUT } }] },
-          maxChars,
-        ),
-      };
+      return { failure: failureOf(message, BAD_INPUT, maxChars) };
     }
     const declared = new Set(descriptor.argNames);
     const undeclared = Object.keys(source).filter((key) => !declared.has(key));
@@ -514,22 +509,11 @@ async function toVariables(
       // graphql-js drops an undeclared variable without a word, so left alone
       // this is a call that succeeds with the mapped intent discarded. Say it is
       // the server's fault, so an agent stops rather than retrying its own input.
-      return {
-        failure: toCallToolResult(
-          {
-            errors: [
-              {
-                message:
-                  `Tool '${descriptor.name}' is misconfigured: its argument mapper returned ` +
-                  `${undeclared.map((key) => `'${key}'`).join(', ')}, which the operation does ` +
-                  'not declare. Retrying with different arguments will not help.',
-                extensions: { code: BAD_TOOL_CONFIG },
-              },
-            ],
-          },
-          maxChars,
-        ),
-      };
+      const message =
+        `Tool '${descriptor.name}' is misconfigured: its argument mapper returned ` +
+        `${undeclared.map((key) => `'${key}'`).join(', ')}, which the operation does ` +
+        'not declare. Retrying with different arguments will not help.';
+      return { failure: failureOf(message, BAD_TOOL_CONFIG, maxChars) };
     }
   }
   const variables: Record<string, unknown> = {};
@@ -537,6 +521,18 @@ async function toVariables(
     if (source[argName] !== undefined) variables[argName] = source[argName];
   }
   return { variables };
+}
+
+/**
+ * A failed call reported as a result: one error carrying a machine-readable code.
+ *
+ * @param message - What went wrong, written for the caller.
+ * @param code - `BAD_INPUT` or `BAD_TOOL_CONFIG`.
+ * @param maxChars - Character budget for the result body.
+ * @returns The error result.
+ */
+function failureOf(message: string, code: string, maxChars: number): CallToolResult {
+  return toCallToolResult({ errors: [{ message, extensions: { code } }] }, maxChars);
 }
 
 /**

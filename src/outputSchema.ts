@@ -33,7 +33,14 @@ import {
 import { z } from 'zod';
 import { DEFAULT_SELECTION_DEPTH, returnedFields } from './selection.ts';
 import type { AnyZodType, ZodShape } from './zodCompat.ts';
-import { builtinScalar, type ScalarMapping, type ScalarResolver, toResolver } from './zodSchema.ts';
+import {
+  describe,
+  enumSchema,
+  type ScalarMapping,
+  type ScalarResolver,
+  scalarSchema,
+  toResolver,
+} from './zodSchema.ts';
 
 /**
  * Builds the Zod schema for a field's return `type`, mirroring the selection set
@@ -65,13 +72,10 @@ function schemaFor(
   scalar: ScalarResolver,
 ): AnyZodType | undefined {
   if (isScalarType(named)) {
-    // The user mapping wins over the built-ins, exactly as on the input side.
-    const mapped = scalar(named);
-    return mapped ?? builtinScalar(named);
+    return scalarSchema(named, scalar);
   }
   if (isEnumType(named)) {
-    const names = named.getValues().map((value) => value.name);
-    return names.length ? z.enum(names as [string, ...string[]]) : z.string();
+    return enumSchema(named);
   }
   if (isUnionType(named)) {
     // The selection set emits an inline fragment per member, so a result matches
@@ -123,8 +127,4 @@ function wrapBase(type: GraphQLOutputType, inner: AnyZodType): AnyZodType {
     return z.array(wrapField(type.ofType, inner));
   }
   return inner;
-}
-
-function describe(schema: AnyZodType, description?: string | null): AnyZodType {
-  return description ? schema.describe(description) : schema;
 }

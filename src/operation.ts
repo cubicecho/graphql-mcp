@@ -12,7 +12,7 @@
  * ```
  */
 
-import type { GraphQLField } from 'graphql';
+import type { GraphQLField, OperationDefinitionNode } from 'graphql';
 import { buildSelectionSet, DEFAULT_SELECTION_DEPTH } from './selection.ts';
 import type { OperationKind } from './types.ts';
 
@@ -59,4 +59,15 @@ export function buildOperation(
     argNames: field.args.map((arg) => arg.name),
     selection,
   };
+}
+
+/**
+ * The kind of tool a parsed operation becomes. Callers reject subscriptions
+ * before asking, so anything that is not a mutation is a query.
+ *
+ * @param definition - The operation definition from a parsed document.
+ * @returns `'mutation'` or `'query'`.
+ */
+export function kindOf(definition: OperationDefinitionNode): OperationKind {
+  return definition.operation === 'mutation' ? 'mutation' : 'query';
 }

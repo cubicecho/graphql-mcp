@@ -794,6 +794,9 @@ export function annotationsFor(
   };
 }
 
+/** A lower-case letter or digit followed by a capital: where a camelCase name splits. */
+const CAMEL_HUMP = /([a-z0-9])([A-Z])/g;
+
 /**
  * `createTodo` → `create_todo`; `getHTTPResponse` → `get_http_response`; `me` → `me`.
  *
@@ -804,7 +807,7 @@ export function annotationsFor(
  */
 function toSnakeCase(fieldName: string): string {
   return fieldName
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(CAMEL_HUMP, '$1_$2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
     .toLowerCase();
 }
@@ -825,9 +828,6 @@ export function applyNameCase(fieldName: string, nameCase: NameCase = 'snake'): 
 
 /** `createTodo` → `Create Todo`; `me` → `Me`. Exported for sibling modules. */
 export function humanize(fieldName: string): string {
-  const spaced = fieldName
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .trim();
+  const spaced = fieldName.replace(CAMEL_HUMP, '$1 $2').replace(/[_-]+/g, ' ').trim();
   return spaced.replace(/\b\w/g, (char) => char.toUpperCase());
 }

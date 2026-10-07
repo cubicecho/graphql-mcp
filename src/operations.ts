@@ -43,6 +43,7 @@ import {
 } from 'graphql';
 import { z } from 'zod';
 import { DEFAULT_EXAMPLE_DEPTH } from './argExample.ts';
+import { kindOf } from './operation.ts';
 import { paginationHint } from './pagination.ts';
 import {
   annotationsFor,
@@ -234,7 +235,7 @@ function toDescriptor(
   options: BuildOperationToolsOptions,
 ): ToolDescriptor {
   const operationName = definition.name?.value as string;
-  const kind: OperationKind = definition.operation === 'mutation' ? 'mutation' : 'query';
+  const kind = kindOf(definition);
   const variables = definition.variableDefinitions ?? [];
   const args = variables.map((variable) => toArgument(schema, variable));
   const title = humanize(operationName);

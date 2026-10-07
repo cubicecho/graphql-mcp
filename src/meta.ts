@@ -16,6 +16,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
   type DocumentNode,
   type GraphQLArgument,
+  type GraphQLError,
   type GraphQLField,
   type GraphQLNamedType,
   type GraphQLSchema,
@@ -32,6 +33,7 @@ import {
 } from 'graphql';
 import { z } from 'zod';
 import { exampleForType } from './argExample.ts';
+import { kindOf } from './operation.ts';
 import { DEFAULT_MAX_CHARS, runExecutor, text, toCallToolResult } from './result.ts';
 import { compileRules, type RuleMatcher } from './rules.ts';
 import type { CustomTool } from './server.ts';
@@ -218,7 +220,7 @@ function validateTool(prefix: string, schema: GraphQLSchema): CustomTool {
       if ('error' in parsed) return errorText(parsed.error);
       const errors = validate(schema, parsed.document);
       if (errors.length) {
-        return errorText(`Invalid document:\n${errors.map((e) => `- ${e.message}`).join('\n')}`);
+        return invalidDocument(errors);
       }
       return text('Valid.');
     },
@@ -262,7 +264,7 @@ function executeTool(
 
       const errors = validate(deps.schema, parsed.document);
       if (errors.length) {
-        return errorText(`Invalid document:\n${errors.map((e) => `- ${e.message}`).join('\n')}`);
+        return invalidDocument(errors);
       }
 
       const operationName = args.operationName as string | undefined;
@@ -273,7 +275,7 @@ function executeTool(
       if (operation.operation === 'subscription') {
         return errorText('Subscriptions are not supported over MCP.');
       }
-      const kind: OperationKind = operation.operation === 'mutation' ? 'mutation' : 'query';
+      const kind = kindOf(operation);
       if (kind === 'mutation' && !allowMutations) {
         return errorText('This server does not allow mutations through the execute tool.');
       }
@@ -399,7 +401,7 @@ function search(
     values.some((value) => value?.toLowerCase().includes(needle));
 
   for (const type of Object.values(schema.getTypeMap())) {
-    if (isIntrospectionType(type) || type.name.startsWith('__')) continue;
+    if (isHiddenType(type)) continue;
     if (hits.length >= limit) break;
     if (matches(type.name, type.description)) {
       hits.push(`${kindWord(type)} ${type.name}${describeSuffix(type.description)}`);
@@ -446,7 +448,7 @@ function describeSuffix(description?: string | null): string {
 
 function typeNames(schema: GraphQLSchema): string[] {
   return Object.values(schema.getTypeMap())
-    .filter((type) => !isIntrospectionType(type) && !type.name.startsWith('__'))
+    .filter((type) => !isHiddenType(type))
     .map((type) => type.name);
 }
 
@@ -467,4 +469,24 @@ function suggest(input: string, candidates: string[]): string {
 
 function errorText(body: string): CallToolResult {
   return { content: [{ type: 'text', text: body }], isError: true };
+}
+
+/**
+ * The error result for a document that failed validation.
+ *
+ * @param errors - The validation errors, at least one.
+ * @returns An error result listing each message.
+ */
+function invalidDocument(errors: ReadonlyArray<GraphQLError>): CallToolResult {
+  return errorText(`Invalid document:\n${errors.map((e) => `- ${e.message}`).join('\n')}`);
+}
+
+/**
+ * Whether a type is GraphQL's own machinery rather than part of the API.
+ *
+ * @param type - A type from the schema's type map.
+ * @returns `true` for introspection types and anything named `__…`.
+ */
+function isHiddenType(type: GraphQLNamedType): boolean {
+  return isIntrospectionType(type) || type.name.startsWith('__');
 }

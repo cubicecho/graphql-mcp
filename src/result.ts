@@ -64,8 +64,18 @@ export const DEFAULT_MAX_CHARS = 50_000;
  */
 export function clamp(value: string, maxChars: number, hint?: string): string {
   if (value.length <= maxChars) return value;
-  const advice = `narrow the query or request fewer fields${hint ? `. ${hint}` : ''}`;
+  const advice = adviceFor(hint);
   return `${value.slice(0, maxChars)}\n\n[truncated ${value.length - maxChars} of ${value.length} characters — ${advice}]`;
+}
+
+/**
+ * What a truncation note tells the caller to do next.
+ *
+ * @param [hint] - Extra advice, such as the field's paging argument.
+ * @returns The advice sentence, without a trailing period.
+ */
+function adviceFor(hint?: string): string {
+  return `narrow the query or request fewer fields${hint ? `. ${hint}` : ''}`;
 }
 
 /** Wraps a plain body as a (clamped) text tool result. */
@@ -157,7 +167,7 @@ function shrink(
   maxChars: number,
   hint?: string,
 ): string {
-  const advice = `narrow the query or request fewer fields${hint ? `. ${hint}` : ''}`;
+  const advice = adviceFor(hint);
   const totalItems = countItems(data);
 
   let low = 0;

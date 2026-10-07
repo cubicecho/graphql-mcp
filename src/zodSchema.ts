@@ -22,6 +22,7 @@
 
 import {
   type GraphQLArgument,
+  type GraphQLEnumType,
   type GraphQLInputField,
   type GraphQLInputObjectType,
   type GraphQLInputType,
@@ -278,14 +279,10 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
     return z.array(fieldToZod(type.ofType, ctx, 'element'));
   }
   if (isScalarType(type)) {
-    // User mapping wins over the built-ins so `ID`/`String` can be retyped.
-    const mapped = ctx.scalar(type);
-    return mapped ?? builtinScalar(type);
+    return scalarSchema(type, ctx.scalar);
   }
   if (isEnumType(type)) {
-    const names = type.getValues().map((value) => value.name);
-    // An enum with no values can't happen in a valid schema, but guard the cast.
-    return names.length ? z.enum(names as [string, ...string[]]) : z.string();
+    return enumSchema(type);
   }
   if (isInputObjectType(type)) {
     // Self-referential input types (e.g. a nested filter tree) resolve to the
@@ -349,8 +346,39 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
   return z.any();
 }
 
-function describe(schema: AnyZodType, description?: string | null): AnyZodType {
+/**
+ * Attaches a schema description when there is one. Exported for `outputSchema.ts`.
+ *
+ * @param schema - The schema to describe.
+ * @param [description] - The GraphQL description, if the schema declares one.
+ * @returns The described schema, or `schema` unchanged.
+ */
+export function describe(schema: AnyZodType, description?: string | null): AnyZodType {
   return description ? schema.describe(description) : schema;
+}
+
+/**
+ * The Zod schema for a scalar. The user mapping wins over the built-ins, so
+ * `ID`/`String` can be retyped, identically on the input and output side.
+ *
+ * @param type - The scalar type.
+ * @param resolve - The user's scalar mapping, as a resolver.
+ * @returns The mapped schema, or the built-in one.
+ */
+export function scalarSchema(type: GraphQLScalarType, resolve: ScalarResolver): AnyZodType {
+  return resolve(type) ?? builtinScalar(type);
+}
+
+/**
+ * The Zod schema for an enum: one of its value names.
+ *
+ * @param type - The enum type.
+ * @returns A `z.enum` of the names.
+ */
+export function enumSchema(type: GraphQLEnumType): AnyZodType {
+  const names = type.getValues().map((value) => value.name);
+  // An enum with no values can't happen in a valid schema, but guard the cast.
+  return names.length ? z.enum(names as [string, ...string[]]) : z.string();
 }
 
 /**
