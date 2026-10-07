@@ -137,6 +137,22 @@ describe('createFetchHandler', () => {
   });
 });
 
+describe('createFetchHandler teardown', () => {
+  test('a server whose close hook throws still answers the request', async () => {
+    const handler = todoHandler({
+      decorateServer: (server) => {
+        server.server.onclose = () => {
+          throw new Error('close hook failed');
+        };
+      },
+    });
+    const client = await connect(handler);
+    const result = (await client.callTool({ name: 'todos', arguments: {} })) as TextResult;
+    assert.notEqual(result.isError, true);
+    await client.close();
+  });
+});
+
 describe('createFetchHandler with sessions', () => {
   test('issues a session id and reuses one server across it', async () => {
     const seenRequests = new Set<unknown>();

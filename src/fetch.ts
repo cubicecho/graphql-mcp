@@ -35,7 +35,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { packageError } from './errors.ts';
 import type { EventStore } from './eventStore.ts';
 import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
-import { SESSION_ID_HEADER, SessionHost, type SessionOptions } from './sessions.ts';
+import { closeQuietly, SESSION_ID_HEADER, SessionHost, type SessionOptions } from './sessions.ts';
 
 /** A fetch-style MCP handler: give it a `Request`, get a `Response`. */
 export interface McpFetchHandler {
@@ -148,8 +148,7 @@ export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandle
       // Unlike the Node path there is no `res.on('close')` to hang teardown on,
       // and a stateless transport has nothing left to do once it has produced a
       // Response — the body is already fully buffered as JSON.
-      await transport.close();
-      await server.close();
+      await closeQuietly({ server, transport });
       return response;
     }
 

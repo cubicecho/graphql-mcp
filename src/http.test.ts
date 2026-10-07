@@ -169,6 +169,34 @@ describe('createHttpHandler with decorateServer', () => {
   });
 });
 
+describe('createHttpHandler teardown', () => {
+  test('a server whose close hook throws leaves no unhandled rejection', async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', record);
+    const { schema, root } = makeTodoSchema();
+    const server = await host(
+      createHttpHandler({
+        schema,
+        executor: createLocalExecutor(schema, { rootValue: root }),
+        decorateServer: (mcp) => {
+          mcp.server.onclose = () => {
+            throw new Error('close hook failed');
+          };
+        },
+      }),
+    );
+    const client = await connect(server.url);
+    await client.listTools();
+    await client.close();
+    // The response's `close` event, and the teardown it starts, come a tick later.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    server.close();
+    process.off('unhandledRejection', record);
+    assert.deepEqual(unhandled, []);
+  });
+});
+
 describe('createHttpHandler without a body parser', () => {
   // The docs used to require `express.json()`. The transport falls back to
   // reading the request stream when `req.body` is undefined, so a bare

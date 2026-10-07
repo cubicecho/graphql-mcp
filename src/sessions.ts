@@ -350,13 +350,15 @@ export class SessionStore<T extends ClosableTransport> {
 }
 
 /**
- * Closes a session's transport and server, swallowing failures.
+ * Closes a transport and its server, swallowing failures.
  *
- * Teardown runs from eviction and shutdown paths where there is no caller left
- * to report to, and a transport that throws on close must not strand the other
- * sessions in the same sweep.
+ * Teardown runs from eviction, shutdown and end-of-request paths where there is
+ * no caller left to report to, and a transport that throws on close must not
+ * strand the other sessions in the same sweep or the response already built.
  */
-async function closeQuietly<T extends ClosableTransport>(session: Session<T>): Promise<void> {
+export async function closeQuietly<T extends ClosableTransport>(
+  session: Pick<Session<T>, 'server' | 'transport'>,
+): Promise<void> {
   try {
     await session.transport?.close();
   } catch {

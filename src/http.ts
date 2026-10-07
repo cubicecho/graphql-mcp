@@ -32,7 +32,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
-import { SESSION_ID_HEADER, SessionHost, type SessionOptions } from './sessions.ts';
+import { closeQuietly, SESSION_ID_HEADER, SessionHost, type SessionOptions } from './sessions.ts';
 
 /** A request, optionally with a parsed JSON body attached (as `express.json()` provides). */
 export type McpHttpRequest = IncomingMessage & { body?: unknown };
@@ -104,8 +104,7 @@ export function createHttpHandler(options: HttpHandlerOptions): McpHttpHandler {
         enableJsonResponse: true,
       });
       res.on('close', () => {
-        transport.close();
-        server.close();
+        void closeQuietly({ server, transport });
       });
       await connectServer(server, transport);
       await transport.handleRequest(req, res, req.body);

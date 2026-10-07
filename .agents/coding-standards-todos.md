@@ -67,7 +67,7 @@ what it returns; one session lifecycle serves both transports."
 | A2 | API change | `GraphqlError`'s extra keys become `unknown` instead of `any`; consumers reading extra keys need a narrowing. | P18 | decision | open |
 | B2 | Bug · low value | Three `messageOf` copies differ: only one turns an empty message or a thrown plain object into readable text. Is that intended? | Consistent error text | — | done |
 | B3 | Bug · low value | `createHttpExecutor` trusts the response body's shape; a JSON body that is not an object gives a confusing error (unverified). | Clearer failure message | — | done |
-| B4 | Bug · low value | The stateless HTTP path closes transport and server in a `close` listener without handling a rejection (unverified). | No stray rejection | — | open |
+| B4 | Bug · low value | The stateless HTTP path closes transport and server in a `close` listener without handling a rejection (unverified). | No stray rejection | — | done |
 | R15 | Refactor [consistency] · low value | Groups the eight scattered `DEFAULT_*` tunables in one `defaults.ts`, keeping every exported name. | P22 | — | open |
 | R16 | Refactor [consistency] · low value | Renames nine camelCase files to kebab-case and updates AGENTS.md's module list. | House file naming | — | open |
 | R17 | Refactor [consistency] · low value | Reformats to line width 120. | House formatter setting; touches every file | — | open |
