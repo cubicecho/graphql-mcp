@@ -12,6 +12,7 @@
 
 import { type IExecutableSchemaDefinition, mergeSchemas } from '@graphql-tools/schema';
 import { GraphQLSchema, isIntrospectionType, isSpecifiedScalarType } from 'graphql';
+import { packageError } from './errors.ts';
 
 /** MCP-only additions merged into the schema before tool generation. */
 export interface SchemaExtension {
@@ -91,8 +92,8 @@ export function extendSchemaForMcp(
     resolvers: extension.resolvers,
   });
   if (extension.typesOnly && !merged.getQueryType()) {
-    throw new Error(
-      'graphql-mcp: `extend.typesOnly` dropped the base root types, so `extend.typeDefs` must ' +
+    throw packageError(
+      '`extend.typesOnly` dropped the base root types, so `extend.typeDefs` must ' +
         'declare its own `type Query { … }` (use `type`, not `extend type`).',
     );
   }

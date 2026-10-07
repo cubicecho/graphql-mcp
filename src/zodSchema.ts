@@ -37,6 +37,7 @@ import {
   valueFromASTUntyped,
 } from 'graphql';
 import { z } from 'zod';
+import { packageError } from './errors.ts';
 import { type AnyZodType, withDefault, withName, type ZodShape } from './zodCompat.ts';
 
 /**
@@ -324,8 +325,8 @@ function baseToZod(type: GraphQLInputType, ctx: Ctx): AnyZodType {
         // tool. Refusing at build time is the same bargain the operation
         // refusals make — fail where a human is reading, not per call.
         if (isNonNullType(field.type)) {
-          throw new Error(
-            `graphql-mcp: \`inputField\` pruned \`${type.name}.${name}\`, which is non-null. ` +
+          throw packageError(
+            `\`inputField\` pruned \`${type.name}.${name}\`, which is non-null. ` +
               'The GraphQL server still requires it, so every call to a tool using this type ' +
               'would fail. Keep the field, or make it nullable in the schema.',
           );

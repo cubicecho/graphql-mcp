@@ -32,6 +32,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { packageError } from './errors.ts';
 import type { EventStore } from './eventStore.ts';
 import { type CreateMcpServerOptions, connectServer, createServerFactory } from './server.ts';
 import { SESSION_ID_HEADER, SessionHost, type SessionOptions } from './sessions.ts';
@@ -98,8 +99,8 @@ async function loadTransport(): Promise<WebTransportCtor> {
     )
     .catch((cause) => {
       ctorPromise = undefined; // Let a later call retry rather than cache the failure.
-      throw new Error(
-        `graphql-mcp: createFetchHandler needs @modelcontextprotocol/sdk >= ${REQUIRED_SDK}, ` +
+      throw packageError(
+        `createFetchHandler needs @modelcontextprotocol/sdk >= ${REQUIRED_SDK}, ` +
           'which is where WebStandardStreamableHTTPServerTransport was added. Upgrade the SDK, ' +
           'or use createHttpHandler on a Node server.',
         { cause },

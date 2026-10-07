@@ -43,6 +43,7 @@ import {
 } from 'graphql';
 import { z } from 'zod';
 import { DEFAULT_EXAMPLE_DEPTH } from './argExample.ts';
+import { packageError } from './errors.ts';
 import { kindOf } from './operation.ts';
 import { paginationHint } from './pagination.ts';
 import {
@@ -152,8 +153,8 @@ export function buildOperationTools(
     assertUsable(definition);
   }
   if (!definitions.length) {
-    throw new Error(
-      'graphql-mcp: `operations` was given sources but none of them defined an operation. ' +
+    throw packageError(
+      '`operations` was given sources but none of them defined an operation. ' +
         'A glob that matched only fragment files, or matched nothing, produces a server with no tools.',
     );
   }
@@ -186,8 +187,8 @@ function toDocument(source: OperationSource): DocumentNode {
       locations?: ReadonlyArray<{ line: number; column: number }>;
       source?: { name: string };
     };
-    throw new Error(
-      `graphql-mcp: could not parse an \`operations\` document — ${messageOf(error)}` +
+    throw packageError(
+      `could not parse an \`operations\` document — ${messageOf(error)}` +
         locationOf(at.locations?.[0], at.source?.name),
       { cause: error },
     );
@@ -209,8 +210,8 @@ function assertValid(schema: GraphQLSchema, document: DocumentNode): void {
   if (!errors.length) {
     return;
   }
-  throw new Error(
-    `graphql-mcp: \`operations\` failed to validate against the schema:\n${errors
+  throw packageError(
+    `\`operations\` failed to validate against the schema:\n${errors
       .map((error) => `  - ${error.message}${locationOf(error.locations?.[0], error.source?.name)}`)
       .join('\n')}`,
   );
@@ -220,14 +221,14 @@ function assertValid(schema: GraphQLSchema, document: DocumentNode): void {
 function assertUsable(definition: OperationDefinitionNode): void {
   const where = locationOf(definition.loc?.startToken, definition.loc?.source.name);
   if (!definition.name) {
-    throw new Error(
-      `graphql-mcp: an \`operations\` document has an anonymous operation${where}. ` +
+    throw packageError(
+      `an \`operations\` document has an anonymous operation${where}. ` +
         'A tool is addressed by name, so every operation needs one.',
     );
   }
   if (definition.operation === 'subscription') {
-    throw new Error(
-      `graphql-mcp: the subscription \`${definition.name.value}\`${where} cannot become a tool. ` +
+    throw packageError(
+      `the subscription \`${definition.name.value}\`${where} cannot become a tool. ` +
         'MCP has no streaming-tool shape, so subscriptions are not supported on any surface.',
     );
   }
@@ -328,7 +329,7 @@ function toArgument(schema: GraphQLSchema, variable: VariableDefinitionNode): Gr
   // input type before this runs — but the cast has to be justified by a check
   // rather than by a comment.
   if (!type || isInputType(type) === false) {
-    throw new Error(`graphql-mcp: variable \`$${name}\` is not a GraphQL input type.`);
+    throw packageError(`variable \`$${name}\` is not a GraphQL input type.`);
   }
   return {
     name,

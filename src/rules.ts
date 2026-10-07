@@ -13,6 +13,7 @@
  * `decorate`).
  */
 
+import { packageError } from './errors.ts';
 import type { OperationKind } from './types.ts';
 
 /** A compiled matcher: does (fieldName, kind) match any of the source patterns? */
@@ -39,8 +40,8 @@ export function compileRules(patterns: readonly string[]): RuleMatcher {
     const prefix = pattern.slice(0, dot);
     const kind = PREFIX_KINDS[prefix];
     if (!kind) {
-      throw new Error(
-        `graphql-mcp: invalid rule pattern '${pattern}' — prefix must be 'Query' or 'Mutation'.`,
+      throw packageError(
+        `invalid rule pattern '${pattern}' — prefix must be 'Query' or 'Mutation'.`,
       );
     }
     return { kind, regex: globToRegex(pattern.slice(dot + 1)) };

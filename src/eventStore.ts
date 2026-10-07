@@ -40,6 +40,7 @@
  */
 
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
+import { packageError } from './errors.ts';
 
 /** Identifies one SSE stream within a session. Minted by the transport. */
 export type StreamId = string;
@@ -168,7 +169,7 @@ export class MemoryEventStore implements EventStore {
     // Returning a made-up stream id would map the client's new connection to a
     // stream nothing writes to, so say so instead.
     if (streamId === undefined) {
-      throw new Error(`graphql-mcp: unknown event id '${lastEventId}'`);
+      throw packageError(`unknown event id '${lastEventId}'`);
     }
     const events = this.streams.get(streamId) ?? [];
     const after = events.findIndex((event) => event.id === lastEventId) + 1;

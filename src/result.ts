@@ -49,6 +49,9 @@ import type { GraphqlError, GraphqlExecutor, GraphqlRequest, GraphqlResult } fro
 /** Default character budget for a tool result before truncation. */
 export const DEFAULT_MAX_CHARS = 50_000;
 
+/** Spaces per level in the JSON a result is printed as. */
+const JSON_INDENT = 2;
+
 /**
  * Truncates `value` to `maxChars`, appending a note that says how much was cut
  * and what to do about it.
@@ -146,7 +149,7 @@ export function toCallToolResult(
     if (truncated) {
       payload.truncated = truncated;
     }
-    return JSON.stringify(payload, null, 2);
+    return JSON.stringify(payload, null, JSON_INDENT);
   };
 
   const whole = envelope(result.data);

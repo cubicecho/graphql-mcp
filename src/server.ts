@@ -26,6 +26,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { GraphQLSchema } from 'graphql';
 import { z } from 'zod';
+import { packageError } from './errors.ts';
 import { createLocalExecutor } from './executor.ts';
 import { extendSchemaForMcp, type SchemaExtension } from './extend.ts';
 import {
@@ -234,7 +235,7 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
   return (contextOverride) => {
     const context = contextOverride ?? options.context;
     const server = new McpServer({
-      name: options.name ?? 'graphql-mcp-server',
+      name: options.name ?? DEFAULT_SERVER_NAME,
       version: options.version ?? VERSION,
     });
     // Built per call: `execute` closes over this call's GraphQL context.
@@ -350,16 +351,16 @@ function runServerDecorator(server: McpServer, hook: ServerDecorator | undefined
   try {
     result = hook(server);
   } catch (cause) {
-    throw new Error(
-      'graphql-mcp: the decorateServer hook threw while preparing a server. It runs on every ' +
+    throw packageError(
+      'the decorateServer hook threw while preparing a server. It runs on every ' +
         'server this factory mints, so a stateless handler will fail every request until it ' +
         'is fixed.',
       { cause },
     );
   }
   if (result && typeof (result as { then?: unknown }).then === 'function') {
-    throw new Error(
-      'graphql-mcp: decorateServer must be synchronous. The server is connected the moment it ' +
+    throw packageError(
+      'decorateServer must be synchronous. The server is connected the moment it ' +
         'is returned, and the SDK refuses to register capabilities once a transport is ' +
         'attached — so anything registered after an await would answer prompts/list having ' +
         'told the client at initialize that there were none. Do the async work before creating ' +
@@ -405,6 +406,9 @@ export async function connectServer(server: McpServer, transport: Transport): Pr
   }
   transport.onmessage = (message, extra) => handler(withArguments(message), extra);
 }
+
+/** The name a server advertises when the caller gives none. */
+const DEFAULT_SERVER_NAME = 'graphql-mcp-server';
 
 /**
  * Requests whose `params.arguments` the MCP schema makes optional and whose SDK

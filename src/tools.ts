@@ -12,6 +12,7 @@
 import type { GraphQLArgument, GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
 import { isNonNullType, print } from 'graphql';
 import { buildArgExample, DEFAULT_EXAMPLE_DEPTH } from './argExample.ts';
+import { packageError } from './errors.ts';
 import { buildOperation } from './operation.ts';
 import { buildOutputSchema } from './outputSchema.ts';
 import { paginationHint } from './pagination.ts';
@@ -442,8 +443,8 @@ export function buildTools(
         decorate: options.decorate,
       });
       if (seen.has(descriptor.name)) {
-        throw new Error(
-          `graphql-mcp: duplicate tool name '${descriptor.name}'. A query and mutation field ` +
+        throw packageError(
+          `duplicate tool name '${descriptor.name}'. A query and mutation field ` +
             'likely collide, or two field names differ only in case — disambiguate with ' +
             "`nameCase: 'preserve'`, `toolName`, `extensions.mcp.name`, `decorate`, or a " +
             'filtering option.',
@@ -611,8 +612,8 @@ function applyPatch(
   // keys (injecting a tenant id, reordering) sets no `inputSchema` and never
   // trips it.
   if (patch.mapArgs && patch.inputSchema && patch.description === undefined) {
-    throw new Error(
-      `graphql-mcp: tool '${descriptor.name}' sets \`mapArgs\` and \`inputSchema\` without a ` +
+    throw packageError(
+      `tool '${descriptor.name}' sets \`mapArgs\` and \`inputSchema\` without a ` +
         "`description`. The generated description still lists the field's own arguments, " +
         'which this tool no longer accepts — set `description` in the same patch.',
     );
