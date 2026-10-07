@@ -1,3 +1,10 @@
+## [2.10.4](https://github.com/cubicecho/graphql-mcp/compare/v2.10.3...v2.10.4) (2026-10-07)
+
+
+### Bug Fixes
+
+* a close hook that throws no longer breaks stateless teardown ([0ad18fc](https://github.com/cubicecho/graphql-mcp/commit/0ad18fc14c4fef6dbdef81046c0c0c0ef301d592))
+
 ## [2.10.3](https://github.com/cubicecho/graphql-mcp/compare/v2.10.2...v2.10.3) (2026-10-07)
 
 
