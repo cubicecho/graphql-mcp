@@ -1,3 +1,10 @@
+## [2.10.3](https://github.com/cubicecho/graphql-mcp/compare/v2.10.2...v2.10.3) (2026-10-07)
+
+
+### Bug Fixes
+
+* **executor:** report a 200 body that is not a GraphQL response ([5f4059b](https://github.com/cubicecho/graphql-mcp/commit/5f4059baa7b04fbcb041fc6c163d5db31db96a05))
+
 ## [2.10.2](https://github.com/cubicecho/graphql-mcp/compare/v2.10.1...v2.10.2) (2026-10-07)
 
 
