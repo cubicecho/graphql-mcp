@@ -1,3 +1,28 @@
+# [3.0.0](https://github.com/cubicecho/graphql-mcp/compare/v2.11.0...v3.0.0) (2026-10-08)
+
+
+* feat!: group the defaults into frozen objects ([054db67](https://github.com/cubicecho/graphql-mcp/commit/054db67d8a4b61e81918e85e4753923f5e40555a))
+* feat!: registerGraphqlTools takes an options object ([cff1eed](https://github.com/cubicecho/graphql-mcp/commit/cff1eed0ef77a36de9419336e7cc51b553d722ee))
+
+
+### BREAKING CHANGES
+
+* six exported constants are renamed.
+`DEFAULT_MAX_CHARS` is `RESULT_DEFAULTS.maxChars`.
+`DEFAULT_MAX_EVENTS_PER_STREAM` is `REPLAY_DEFAULTS.maxEventsPerStream`.
+`DEFAULT_MAX_STREAMS` is `REPLAY_DEFAULTS.maxStreams`.
+`DEFAULT_CLAIM_TTL_MS` is `SESSION_DEFAULTS.claimTtlMs`.
+`DEFAULT_IDLE_TIMEOUT_MS` is `SESSION_DEFAULTS.idleTimeoutMs`.
+`DEFAULT_MAX_SESSIONS` is `SESSION_DEFAULTS.maxSessions`.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+* `registerGraphqlTools` takes the server and one options
+object. Change `registerGraphqlTools(server, descriptors, executor, context,
+maxChars)` to `registerGraphqlTools(server, { descriptors, executor, context,
+maxChars })`.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
 # [2.11.0](https://github.com/cubicecho/graphql-mcp/compare/v2.10.4...v2.11.0) (2026-10-08)
 
 
