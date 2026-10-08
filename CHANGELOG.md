@@ -1,3 +1,10 @@
+# [2.11.0](https://github.com/cubicecho/graphql-mcp/compare/v2.10.4...v2.11.0) (2026-10-08)
+
+
+### Features
+
+* export the closed option sets as named objects ([dc36a9a](https://github.com/cubicecho/graphql-mcp/commit/dc36a9a4ede65163e6542d74bb6ca0e9cd9ff8e8))
+
 ## [2.10.4](https://github.com/cubicecho/graphql-mcp/compare/v2.10.3...v2.10.4) (2026-10-07)
 
 
