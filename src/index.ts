@@ -98,6 +98,7 @@ export type {
   ContextFactory,
   CreateMcpServerOptions,
   CustomTool,
+  RegisterGraphqlToolsOptions,
   ServerDecorator,
   ServerFactory,
   ToolHandler,

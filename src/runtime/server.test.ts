@@ -807,9 +807,8 @@ describe('mapArgs', () => {
     const seen: Array<Record<string, unknown> | undefined> = [];
     const schema = buildSchema(sdl);
     const server = createMcpServer({ schema, executor: async () => ({ data: {} }), include: [] });
-    registerGraphqlTools(
-      server,
-      [
+    registerGraphqlTools(server, {
+      descriptors: [
         {
           name: 'task_by_id',
           kind: 'query',
@@ -824,11 +823,11 @@ describe('mapArgs', () => {
           mapArgs: (args) => ({ where: { id: { eq: args.id } } }),
         },
       ],
-      async (request) => {
+      executor: async (request) => {
         seen.push(request.variables);
         return { data: { tasks: [] } };
       },
-    );
+    });
     const client = await connect(server);
     await client.callTool({ name: 'task_by_id', arguments: { id: 't9' } });
     assert.deepEqual(seen[0], { where: { id: { eq: 't9' } } });

@@ -401,23 +401,32 @@ function withArguments<T>(message: T): T {
   return { ...request, params: { ...request.params, arguments: {} } } as T;
 }
 
+/** What {@link registerGraphqlTools} registers and what the tools run against. */
+export interface RegisterGraphqlToolsOptions {
+  /** The tools to register, from `buildTools` or `buildOperationTools`. */
+  descriptors: ReadonlyArray<ToolDescriptor>;
+  /** Where the tools' operations run. */
+  executor: GraphqlExecutor;
+  /** The GraphQL context for each call: a value, or a factory given the MCP `extra`. */
+  context?: unknown | ContextFactory;
+  /**
+   * Characters a result may hold before it is truncated.
+   *
+   * @defaultValue `DEFAULT_MAX_CHARS`
+   */
+  maxChars?: number;
+}
+
 /**
- * Registers schema-derived `descriptors` onto an existing `server`, binding each
- * to `executor`. The lower-level building block behind {@link createMcpServer};
- * use it when you manage the `McpServer` lifecycle yourself.
+ * Registers schema-derived descriptors on an existing server, binding each to the executor. This is the building
+ * block behind {@link createMcpServer}; use it when you manage the `McpServer` lifecycle yourself.
  *
  * @param server - The MCP server to register tools on.
- * @param descriptors - Tool descriptors (from `buildTools`).
- * @param executor - Where the tools' operations run.
- * @param context - Per-call GraphQL context (value or factory of MCP `extra`).
- * @param maxChars - Character budget for a result before truncation.
+ * @param options - The descriptors, the executor they run against, and the optional context and result budget.
  */
 export function registerGraphqlTools(
   server: McpServer,
-  descriptors: ToolDescriptor[],
-  executor: GraphqlExecutor,
-  context?: unknown | ContextFactory,
-  maxChars = DEFAULT_MAX_CHARS,
+  { descriptors, executor, context, maxChars = DEFAULT_MAX_CHARS }: RegisterGraphqlToolsOptions,
 ): void {
   for (const descriptor of descriptors) {
     const input = strictInput(descriptor.inputSchema);
