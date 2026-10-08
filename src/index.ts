@@ -20,27 +20,9 @@
  * app.listen(4000);
  * ```
  *
- * Modules:
- * - `types` — `GraphqlExecutor`/`GraphqlRequest`/`GraphqlResult`, the execution seam
- * - `zodSchema` — GraphQL args → Zod input schema (`argsToZodShape`)
- * - `selection` — auto-built selection sets (`buildSelectionSet`)
- * - `outputSchema` — return type → Zod result schema (`buildOutputSchema`)
- * - `operation` — per-field operation documents (`buildOperation`)
- * - `operations` — hand-written documents → `ToolDescriptor`s (`buildOperationTools`)
- * - `rules` — include/exclude pattern matching (`compileRules`)
- * - `extend` — MCP-only schema additions (`extendSchemaForMcp`, `stripRootTypes`)
- * - `tools` — schema → `ToolDescriptor`s (`buildTools`)
- * - `meta` — opt-in schema-exploration tools (`buildMetaTools`)
- * - `result` — GraphQL result → MCP tool result (`toCallToolResult`, `runExecutor`);
- *   reuse these in a custom tool so it reports failure and size like the rest
- * - `executor` — `createLocalExecutor` (in-process) / `createHttpExecutor` (forwarding)
- * - `server` — `createMcpServer` / `createServerFactory` / `registerGraphqlTools` (+ custom tools)
- * - `http` — `createHttpHandler` for the Streamable HTTP transport (Node)
- * - `fetch` — `createFetchHandler` for `Request`/`Response` runtimes
- * - `sessions` — the session table behind stateful HTTP (`SessionStore`), and
- *   `SessionDirectory` for reporting session ownership across instances
- * - `eventStore` — the bounded SSE replay buffer behind session resumability
- * - `pagination` — paging-argument detection for truncation hints
+ * Folders: `core` (shared types, defaults and errors), `input` (the arguments a tool takes), `output` (what a tool
+ * returns), `catalog` (which tools exist and what each says), `runtime` (registering tools and running calls) and
+ * `transport` (serving over HTTP). AGENTS.md lists every module.
  *
  * @packageDocumentation
  */
@@ -82,6 +64,7 @@ export type {
   GraphqlExecutor,
   GraphqlRequest,
   GraphqlResult,
+  NullBranches,
   OperationKind,
   ToolAnnotations,
 } from './core/types.ts';
@@ -89,7 +72,6 @@ export { VERSION } from './core/version.ts';
 export type { AnyZodType, ZodShape } from './core/zod-compat.ts';
 export type {
   InputFieldFilter,
-  NullBranches,
   NullBranchesByType,
   NullBranchesSetting,
   ScalarMap,

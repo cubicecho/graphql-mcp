@@ -101,8 +101,7 @@ src/
   **/*.test.ts      — each test sits beside the module it tests
 ```
 
-Folders import downward only: `transport` → `runtime` → `catalog` → `output` → `input` → `core`. The one
-exception is type-only: `core/defaults.ts` reads the `NullBranches` type from `input`.
+Folders import downward only: `transport` → `runtime` → `catalog` → `output` → `input` → `core`.
 No folder has an index file; a module imports the file it needs.
 
 ## Architecture & conventions

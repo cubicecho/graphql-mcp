@@ -66,3 +66,20 @@ export interface ToolAnnotations {
   idempotentHint?: boolean;
   openWorldHint?: boolean;
 }
+
+/**
+ * How a nullable *input position* is rendered — an argument, or a field of an
+ * input object.
+ *
+ * - `'always'` (default) — a nullable position accepts an explicit `null` as
+ *   well as being absent, so it renders an explicit null branch
+ *   (`anyOf: [T, {type: 'null'}]`, or `type: [X, 'null']` for a scalar) on top
+ *   of being left out of `required`.
+ * - `'never'` — a nullable position is merely optional. `required` already says
+ *   it may be absent, so the shape is not lost; what *is* lost is the ability to
+ *   send an explicit `null`.
+ *
+ * The choice is a real trade, which is why it is an option rather than a fix.
+ * See `ZodShapeOptions.nullBranches`.
+ */
+export type NullBranches = 'always' | 'never';

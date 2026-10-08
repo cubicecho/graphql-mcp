@@ -39,6 +39,7 @@ import {
 import { z } from 'zod';
 import { DEFAULT_NULL_BRANCHES } from '../core/defaults.ts';
 import { packageError } from '../core/errors.ts';
+import type { NullBranches } from '../core/types.ts';
 import { type AnyZodType, withDefault, withName, type ZodShape } from '../core/zod-compat.ts';
 
 /**
@@ -56,23 +57,6 @@ export type ScalarResolver = (scalar: GraphQLScalarType) => AnyZodType | undefin
 
 /** A scalar mapping: either a name→schema record or a resolver function. */
 export type ScalarMapping = ScalarMap | ScalarResolver;
-
-/**
- * How a nullable *input position* is rendered — an argument, or a field of an
- * input object.
- *
- * - `'always'` (default) — a nullable position accepts an explicit `null` as
- *   well as being absent, so it renders an explicit null branch
- *   (`anyOf: [T, {type: 'null'}]`, or `type: [X, 'null']` for a scalar) on top
- *   of being left out of `required`.
- * - `'never'` — a nullable position is merely optional. `required` already says
- *   it may be absent, so the shape is not lost; what *is* lost is the ability to
- *   send an explicit `null`.
- *
- * The choice is a real trade, which is why it is an option rather than a fix.
- * See {@link ZodShapeOptions.nullBranches}.
- */
-export type NullBranches = 'always' | 'never';
 
 /**
  * A null-branch mode for {@link ZodShapeOptions.nullBranches} chosen per named type, rather than one mode for a whole
