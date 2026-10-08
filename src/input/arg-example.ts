@@ -8,7 +8,7 @@
 
 import type { GraphQLArgument, GraphQLInputField, GraphQLInputType, GraphQLNamedType } from 'graphql';
 import { getNamedType, isEnumType, isInputObjectType, isListType, isNonNullType } from 'graphql';
-import { DEFAULT_EXAMPLE_DEPTH } from '../core/defaults.ts';
+import { TOOL_DEFAULTS } from '../core/defaults.ts';
 import { defaultJsonOf } from './zod-schema.ts';
 
 /**
@@ -38,7 +38,7 @@ const ABANDON = Symbol('abandon');
  * @param [depth] - How many levels of optional fields to expand. Below 1 there is no example.
  * @returns The example as JSON text of at most `MAX_EXAMPLE_CHARS` characters, or `undefined`.
  */
-export function exampleForType(type: GraphQLInputType, depth: number = DEFAULT_EXAMPLE_DEPTH): string | undefined {
+export function exampleForType(type: GraphQLInputType, depth: number = TOOL_DEFAULTS.exampleDepth): string | undefined {
   if (depth < 1) {
     return undefined;
   }
@@ -69,7 +69,7 @@ export function exampleForType(type: GraphQLInputType, depth: number = DEFAULT_E
  * @param [depth] - How many levels of optional fields to expand. Below 1 there is no example.
  * @returns The example as JSON text, or `undefined` when there is no useful one.
  */
-export function buildArgExample(arg: GraphQLArgument, depth: number = DEFAULT_EXAMPLE_DEPTH): string | undefined {
+export function buildArgExample(arg: GraphQLArgument, depth: number = TOOL_DEFAULTS.exampleDepth): string | undefined {
   const fallback = defaultJsonOf(arg);
   if (fallback !== null && typeof fallback === 'object') {
     return undefined;

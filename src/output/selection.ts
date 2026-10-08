@@ -21,7 +21,7 @@ import {
   isScalarType,
   isUnionType,
 } from 'graphql';
-import { DEFAULT_SELECTION_DEPTH } from '../core/defaults.ts';
+import { TOOL_DEFAULTS } from '../core/defaults.ts';
 
 /**
  * Builds a selection set string (e.g. `{ id name author { id __typename } }`)
@@ -33,7 +33,7 @@ import { DEFAULT_SELECTION_DEPTH } from '../core/defaults.ts';
  *   the return type only; `2` (default) also expands one level of nested objects.
  * @returns The selection set string, or `''` for a leaf return type.
  */
-export function buildSelectionSet(type: GraphQLOutputType, maxDepth = DEFAULT_SELECTION_DEPTH): string {
+export function buildSelectionSet(type: GraphQLOutputType, maxDepth = TOOL_DEFAULTS.selectionDepth): string {
   return selectionFor(getNamedType(type), maxDepth, new Set());
 }
 

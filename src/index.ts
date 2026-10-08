@@ -47,12 +47,11 @@ export type {
 } from './catalog/tools.ts';
 export { applyNameCase, buildTools, MutationHints, NameCase } from './catalog/tools.ts';
 export {
-  DEFAULT_CLAIM_TTL_MS,
-  DEFAULT_IDLE_TIMEOUT_MS,
-  DEFAULT_MAX_CHARS,
-  DEFAULT_MAX_EVENTS_PER_STREAM,
-  DEFAULT_MAX_SESSIONS,
-  DEFAULT_MAX_STREAMS,
+  REPLAY_DEFAULTS,
+  RESULT_DEFAULTS,
+  SEARCH_DEFAULTS,
+  SESSION_DEFAULTS,
+  TOOL_DEFAULTS,
 } from './core/defaults.ts';
 export type {
   GraphqlError,

@@ -8,7 +8,7 @@
  */
 
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
-import { DEFAULT_MAX_EVENTS_PER_STREAM, DEFAULT_MAX_STREAMS } from '../core/defaults.ts';
+import { REPLAY_DEFAULTS } from '../core/defaults.ts';
 import { packageError } from '../core/errors.ts';
 
 /** Identifies one SSE stream within a session. Minted by the transport. */
@@ -92,8 +92,8 @@ export class MemoryEventStore implements EventStore {
    * @param [options] - The caps on events per stream and on streams.
    */
   constructor(options: ReplayOptions = {}) {
-    this.maxEventsPerStream = options.maxEventsPerStream ?? DEFAULT_MAX_EVENTS_PER_STREAM;
-    this.maxStreams = options.maxStreams ?? DEFAULT_MAX_STREAMS;
+    this.maxEventsPerStream = options.maxEventsPerStream ?? REPLAY_DEFAULTS.maxEventsPerStream;
+    this.maxStreams = options.maxStreams ?? REPLAY_DEFAULTS.maxStreams;
   }
 
   /**

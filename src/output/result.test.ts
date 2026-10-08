@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { DEFAULT_MAX_CHARS } from '../core/defaults.ts';
+import { RESULT_DEFAULTS } from '../core/defaults.ts';
 import { bodyOf } from '../core/fixtures.test.ts';
 import { clamp, runExecutor, type TruncationRecord, text, toCallToolResult } from './result.ts';
 
@@ -155,7 +155,7 @@ describe('toCallToolResult size clamping', () => {
   });
 
   test('a result within budget is left untouched and stays parseable', () => {
-    const result = toCallToolResult({ data: { a: 1 } }, DEFAULT_MAX_CHARS);
+    const result = toCallToolResult({ data: { a: 1 } }, RESULT_DEFAULTS.maxChars);
     assert.deepEqual(payloadOf(result).data, { a: 1 });
     assert.equal((payloadOf(result) as { truncated?: unknown }).truncated, undefined);
   });

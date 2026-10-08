@@ -37,7 +37,7 @@ import {
   valueFromASTUntyped,
 } from 'graphql';
 import { z } from 'zod';
-import { DEFAULT_NULL_BRANCHES } from '../core/defaults.ts';
+import { TOOL_DEFAULTS } from '../core/defaults.ts';
 import { packageError } from '../core/errors.ts';
 import { NullBranches } from '../core/types.ts';
 import { type AnyZodType, withDefault, withName, type ZodShape } from '../core/zod-compat.ts';
@@ -86,7 +86,7 @@ export type NullBranchesSetting = NullBranches | NullBranchesByType;
  */
 export function branchesAt(setting: NullBranchesSetting | undefined, type: GraphQLInputType): NullBranches {
   if (setting === undefined) {
-    return DEFAULT_NULL_BRANCHES;
+    return TOOL_DEFAULTS.nullBranches;
   }
   return typeof setting === 'string' ? setting : setting.byType(getNamedType(type));
 }
@@ -371,7 +371,7 @@ export function argsToZodShape(args: ReadonlyArray<GraphQLArgument>, options: Zo
     pending: new Map(),
     done: new Map(),
     scalar: toResolver(options.scalars),
-    nullBranches: options.nullBranches ?? DEFAULT_NULL_BRANCHES,
+    nullBranches: options.nullBranches ?? TOOL_DEFAULTS.nullBranches,
     inputField: options.inputField,
   };
   const shape: ZodShape = {};

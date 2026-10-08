@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { extendSchemaForMcp, type SchemaExtension } from '../catalog/extend.ts';
 import { buildOperationTools, type OperationsInput } from '../catalog/operations.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from '../catalog/tools.ts';
-import { DEFAULT_MAX_CHARS } from '../core/defaults.ts';
+import { RESULT_DEFAULTS } from '../core/defaults.ts';
 import { packageError } from '../core/errors.ts';
 import type { GraphqlExecutor, ToolAnnotations } from '../core/types.ts';
 import { VERSION } from '../core/version.ts';
@@ -176,7 +176,7 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
   const descriptors = withOperations(schema, buildTools(schema, options), options);
   const executor = options.executor ?? createLocalExecutor(schema);
   const customTools = options.tools ?? [];
-  const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
+  const maxChars = options.maxChars ?? RESULT_DEFAULTS.maxChars;
   // Shared by every server this factory mints; see `shareToolListing`.
   const listing: ToolListingCache = {};
   // Meta tools default to the surface the generated tools expose, so `execute` cannot reach past it.
@@ -412,7 +412,7 @@ export interface RegisterGraphqlToolsOptions {
   /**
    * Characters a result may hold before it is truncated.
    *
-   * @defaultValue `DEFAULT_MAX_CHARS`
+   * @defaultValue `RESULT_DEFAULTS.maxChars`
    */
   maxChars?: number;
 }
@@ -426,7 +426,7 @@ export interface RegisterGraphqlToolsOptions {
  */
 export function registerGraphqlTools(
   server: McpServer,
-  { descriptors, executor, context, maxChars = DEFAULT_MAX_CHARS }: RegisterGraphqlToolsOptions,
+  { descriptors, executor, context, maxChars = RESULT_DEFAULTS.maxChars }: RegisterGraphqlToolsOptions,
 ): void {
   for (const descriptor of descriptors) {
     const input = strictInput(descriptor.inputSchema);

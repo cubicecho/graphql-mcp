@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
-import { DEFAULT_MAX_EVENTS_PER_STREAM, DEFAULT_MAX_STREAMS } from '../core/defaults.ts';
+import { REPLAY_DEFAULTS } from '../core/defaults.ts';
 import { type EventStore, eventStoreFactory, MemoryEventStore } from './event-store.ts';
 
 /** A distinguishable JSON-RPC message. */
@@ -144,16 +144,16 @@ describe('MemoryEventStore', () => {
 
   test('the defaults are the documented bounds', async () => {
     const store = new MemoryEventStore();
-    for (let n = 0; n < DEFAULT_MAX_EVENTS_PER_STREAM + 5; n++) {
+    for (let n = 0; n < REPLAY_DEFAULTS.maxEventsPerStream + 5; n++) {
       await store.storeEvent('s', note(n));
     }
-    assert.equal(store.size, DEFAULT_MAX_EVENTS_PER_STREAM);
+    assert.equal(store.size, REPLAY_DEFAULTS.maxEventsPerStream);
 
     const streams = new MemoryEventStore();
-    for (let n = 0; n < DEFAULT_MAX_STREAMS + 3; n++) {
+    for (let n = 0; n < REPLAY_DEFAULTS.maxStreams + 3; n++) {
       await streams.storeEvent(`s${n}`, note(n));
     }
-    assert.equal(streams.streamCount, DEFAULT_MAX_STREAMS);
+    assert.equal(streams.streamCount, REPLAY_DEFAULTS.maxStreams);
   });
 });
 

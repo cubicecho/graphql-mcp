@@ -11,7 +11,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { buildSchema } from 'graphql';
 import { z } from 'zod';
-import { DEFAULT_MAX_CHARS } from '../core/defaults.ts';
+import { RESULT_DEFAULTS } from '../core/defaults.ts';
 import { bodyOf, makeTodoSchema, type TextResult, TODO_FRAGMENTS, TODO_OPERATIONS } from '../core/fixtures.test.ts';
 import { runExecutor, toCallToolResult } from '../index.ts';
 import { createLocalExecutor } from './executor.ts';
@@ -291,7 +291,7 @@ describe('createMcpServer', () => {
           description: 'The first todo, via the exported helpers.',
           handler: async () => {
             const result = await runExecutor(executor, { query: '{ todos { id } }' });
-            return toCallToolResult(result, DEFAULT_MAX_CHARS);
+            return toCallToolResult(result, RESULT_DEFAULTS.maxChars);
           },
         },
       ],

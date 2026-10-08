@@ -34,7 +34,7 @@ import {
 import { z } from 'zod';
 import { kindOf } from '../catalog/operation.ts';
 import { compileRules, type RuleMatcher } from '../catalog/rules.ts';
-import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_LIMIT } from '../core/defaults.ts';
+import { RESULT_DEFAULTS, SEARCH_DEFAULTS } from '../core/defaults.ts';
 import { messageOf } from '../core/errors.ts';
 import { type GraphqlExecutor, OperationKind } from '../core/types.ts';
 import { exampleForType } from '../input/arg-example.ts';
@@ -90,7 +90,7 @@ export interface MetaToolDeps {
 export function buildMetaTools(deps: MetaToolDeps, options: MetaToolsOptions = {}): CustomTool[] {
   const prefix = options.prefix ?? META_TOOL_PREFIX;
   const wanted = options.tools ?? META_TOOL_NAMES;
-  const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
+  const maxChars = options.maxChars ?? RESULT_DEFAULTS.maxChars;
   const included = options.include ? compileRules(options.include) : null;
   const excluded = options.exclude ? compileRules(options.exclude) : null;
   const allowMutations = options.allowMutations ?? true;
@@ -216,12 +216,12 @@ function searchTool({ prefix, deps, allows, maxChars }: MetaToolContext): Custom
         .int()
         .positive()
         .optional()
-        .describe(`Maximum matches to return. Default ${DEFAULT_SEARCH_LIMIT}.`),
+        .describe(`Maximum matches to return. Default ${SEARCH_DEFAULTS.limit}.`),
     },
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     handler: (args) => {
       const needle = String(args.query).toLowerCase();
-      const limit = typeof args.limit === 'number' ? args.limit : DEFAULT_SEARCH_LIMIT;
+      const limit = typeof args.limit === 'number' ? args.limit : SEARCH_DEFAULTS.limit;
       const hits = search(schema, needle, limit, allows);
       if (!hits.length) {
         return text(`No type or field matches '${args.query}'.`, maxChars);

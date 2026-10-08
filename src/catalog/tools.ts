@@ -11,7 +11,7 @@
 
 import type { GraphQLArgument, GraphQLField, GraphQLObjectType, GraphQLSchema } from 'graphql';
 import { isNonNullType, print } from 'graphql';
-import { DEFAULT_EXAMPLE_DEPTH, DEFAULT_NULL_BRANCHES, DEFAULT_SELECTION_DEPTH } from '../core/defaults.ts';
+import { TOOL_DEFAULTS } from '../core/defaults.ts';
 import { packageError } from '../core/errors.ts';
 import { NullBranches, OperationKind, type ToolAnnotations } from '../core/types.ts';
 import type { AnyZodType, ZodShape } from '../core/zod-compat.ts';
@@ -612,13 +612,13 @@ function toDescriptor(field: RootField, options: DescriptorOptions): ToolDescrip
     selectionDepth,
     shape = {},
     mutationHints = MutationHints.uniform,
-    exampleDepth = DEFAULT_EXAMPLE_DEPTH,
+    exampleDepth = TOOL_DEFAULTS.exampleDepth,
   } = options;
   const { query, operationName, argNames, selection } = buildOperation(kind, field, selectionDepth);
   const pageHint = paginationHint(field.args);
   // Resolved once and passed to all three: the argument prose warns about an explicit `null` only where one can
   // still be sent, so the schema and the description must be built at the same mode.
-  const nullBranches = shape.nullBranches ?? DEFAULT_NULL_BRANCHES;
+  const nullBranches = shape.nullBranches ?? TOOL_DEFAULTS.nullBranches;
   return {
     name,
     kind,
@@ -632,7 +632,7 @@ function toDescriptor(field: RootField, options: DescriptorOptions): ToolDescrip
     query,
     operationName,
     argNames,
-    selectionDepth: selectionDepth ?? DEFAULT_SELECTION_DEPTH,
+    selectionDepth: selectionDepth ?? TOOL_DEFAULTS.selectionDepth,
     nullBranches,
     ...(pageHint ? { pageHint } : {}),
   };
@@ -692,8 +692,8 @@ function buildDescription({
   field,
   kind,
   selection,
-  nullBranches = DEFAULT_NULL_BRANCHES,
-  exampleDepth = DEFAULT_EXAMPLE_DEPTH,
+  nullBranches = TOOL_DEFAULTS.nullBranches,
+  exampleDepth = TOOL_DEFAULTS.exampleDepth,
 }: FieldProse): string {
   const lines: string[] = [];
   lines.push(field.description?.trim() || `The \`${field.name}\` ${kind}.`);
@@ -763,7 +763,7 @@ export function describeArguments(
  */
 export function describeArgument(
   arg: GraphQLArgument,
-  nullBranches: NullBranchesSetting = DEFAULT_NULL_BRANCHES,
+  nullBranches: NullBranchesSetting = TOOL_DEFAULTS.nullBranches,
 ): string {
   const parts = [`\`${arg.name}\`: \`${arg.type.toString()}\``];
   const fallback = defaultOf(arg);

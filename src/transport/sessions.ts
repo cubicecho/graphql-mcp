@@ -7,7 +7,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { DEFAULT_CLAIM_TTL_MS, DEFAULT_IDLE_TIMEOUT_MS, DEFAULT_MAX_SESSIONS } from '../core/defaults.ts';
+import { SESSION_DEFAULTS } from '../core/defaults.ts';
 import { type EventStore, eventStoreFactory, type ReplayOption } from './event-store.ts';
 
 /**
@@ -144,8 +144,8 @@ export class SessionStore<T extends ClosableTransport> {
    * @param [options] - The idle timeout, session cap, id generator, directory and instance name to use.
    */
   constructor(options: SessionOptions = {}) {
-    this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
-    this.maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
+    this.idleTimeoutMs = options.idleTimeoutMs ?? SESSION_DEFAULTS.idleTimeoutMs;
+    this.maxSessions = options.maxSessions ?? SESSION_DEFAULTS.maxSessions;
     this.generateSessionId = options.generateSessionId ?? (() => crypto.randomUUID());
     this.directory = options.directory;
     this.instanceId = options.instanceId ?? crypto.randomUUID();
@@ -340,7 +340,7 @@ export class MemorySessionDirectory implements SessionDirectory {
    *   minutes, twice the default idle timeout, so a live session is always
    *   re-claimed well before its claim lapses.
    */
-  constructor(ttlMs: number = DEFAULT_CLAIM_TTL_MS) {
+  constructor(ttlMs: number = SESSION_DEFAULTS.claimTtlMs) {
     this.ttlMs = ttlMs;
   }
 

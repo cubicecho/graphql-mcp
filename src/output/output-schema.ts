@@ -23,7 +23,7 @@ import {
   isUnionType,
 } from 'graphql';
 import { z } from 'zod';
-import { DEFAULT_SELECTION_DEPTH } from '../core/defaults.ts';
+import { TOOL_DEFAULTS } from '../core/defaults.ts';
 import type { AnyZodType, ZodShape } from '../core/zod-compat.ts';
 import {
   describe,
@@ -49,7 +49,7 @@ import { returnedFields } from './selection.ts';
  */
 export function buildOutputSchema(
   type: GraphQLOutputType,
-  maxDepth = DEFAULT_SELECTION_DEPTH,
+  maxDepth = TOOL_DEFAULTS.selectionDepth,
   scalars?: ScalarMapping,
 ): AnyZodType {
   const scalar = toResolver(scalars);

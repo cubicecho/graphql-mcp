@@ -67,7 +67,7 @@ src/
   index.ts          — public API entry point; the only file that re-exports
   core/             — what every other folder shares and no one concept owns
     types.ts        — GraphqlExecutor / GraphqlRequest / GraphqlResult, the execution seam
-    defaults.ts     — every tunable default (depths, budgets, session and replay limits), values only
+    defaults.ts     — every tunable default, in frozen groups (TOOL_, RESULT_, SEARCH_, REPLAY_, SESSION_DEFAULTS)
     errors.ts       — packageError (the `graphql-mcp: ` prefix) and messageOf (a caught value's text)
     version.ts      — VERSION, read from package.json (the version servers advertise)
     zod-compat.ts   — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
@@ -391,7 +391,7 @@ No folder has an index file; a module imports the file it needs.
   would mean walking zod across the v3/v4 split; the throw is the cheaper guard.
 - **Selection sets are auto-generated** (`buildSelectionSet`): all scalar/enum
   leaves at each level, descending into nested objects up to `selectionDepth`
-  (default `DEFAULT_SELECTION_DEPTH`, in `defaults.ts` so the depth a
+  (default `TOOL_DEFAULTS.selectionDepth`, in `defaults.ts` so the depth a
   descriptor reports and the depth it was built at cannot drift), always
   including `__typename`. Fields requiring arguments and cyclic types are
   skipped. Because the agent can't choose the selection, each

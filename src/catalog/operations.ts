@@ -28,7 +28,7 @@ import {
   validate,
 } from 'graphql';
 import { z } from 'zod';
-import { DEFAULT_EXAMPLE_DEPTH, DEFAULT_NULL_BRANCHES } from '../core/defaults.ts';
+import { TOOL_DEFAULTS } from '../core/defaults.ts';
 import { messageOf, packageError } from '../core/errors.ts';
 import type { OperationKind } from '../core/types.ts';
 import type { AnyZodType, ZodShape } from '../core/zod-compat.ts';
@@ -95,7 +95,7 @@ export interface BuildOperationToolsOptions {
   mutationHints?: MutationHints;
   /**
    * How deep a variable's `shape:` example expands, `0` to omit them. Default
-   * {@link DEFAULT_EXAMPLE_DEPTH}. A number rather than a callback: you are
+   * {@link TOOL_DEFAULTS.exampleDepth}. A number rather than a callback: you are
    * writing these documents one at a time, so the per-operation decision is
    * already in your hands.
    */
@@ -276,7 +276,7 @@ function toDescriptor(
   const args = variables.map((variable) => toArgument(schema, variable));
   const title = humanize(operationName);
   const query = print(document);
-  const nullBranches = options.nullBranches ?? DEFAULT_NULL_BRANCHES;
+  const nullBranches = options.nullBranches ?? TOOL_DEFAULTS.nullBranches;
   const pageHint = paginationHint(args);
   return {
     name: applyNameCase(operationName, options.nameCase),
@@ -288,7 +288,7 @@ function toDescriptor(
       definition,
       args,
       nullBranches,
-      exampleDepth: options.exampleDepth ?? DEFAULT_EXAMPLE_DEPTH,
+      exampleDepth: options.exampleDepth ?? TOOL_DEFAULTS.exampleDepth,
       query,
     }),
     inputSchema: toInputSchema(args, variables, options, nullBranches),

@@ -9,7 +9,7 @@
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { DEFAULT_MAX_CHARS } from '../core/defaults.ts';
+import { RESULT_DEFAULTS } from '../core/defaults.ts';
 import { messageOf } from '../core/errors.ts';
 import type { GraphqlError, GraphqlExecutor, GraphqlRequest, GraphqlResult } from '../core/types.ts';
 
@@ -55,7 +55,7 @@ function adviceFor(hint?: string): string {
  * @param [maxChars] - Character budget before the body is clamped.
  * @returns A tool result holding the body as one text block.
  */
-export function text(body: string, maxChars = DEFAULT_MAX_CHARS): CallToolResult {
+export function text(body: string, maxChars = RESULT_DEFAULTS.maxChars): CallToolResult {
   return { content: [{ type: 'text', text: clamp(body, maxChars) }] };
 }
 
@@ -90,7 +90,11 @@ const PARTIAL_NOTE = 'Partial result: some fields failed and are null in `data`;
  *   supplies one naming the field's paging argument.
  * @returns A tool result whose one text block is the JSON envelope, with `isError` set as described above.
  */
-export function toCallToolResult(result: GraphqlResult, maxChars = DEFAULT_MAX_CHARS, hint?: string): CallToolResult {
+export function toCallToolResult(
+  result: GraphqlResult,
+  maxChars = RESULT_DEFAULTS.maxChars,
+  hint?: string,
+): CallToolResult {
   const errors = result.errors ?? [];
   const hasData = hasUsableData(result.data);
   const failed = errors.length > 0 && hasData === false;
