@@ -514,6 +514,10 @@ collapses it into an illegal node.
 createMcpServer({ schema, nullBranches: 'never' });
 ```
 
+Each closed set of option values is also exported as an object of the same name, so
+`NullBranches.never`, `NameCase.preserve`, `MutationHints.byName` and `OperationKind.query`
+work wherever the string does.
+
 The argument's *shape* is not lost — `required` already says it may be absent.
 What is lost is the ability to send an explicit `null`, which becomes a
 validation error. For most GraphQL servers absent and null are the same thing,

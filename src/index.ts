@@ -1,14 +1,15 @@
 /**
  * graphql-mcp — turn a GraphQL schema into an MCP server.
  *
- * Point it at a `GraphQLSchema` and every `Query`/`Mutation` root field becomes
- * a Model Context Protocol tool, described from the SDL (field and argument
- * descriptions, types) so an AI can discover and call your API. It's a thin
- * wrapper meant to run *beside* your GraphQL server: mount the returned HTTP
- * handler on a route in the same app, or run it as its own process and forward
- * to a remote endpoint.
+ * Every `Query` and `Mutation` root field of a `GraphQLSchema` becomes a Model Context Protocol tool, described from
+ * the SDL. Mount the returned HTTP handler beside your GraphQL server, or run it as its own process and forward to a
+ * remote endpoint.
  *
- * Quick start:
+ * The source is grouped into `core` (shared types, defaults, errors), `input` (the arguments a tool takes), `output` (what a tool
+ * returns), `catalog` (which tools exist and what each says), `runtime` (registering tools and running calls) and
+ * `transport` (serving over HTTP).
+ *
+ * @example
  * ```ts
  * import express from 'express';
  * import { createHttpHandler } from '@cubicecho/graphql-mcp';
@@ -19,10 +20,6 @@
  * app.post('/mcp', createHttpHandler({ schema })); // beside app.post('/graphql', …)
  * app.listen(4000);
  * ```
- *
- * Folders: `core` (shared types, defaults and errors), `input` (the arguments a tool takes), `output` (what a tool
- * returns), `catalog` (which tools exist and what each says), `runtime` (registering tools and running calls) and
- * `transport` (serving over HTTP). AGENTS.md lists every module.
  *
  * @packageDocumentation
  */
@@ -44,13 +41,11 @@ export type {
   BuildToolsOptions,
   ExampleDepth,
   McpFieldExtensions,
-  MutationHints,
-  NameCase,
   NullBranchesOption,
   SelectionDepth,
   ToolDescriptor,
 } from './catalog/tools.ts';
-export { applyNameCase, buildTools } from './catalog/tools.ts';
+export { applyNameCase, buildTools, MutationHints, NameCase } from './catalog/tools.ts';
 export {
   DEFAULT_CLAIM_TTL_MS,
   DEFAULT_IDLE_TIMEOUT_MS,
@@ -64,10 +59,9 @@ export type {
   GraphqlExecutor,
   GraphqlRequest,
   GraphqlResult,
-  NullBranches,
-  OperationKind,
   ToolAnnotations,
 } from './core/types.ts';
+export { NullBranches, OperationKind } from './core/types.ts';
 export { VERSION } from './core/version.ts';
 export type { AnyZodType, ZodShape } from './core/zod-compat.ts';
 export type {

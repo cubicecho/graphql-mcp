@@ -14,7 +14,7 @@
 
 import type { GraphQLField, OperationDefinitionNode } from 'graphql';
 import { DEFAULT_SELECTION_DEPTH } from '../core/defaults.ts';
-import type { OperationKind } from '../core/types.ts';
+import { OperationKind } from '../core/types.ts';
 import { buildSelectionSet } from '../output/selection.ts';
 
 /** A built operation: the document plus the metadata needed to invoke it. */
@@ -70,5 +70,5 @@ export function buildOperation(
  * @returns `'mutation'` or `'query'`.
  */
 export function kindOf(definition: OperationDefinitionNode): OperationKind {
-  return definition.operation === 'mutation' ? 'mutation' : 'query';
+  return definition.operation === OperationKind.mutation ? OperationKind.mutation : OperationKind.query;
 }

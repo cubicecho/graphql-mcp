@@ -13,7 +13,7 @@ import type { GraphQLArgument, GraphQLField, GraphQLObjectType, GraphQLSchema } 
 import { isNonNullType, print } from 'graphql';
 import { DEFAULT_EXAMPLE_DEPTH, DEFAULT_NULL_BRANCHES, DEFAULT_SELECTION_DEPTH } from '../core/defaults.ts';
 import { packageError } from '../core/errors.ts';
-import type { OperationKind, ToolAnnotations } from '../core/types.ts';
+import { NullBranches, OperationKind, type ToolAnnotations } from '../core/types.ts';
 import type { AnyZodType, ZodShape } from '../core/zod-compat.ts';
 import { buildArgExample } from '../input/arg-example.ts';
 import {
@@ -171,7 +171,7 @@ export type SelectionDepth =
  * callback cannot.
  *
  * ```ts
- * nullBranches: (_field, kind) => (kind === 'query' ? 'never' : 'always')
+ * nullBranches: (_field, kind) => (kind === OperationKind.query ? 'never' : 'always')
  * nullBranches: { byType: (type) => (type.name.endsWith('Filter') ? 'never' : 'always') }
  * ```
  */
@@ -198,7 +198,8 @@ export type ExampleDepth =
  * `'snake'` (the default) matches the convention MCP servers use; `'preserve'`
  * keeps the field name exactly as the schema spells it.
  */
-export type NameCase = 'snake' | 'preserve';
+export const NameCase = { snake: 'snake', preserve: 'preserve' } as const;
+export type NameCase = (typeof NameCase)[keyof typeof NameCase];
 
 /**
  * How a mutation's `destructiveHint` and `idempotentHint` are decided.
@@ -208,7 +209,8 @@ export type NameCase = 'snake' | 'preserve';
  * `destroy` sets `idempotentHint`, and any other name keeps the uniform default. It is opt-in because it changes
  * what a client asks the operator to confirm.
  */
-export type MutationHints = 'uniform' | 'byName';
+export const MutationHints = { uniform: 'uniform', byName: 'byName' } as const;
+export type MutationHints = (typeof MutationHints)[keyof typeof MutationHints];
 
 /** Options controlling which fields become tools and how they're named. */
 export interface BuildToolsOptions {
@@ -348,8 +350,8 @@ export function buildTools(schema: GraphQLSchema, options: BuildToolsOptions = {
   const { includeQueries = true, includeMutations = true } = options;
   const isExposed = exposureOf(options);
   const roots: ReadonlyArray<[GraphQLObjectType | null | undefined, OperationKind]> = [
-    [includeQueries ? schema.getQueryType() : undefined, 'query'],
-    [includeMutations ? schema.getMutationType() : undefined, 'mutation'],
+    [includeQueries ? schema.getQueryType() : undefined, OperationKind.query],
+    [includeMutations ? schema.getMutationType() : undefined, OperationKind.mutation],
   ];
   const descriptors: ToolDescriptor[] = [];
   const seen = new Set<string>();
@@ -447,7 +449,7 @@ function descriptorOptionsFor(
       nullBranches: extensions?.nullBranches ?? branchesFor(options.nullBranches, field, kind),
       inputField: options.inputField,
     },
-    mutationHints: options.mutationHints ?? 'uniform',
+    mutationHints: options.mutationHints ?? MutationHints.uniform,
     exampleDepth: extensions?.exampleDepth ?? depthFor(options.exampleDepth, field, kind),
   };
 }
@@ -609,7 +611,7 @@ function toDescriptor(field: RootField, options: DescriptorOptions): ToolDescrip
     kind,
     selectionDepth,
     shape = {},
-    mutationHints = 'uniform',
+    mutationHints = MutationHints.uniform,
     exampleDepth = DEFAULT_EXAMPLE_DEPTH,
   } = options;
   const { query, operationName, argNames, selection } = buildOperation(kind, field, selectionDepth);
@@ -768,7 +770,7 @@ export function describeArgument(
   // GraphQL treats a passed null as null, not as a request for the default, so the line says to omit the argument.
   // The null warning appears only where null can still be sent, which `nullBranches: 'never'` rules out.
   if (fallback) {
-    const nullable = isNonNullType(arg.type) === false && branchesAt(nullBranches, arg.type) !== 'never';
+    const nullable = isNonNullType(arg.type) === false && branchesAt(nullBranches, arg.type) !== NullBranches.never;
     parts.push(
       nullable
         ? `(omit for the default \`${fallback}\`; an explicit \`null\` is sent as null)`
@@ -832,11 +834,11 @@ export function annotationsFor(
   kind: OperationKind,
   fieldName: string,
   title: string,
-  mutationHints: MutationHints = 'uniform',
+  mutationHints: MutationHints = MutationHints.uniform,
 ): ToolAnnotations {
-  const isQuery = kind === 'query';
+  const isQuery = kind === OperationKind.query;
   const isMutation = isQuery === false;
-  const byName = isMutation && mutationHints === 'byName';
+  const byName = isMutation && mutationHints === MutationHints.byName;
   const isAdditive = byName && ADDITIVE_PREFIX.test(fieldName);
   return {
     title,
@@ -883,8 +885,8 @@ function toSnakeCase(fieldName: string): string {
  * @param [nameCase] - The casing convention, `'snake'` by default.
  * @returns The name unchanged under `'preserve'`, otherwise in `snake_case`.
  */
-export function applyNameCase(fieldName: string, nameCase: NameCase = 'snake'): string {
-  return nameCase === 'preserve' ? fieldName : toSnakeCase(fieldName);
+export function applyNameCase(fieldName: string, nameCase: NameCase = NameCase.snake): string {
+  return nameCase === NameCase.preserve ? fieldName : toSnakeCase(fieldName);
 }
 
 /**

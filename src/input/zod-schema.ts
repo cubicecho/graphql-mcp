@@ -39,7 +39,7 @@ import {
 import { z } from 'zod';
 import { DEFAULT_NULL_BRANCHES } from '../core/defaults.ts';
 import { packageError } from '../core/errors.ts';
-import type { NullBranches } from '../core/types.ts';
+import { NullBranches } from '../core/types.ts';
 import { type AnyZodType, withDefault, withName, type ZodShape } from '../core/zod-compat.ts';
 
 /**
@@ -221,7 +221,7 @@ function fieldToZod(type: GraphQLInputType, ctx: Ctx, position: 'property' | 'el
   if (position === 'element') {
     return base.nullable();
   }
-  return branchesAt(ctx.nullBranches, type) === 'never' ? base.optional() : base.nullish();
+  return branchesAt(ctx.nullBranches, type) === NullBranches.never ? base.optional() : base.nullish();
 }
 
 /**

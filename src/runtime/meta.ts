@@ -36,7 +36,7 @@ import { kindOf } from '../catalog/operation.ts';
 import { compileRules, type RuleMatcher } from '../catalog/rules.ts';
 import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_LIMIT } from '../core/defaults.ts';
 import { messageOf } from '../core/errors.ts';
-import type { GraphqlExecutor, OperationKind } from '../core/types.ts';
+import { type GraphqlExecutor, OperationKind } from '../core/types.ts';
 import { exampleForType } from '../input/arg-example.ts';
 import { runExecutor, text, toCallToolResult } from '../output/result.ts';
 import type { CustomTool } from './server.ts';
@@ -317,7 +317,7 @@ function executeTool({ prefix, deps, allows, allowMutations, maxChars }: MetaToo
         return errorText('Subscriptions are not supported over MCP.');
       }
       const kind = kindOf(operation);
-      if (kind === 'mutation' && !allowMutations) {
+      if (kind === OperationKind.mutation && !allowMutations) {
         return errorText('This server does not allow mutations through the execute tool.');
       }
 
@@ -453,8 +453,8 @@ function tryParse(query: string): { document: DocumentNode } | { error: string }
 function overview(schema: GraphQLSchema, allows: RuleMatcher): string {
   const lines: string[] = [];
   for (const [root, kind] of [
-    [schema.getQueryType(), 'query'],
-    [schema.getMutationType(), 'mutation'],
+    [schema.getQueryType(), OperationKind.query],
+    [schema.getMutationType(), OperationKind.mutation],
   ] as const) {
     if (!root) {
       continue;
@@ -489,10 +489,10 @@ function search(schema: GraphQLSchema, needle: string, limit: number, allows: Ru
   const queryType = schema.getQueryType();
   const mutationType = schema.getMutationType();
   if (queryType) {
-    rootKinds.set(queryType.name, 'query');
+    rootKinds.set(queryType.name, OperationKind.query);
   }
   if (mutationType) {
-    rootKinds.set(mutationType.name, 'mutation');
+    rootKinds.set(mutationType.name, OperationKind.mutation);
   }
 
   const hits: string[] = [];

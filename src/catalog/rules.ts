@@ -14,14 +14,14 @@
  */
 
 import { packageError } from '../core/errors.ts';
-import type { OperationKind } from '../core/types.ts';
+import { OperationKind } from '../core/types.ts';
 
 /** A compiled matcher: does (fieldName, kind) match any of the source patterns? */
 export type RuleMatcher = (fieldName: string, kind: OperationKind) => boolean;
 
 const PREFIX_KINDS: Record<string, OperationKind> = {
-  Query: 'query',
-  Mutation: 'mutation',
+  Query: OperationKind.query,
+  Mutation: OperationKind.mutation,
 };
 
 /**

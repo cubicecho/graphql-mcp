@@ -3,7 +3,7 @@
  * would still be a working server. Values only, so this module runs no code.
  */
 
-import type { NullBranches } from './types.ts';
+import { NullBranches } from './types.ts';
 
 /** Object levels a selection descends. The selection, its operation and the output schema share it. */
 export const DEFAULT_SELECTION_DEPTH = 2;
@@ -12,7 +12,7 @@ export const DEFAULT_SELECTION_DEPTH = 2;
 export const DEFAULT_EXAMPLE_DEPTH = 3;
 
 /** The mode a nullable input position takes when nothing says otherwise. */
-export const DEFAULT_NULL_BRANCHES: NullBranches = 'always';
+export const DEFAULT_NULL_BRANCHES: NullBranches = NullBranches.always;
 
 /** Characters a tool result may hold before it is truncated. */
 export const DEFAULT_MAX_CHARS = 50_000;

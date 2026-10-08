@@ -72,7 +72,7 @@ what it returns; one session lifecycle serves both transports."
 | R16 | Refactor [consistency] · low value | Renames nine camelCase files to kebab-case and updates AGENTS.md's module list. | House file naming | — | done |
 | R17 | Refactor [consistency] · low value | Reformats to line width 120. | House formatter setting; touches every file | — | done |
 | R18 | Refactor [structure] · low value | Groups the flat 23-module `src/` into folders by concept. | P21; AGENTS.md documents the flat layout today | decision | done |
-| A3 | API change · low value | Exports named objects for the closed sets (`NameCase`, `NullBranches`, `MutationHints`, operation kind). | P16 for consumers | decision | open |
+| A3 | API change · low value | Exports named objects for the closed sets (`NameCase`, `NullBranches`, `MutationHints`, operation kind). | P16 for consumers | decision | done |
 | R19 | Refactor [structure] | Moves the `NullBranches` type into `core/types.ts`, removing the only upward import. | P21 layering | — | done |
 | A4 | API change | Groups the defaults into frozen objects (`RESULT_DEFAULTS`, `REPLAY_DEFAULTS`, `SESSION_DEFAULTS`, …); renames six exported constants. | P22 full form | decision | open |
 

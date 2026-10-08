@@ -1,5 +1,5 @@
 /**
- * Core shared types. Pure types — no runtime, no internal dependencies.
+ * Core shared types and the closed sets of values they name. No internal dependencies.
  *
  * The central abstraction is {@link GraphqlExecutor}: the single seam between a
  * generated MCP tool and "where GraphQL actually runs". The default executor
@@ -9,7 +9,8 @@
  */
 
 /** Whether a root field originates from the schema's `Query` or `Mutation` type. */
-export type OperationKind = 'query' | 'mutation';
+export const OperationKind = { query: 'query', mutation: 'mutation' } as const;
+export type OperationKind = (typeof OperationKind)[keyof typeof OperationKind];
 
 /** A single GraphQL error, mirroring the spec's error shape. */
 export interface GraphqlError {
@@ -82,4 +83,5 @@ export interface ToolAnnotations {
  * The choice is a real trade, which is why it is an option rather than a fix.
  * See `ZodShapeOptions.nullBranches`.
  */
-export type NullBranches = 'always' | 'never';
+export const NullBranches = { always: 'always', never: 'never' } as const;
+export type NullBranches = (typeof NullBranches)[keyof typeof NullBranches];
