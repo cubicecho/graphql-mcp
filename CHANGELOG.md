@@ -1,3 +1,10 @@
+# [3.1.0](https://github.com/cubicecho/graphql-mcp/compare/v3.0.0...v3.1.0) (2026-11-11)
+
+
+### Features
+
+* choose the tool set per request in the HTTP handlers ([0d6b110](https://github.com/cubicecho/graphql-mcp/commit/0d6b110f0a7e8067979f1ed64100b80e5c65de15)), closes [#32](https://github.com/cubicecho/graphql-mcp/issues/32)
+
 # [3.0.0](https://github.com/cubicecho/graphql-mcp/compare/v2.11.0...v3.0.0) (2026-10-08)
 
 
