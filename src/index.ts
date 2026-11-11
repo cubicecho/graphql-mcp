@@ -47,6 +47,7 @@ export type {
 } from './catalog/tools.ts';
 export { applyNameCase, buildTools, MutationHints, NameCase } from './catalog/tools.ts';
 export {
+  LISTING_DEFAULTS,
   REPLAY_DEFAULTS,
   RESULT_DEFAULTS,
   SEARCH_DEFAULTS,
@@ -101,6 +102,7 @@ export type {
   ServerDecorator,
   ServerFactory,
   ToolHandler,
+  ToolSelection,
 } from './runtime/server.ts';
 export {
   connectServer,
@@ -120,6 +122,7 @@ export type { FetchHandlerOptions, McpFetchHandler } from './transport/fetch.ts'
 export { createFetchHandler } from './transport/fetch.ts';
 export type { HttpHandlerOptions, McpHttpHandler, McpHttpRequest } from './transport/http.ts';
 export { createHttpHandler } from './transport/http.ts';
+export type { ServerForRequest, ToolsForRequest } from './transport/request-server.ts';
 export type {
   ClosableTransport,
   Session,

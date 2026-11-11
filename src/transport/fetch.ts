@@ -9,8 +9,10 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { packageError } from '../core/errors.ts';
-import { type CreateMcpServerOptions, connectServer, createServerFactory } from '../runtime/server.ts';
+import { type CreateMcpServerOptions, connectServer } from '../runtime/server.ts';
+import { readJsonBody, streamChunks } from './body.ts';
 import type { EventStore } from './event-store.ts';
+import { requestServers, type ServerForRequest, type ToolsForRequest } from './request-server.ts';
 import { closeQuietly, SESSION_ID_HEADER, SessionHost, type SessionOptions } from './sessions.ts';
 
 /** A fetch-style MCP handler: give it a `Request`, get a `Response`. */
@@ -34,6 +36,12 @@ export interface FetchHandlerOptions extends CreateMcpServerOptions {
    * {@link HttpHandlerOptions.contextFromRequest}.
    */
   contextFromRequest?: (request: Request) => unknown | Promise<unknown>;
+  /** Chooses the tools a request's server offers — see {@link HttpHandlerOptions.toolsFor}. */
+  toolsFor?: ToolsForRequest<Request>;
+  /** Builds the server for each request yourself — see {@link HttpHandlerOptions.serverFor}. */
+  serverFor?: ServerForRequest<Request>;
+  /** Refuses a larger request body with a `413` — see {@link HttpHandlerOptions.maxBodyBytes}. */
+  maxBodyBytes?: number;
   /**
    * Keep a server alive per client session instead of one per request. Off by
    * default, and a poor fit for isolate-per-request platforms — see the module
@@ -92,7 +100,7 @@ async function loadTransport(): Promise<WebTransportCtor> {
  * Creates a `(Request) => Response` handler serving the schema's tools over MCP.
  *
  * @param options - The same options as {@link createMcpServer}, plus
- *   `contextFromRequest` and `sessions`.
+ *   `contextFromRequest`, `toolsFor` or `serverFor`, `maxBodyBytes` and `sessions`.
  * @returns A fetch handler carrying a `close()` for shutdown.
  * @throws If the installed MCP SDK predates the web-standard transport — on the
  *   first call, not at import, so Node users on an older SDK are unaffected.
@@ -107,22 +115,34 @@ async function loadTransport(): Promise<WebTransportCtor> {
  * ```
  */
 export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandler {
-  const { contextFromRequest, sessions, ...serverOptions } = options;
-  const makeServer = createServerFactory(serverOptions);
+  const { contextFromRequest, toolsFor, serverFor, maxBodyBytes, sessions, ...serverOptions } = options;
+  const mintServer = requestServers({ contextFromRequest, toolsFor, serverFor }, serverOptions);
   const host = SessionHost.from<WebTransport>(sessions);
 
   const handler = async (request: Request): Promise<Response> => {
     const Transport = await loadTransport();
-    const contextOverride = contextFromRequest ? () => contextFromRequest(request) : undefined;
+    // Left undefined unless this handler read the body, so the transport reads it as it always did.
+    let parsed: { parsedBody: unknown } | undefined;
+    if (maxBodyBytes !== undefined && request.method === 'POST') {
+      const chunks = streamChunks(request.body);
+      const reading = await readJsonBody(chunks, request.headers.get('content-length'), maxBodyBytes);
+      if ('refusal' in reading) {
+        return new Response(reading.refusal.body, {
+          status: reading.refusal.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      parsed = { parsedBody: reading.body };
+    }
 
     if (!host) {
-      const server = makeServer(contextOverride);
+      const server = await mintServer(request);
       const transport = new Transport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
       });
       await connect(server, transport);
-      const response = await transport.handleRequest(request);
+      const response = await transport.handleRequest(request, parsed);
       // Unlike the Node path there is no `res.on('close')` to hang teardown on, and the stateless Response body is
       // already fully buffered as JSON.
       await closeQuietly({ server, transport });
@@ -136,13 +156,13 @@ export function createFetchHandler(options: FetchHandlerOptions): McpFetchHandle
         const miss = await host.miss(sessionId);
         return new Response(miss.body, { status: miss.status, headers: miss.headers });
       }
-      return existing.transport.handleRequest(request);
+      return existing.transport.handleRequest(request, parsed);
     }
 
-    const server = makeServer(contextOverride);
+    const server = await mintServer(request);
     const transport = host.begin(server, (options) => new Transport(options));
     await connect(server, transport);
-    const response = await transport.handleRequest(request);
+    const response = await transport.handleRequest(request, parsed);
     await host.settle(server, transport);
     return response;
   };

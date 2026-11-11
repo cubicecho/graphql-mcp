@@ -97,7 +97,7 @@ mutation createTodo($input: CreateTodoInput!) {
 | `createHttpHandler(options)` | Returns an Express/Node `(req, res)` handler serving the tools over the MCP Streamable HTTP transport. A fresh server is created per request. |
 | `createMcpServer(options)` | Returns a single `McpServer` with all tools registered. Use for stdio or one long-lived connection. |
 | `connectServer(server, transport)` | Connects a server to a transport. Use this instead of `server.connect` — see [Connecting your own transport](#connecting-your-own-transport). |
-| `createServerFactory(options)` | Builds the tool descriptors once and returns a `() => McpServer` factory. |
+| `createServerFactory(options)` | Builds the tool descriptors once and returns a `(context?, selection?) => McpServer` factory. |
 | `createLocalExecutor(schema, opts?)` | Executor that runs operations in-process via graphql-js (the default). |
 | `createHttpExecutor(endpoint, opts?)` | Executor that forwards operations to a remote GraphQL HTTP endpoint. |
 | `buildTools(schema, opts?)` | The pure core: schema → `ToolDescriptor[]` (no SDK, no executor). |
@@ -284,6 +284,60 @@ const handler = createHttpHandler({
 
 For non-HTTP setups, pass `context` as a static value or a factory of the MCP
 request `extra`.
+
+## Per-request tools
+
+When what a caller is *offered* depends on who it is — a key with a write scope,
+a per-key switch on each tool — `toolsFor` chooses the tools for each request.
+It is handed the request and the context `contextFromRequest` derived for it,
+and returns a selection by **tool name**: the final name `tools/list` shows, so
+it reaches operation, meta and custom tools as well as generated ones.
+
+```ts
+const handler = createHttpHandler({
+  schema,
+  contextFromRequest: (req) => contextFor(req.headers),
+  toolsFor: (_req, ctx) => (ctx.canWrite ? undefined : { exclude: ['create_todo', 'set_completed'] }),
+});
+```
+
+`include` offers only the names it lists (an empty one offers nothing), and
+`exclude` takes names away after it; either is any iterable, so a `Set` works.
+A tool left out is not registered, so it is not listed and a call to it is
+answered as a call to a tool that does not exist. The schema is still projected
+once, and the rendered `tools/list` is cached per distinct set of tools (up to
+`LISTING_DEFAULTS.maxToolSets`), so a narrowed request costs what any other
+does. This is about what is listed, not what is allowed — keep permissions on
+the schema, where `/graphql` meets them too.
+
+With `toolsFor`, `contextFromRequest` runs **once per request**, before the
+selection, and its value is every call's context on that request. With
+[`sessions`](#sessions) the selection is made when the session starts.
+
+When a caller's server differs in more than its tools — prompts filled in with
+the caller's own data, say — `serverFor` builds the whole server, and the
+handler keeps the body, the transport and the teardown:
+
+```ts
+const readOnly = createServerFactory({ schema, includeMutations: false });
+const writer = createServerFactory({ schema });
+
+const handler = createHttpHandler({
+  schema,
+  contextFromRequest: (req) => contextFor(req.headers),
+  serverFor: (_req, ctx) => {
+    const server = (ctx.canWrite ? writer : readOnly)(() => ctx);
+    registerPrompts(server, ctx); // before connect, which the handler does next
+    return server;
+  },
+  maxBodyBytes: 1_000_000,
+});
+```
+
+Return a server that is not yet connected. The other server options are not
+read with `serverFor` — build your factories once, outside the hook — and it
+cannot be combined with `toolsFor`; pass a selection to your own factory
+instead. Both hooks, and `maxBodyBytes`, are on `createFetchHandler` too.
 
 ## Choosing a tool surface
 
@@ -1195,11 +1249,12 @@ Two things to know:
   promise hangs the request instead of answering it, so wrap your handler in an
   error-catching adapter.
 - **Vary prompts and resources freely; do not vary tools.** The rendered
-  `tools/list` is shared across every server one factory mints
-  ([Sessions](#sessions) mints one per session), so a hook that registers a
-  different *tool* set depending on external state will serve one caller's
-  listing to another. Prompts and resources are not cached and may differ per
-  server. Tools that vary belong in the `tools` option, which also gets the
+  `tools/list` is shared across every server one factory mints with the same
+  tool set ([Sessions](#sessions) mints one per session), so a hook that
+  registers a different *tool* set depending on external state will serve one
+  caller's listing to another. Prompts and resources are not cached and may
+  differ per server. Tools that vary per caller belong in
+  [`toolsFor`](#per-request-tools); extra tools belong in the `tools` option, which also gets the
   `BAD_INPUT` envelope — a tool registered through this hook is not covered by
   the argument guard, so a malformed call to it gets the SDK's raw JSON-RPC
   error rather than the JSON result envelope every other tool answers with.
@@ -1231,12 +1286,15 @@ schema is fixed up the same way, for the same reason.
 `IncomingMessage` and a Node `ServerResponse`, and nothing else. A parsed JSON
 body on `req.body` (as `express.json()` provides) is used when present, but the
 transport reads the request stream itself when it isn't — so a bare `node:http`
-server works with no body parser at all:
+server works with no body parser at all. The SDK reads it with no size limit
+(1.25 and later), so set `maxBodyBytes` there: the handler then reads the body
+itself, answers one over the cap with a `413` and one that is not JSON with a
+`400`, both as JSON-RPC errors:
 
 ```ts
 import http from 'node:http';
 
-const handler = createHttpHandler({ schema });
+const handler = createHttpHandler({ schema, maxBodyBytes: 1_000_000 });
 http.createServer((req, res) => handler(req, res)).listen(4000);
 ```
 

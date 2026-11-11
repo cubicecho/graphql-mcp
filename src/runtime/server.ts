@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { extendSchemaForMcp, type SchemaExtension } from '../catalog/extend.ts';
 import { buildOperationTools, type OperationsInput } from '../catalog/operations.ts';
 import { type BuildToolsOptions, buildTools, type ToolDescriptor } from '../catalog/tools.ts';
-import { RESULT_DEFAULTS } from '../core/defaults.ts';
+import { LISTING_DEFAULTS, RESULT_DEFAULTS } from '../core/defaults.ts';
 import { packageError } from '../core/errors.ts';
 import type { GraphqlExecutor, ToolAnnotations } from '../core/types.ts';
 import { VERSION } from '../core/version.ts';
@@ -31,7 +31,7 @@ import {
   BAD_TOOL_CONFIG,
   guardToolArguments,
   shareToolListing,
-  type ToolListingCache,
+  ToolListings,
   type ToolValidators,
 } from './handlers.ts';
 import { buildMetaTools, type MetaToolsOptions } from './meta.ts';
@@ -159,14 +159,32 @@ export function createMcpServer(options: CreateMcpServerOptions): McpServer {
   return createServerFactory(options)();
 }
 
-/** A factory minting fresh `McpServer`s; an optional arg overrides the call context. */
-export type ServerFactory = (contextOverride?: unknown | ContextFactory) => McpServer;
+/**
+ * Which of a factory's tools one server offers, by **tool name** — the final name `tools/list` shows, after casing,
+ * `toolName` and every override — so it reaches generated, operation, meta and custom tools alike, which the
+ * field-name `include`/`exclude` options cannot. A tool left out is not registered, so a call to it is answered as
+ * one to a tool that does not exist. This narrows what is listed, not what is allowed: permissions belong on the
+ * schema, where `/graphql` meets them too.
+ */
+export interface ToolSelection {
+  /** The tools to offer. Omitted offers every tool; present but empty offers none, so a built allow-list fails closed. */
+  include?: Iterable<string>;
+  /** Tools to leave out, applied after `include`. A name that is no tool here is ignored. */
+  exclude?: Iterable<string>;
+}
+
+/**
+ * A factory minting fresh `McpServer`s. The first argument overrides the call context, and the second narrows the
+ * tools the server offers.
+ */
+export type ServerFactory = (contextOverride?: unknown | ContextFactory, selection?: ToolSelection) => McpServer;
 
 /**
  * Builds the tool descriptors once and returns a factory that mints a fresh
  * `McpServer` (with those tools registered) on each call. The factory accepts an
- * optional context override so per-request callers (e.g. the HTTP handler) can
- * supply request-derived context without rebuilding the descriptors.
+ * optional context override and an optional {@link ToolSelection}, so per-request
+ * callers (e.g. the HTTP handler) can supply request-derived context and a
+ * caller-dependent tool set without rebuilding the descriptors.
  *
  * @param options - Schema, executor, context, and tool options.
  * @returns A {@link ServerFactory}.
@@ -177,8 +195,8 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
   const executor = options.executor ?? createLocalExecutor(schema);
   const customTools = options.tools ?? [];
   const maxChars = options.maxChars ?? RESULT_DEFAULTS.maxChars;
-  // Shared by every server this factory mints; see `shareToolListing`.
-  const listing: ToolListingCache = {};
+  // Shared by every server this factory mints, one rendering per tool set; see `shareToolListing`.
+  const listings = new ToolListings(LISTING_DEFAULTS.maxToolSets);
   // Meta tools default to the surface the generated tools expose, so `execute` cannot reach past it.
   const metaOptions: MetaToolsOptions | null = options.metaTools
     ? {
@@ -190,8 +208,10 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
       }
     : null;
 
-  return (contextOverride) => {
+  return (contextOverride, selection) => {
     const context = contextOverride ?? options.context;
+    const offers = offeredBy(selection);
+    const registered: string[] = [];
     const server = new McpServer({
       name: options.name ?? DEFAULT_SERVER_NAME,
       version: options.version ?? VERSION,
@@ -211,14 +231,19 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
     const validators = new Map<string, AnyZodType>();
 
     for (const descriptor of descriptors) {
-      if (byName.has(descriptor.name)) {
+      if (byName.has(descriptor.name) || offers(descriptor.name) === false) {
         continue;
       }
+      registered.push(descriptor.name);
       const input = strictInput(descriptor.inputSchema);
       validators.set(descriptor.name, input);
       registerGeneratedTool(server, { descriptor, input, executor, context, maxChars });
     }
     for (const tool of byName.values()) {
+      if (offers(tool.name) === false) {
+        continue;
+      }
+      registered.push(tool.name);
       registerCustomTool(server, tool);
       // Non-strict, because that is how the SDK wraps a raw shape: the check
       // here must not reject what the SDK would have accepted.
@@ -229,10 +254,22 @@ export function createServerFactory(options: CreateMcpServerOptions): ServerFact
     // Before the wrappers, and before `connect`: prompts and resources can only
     // declare their capabilities while no transport is attached.
     runServerDecorator(server, options.decorateServer);
-    shareToolListing(server, listing);
+    shareToolListing(server, listings, registered);
     guardToolArguments(server, validators satisfies ToolValidators, maxChars);
     return server;
   };
+}
+
+/**
+ * Turns a {@link ToolSelection} into a test on a tool name.
+ *
+ * @param selection - The selection a server was minted with, or `undefined` for every tool.
+ * @returns A predicate that is true for each tool the server should offer.
+ */
+function offeredBy(selection: ToolSelection | undefined): (name: string) => boolean {
+  const include = selection?.include === undefined ? undefined : new Set(selection.include);
+  const exclude = new Set(selection?.exclude ?? []);
+  return (name) => (include === undefined || include.has(name)) && exclude.has(name) === false;
 }
 
 /**

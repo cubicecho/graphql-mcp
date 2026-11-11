@@ -15,6 +15,12 @@ export const TOOL_DEFAULTS: Readonly<{
   nullBranches: NullBranches;
 }> = Object.freeze({ selectionDepth: 2, exampleDepth: 3, nullBranches: NullBranches.always });
 
+/** Limits on the `tools/list` renderings one server factory keeps. */
+export const LISTING_DEFAULTS: Readonly<{
+  /** Distinct tool sets a factory keeps a rendered listing for; the least recently offered is rendered again. */
+  maxToolSets: number;
+}> = Object.freeze({ maxToolSets: 32 });
+
 /** Limits on a tool result. */
 export const RESULT_DEFAULTS: Readonly<{
   /** Characters a tool result may hold before it is truncated. */

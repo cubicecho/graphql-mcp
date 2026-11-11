@@ -10,6 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { makeTodoSchema, type TextResult } from '../core/fixtures.test.ts';
 import { createLocalExecutor } from '../runtime/executor.ts';
+import { createServerFactory } from '../runtime/server.ts';
 import { createFetchHandler, type McpFetchHandler } from './fetch.ts';
 import { MemorySessionDirectory } from './sessions.ts';
 
@@ -245,5 +246,73 @@ describe('createFetchHandler with a session directory', () => {
     await handler.close();
     assert.equal(directory.size, 0);
     await client.close().catch(() => {});
+  });
+});
+
+describe('createFetchHandler per request', () => {
+  // Two handlers, one behaviour: the same hooks http.test.ts drives, minus the socket.
+  /** Connects a client sending `role` in `x-role`, straight to `handler`. */
+  async function connectAs(handler: McpFetchHandler, role: string): Promise<Client> {
+    const client = new Client({ name: 'fetch-role-test', version: '0.0.0' });
+    await client.connect(
+      new StreamableHTTPClientTransport(BASE, {
+        fetch: (url, init) => handler(new Request(url, init)),
+        requestInit: { headers: { 'x-role': role } },
+      }),
+    );
+    return client;
+  }
+
+  test('toolsFor lists each caller the tools chosen for it', async () => {
+    const handler = todoHandler({
+      contextFromRequest: (request) => ({ role: request.headers.get('x-role') }),
+      toolsFor: (_request, context) =>
+        (context as { role: string | null }).role === 'writer' ? undefined : { include: ['todos'] },
+    });
+    const reader = await connectAs(handler, 'reader');
+    const writer = await connectAs(handler, 'writer');
+    assert.deepEqual(
+      (await reader.listTools()).tools.map((t) => t.name),
+      ['todos'],
+    );
+    assert.equal((await writer.listTools()).tools.length, 4);
+    await reader.close();
+    await writer.close();
+    await handler.close();
+  });
+
+  test('serverFor answers with the server the host built', async () => {
+    const { schema } = makeTodoSchema();
+    const handler = createFetchHandler({
+      schema,
+      serverFor: () => createServerFactory({ schema, include: ['Query.todos'] })(),
+    });
+    const client = await connect(handler);
+    assert.deepEqual(
+      (await client.listTools()).tools.map((t) => t.name),
+      ['todos'],
+    );
+    await client.close();
+    await handler.close();
+  });
+
+  test('maxBodyBytes refuses a larger body with 413, and passes a smaller one on', async () => {
+    const handler = todoHandler({ maxBodyBytes: 1024 });
+    const big = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping', params: { pad: 'x'.repeat(2048) } });
+    const response = await handler(
+      new Request(BASE, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: big,
+      }),
+    );
+    assert.equal(response.status, 413);
+    assert.match(((await response.json()) as { error: { message: string } }).error.message, /exceeds 1024 bytes/);
+
+    const client = await connect(handler);
+    const result = (await client.callTool({ name: 'todos', arguments: {} })) as TextResult;
+    assert.equal(result.isError, false);
+    await client.close();
+    await handler.close();
   });
 });
