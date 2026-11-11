@@ -13,6 +13,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { makeTodoSchema, type TextResult } from '../core/fixtures.test.ts';
 import { createLocalExecutor } from '../runtime/executor.ts';
+import { createMcpServer, createServerFactory } from '../runtime/server.ts';
 import { createHttpHandler, type McpHttpHandler, type McpHttpRequest } from './http.ts';
 import { MemorySessionDirectory, type SessionDirectory } from './sessions.ts';
 
@@ -575,5 +576,199 @@ describe('createHttpHandler with a session directory', () => {
       assert.equal(directory.owner(sessionId), undefined);
       await client.close();
     });
+  });
+});
+
+/** A client that sends `role` in `x-role` on every request. */
+async function connectAs(url: URL, role: string): Promise<Client> {
+  const client = new Client({ name: 'role-test', version: '0.0.0' });
+  await client.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers: { 'x-role': role } } }));
+  return client;
+}
+
+describe('createHttpHandler with toolsFor', () => {
+  // The case two hosts wrote their own handler for: the tools offered depend on
+  // who is calling, and who is calling is only known from the request.
+  let hosted: { url: URL; close: () => void };
+  const resolved: unknown[] = [];
+  const seenByCalls: unknown[] = [];
+
+  before(async () => {
+    const { schema, root } = makeTodoSchema();
+    const localExecutor = createLocalExecutor(schema, { rootValue: root });
+    hosted = await host(
+      createHttpHandler({
+        schema,
+        executor: async (request) => {
+          seenByCalls.push(request.context);
+          return localExecutor(request);
+        },
+        contextFromRequest: (req) => {
+          const context = { role: req.headers['x-role'] };
+          // Only POSTs carry calls; the client's GET for a stream is answered 405 here.
+          if (req.method === 'POST') {
+            resolved.push(context);
+          }
+          return context;
+        },
+        toolsFor: (_req, context) =>
+          (context as { role?: string }).role === 'writer' ? undefined : { exclude: ['create_todo', 'set_completed'] },
+      }),
+    );
+  });
+
+  after(() => hosted.close());
+
+  test('each caller is listed the tools chosen for it, whoever asked first', async () => {
+    const reader = await connectAs(hosted.url, 'reader');
+    const writer = await connectAs(hosted.url, 'writer');
+    assert.deepEqual((await reader.listTools()).tools.map((t) => t.name).sort(), ['todo', 'todos']);
+    assert.deepEqual((await writer.listTools()).tools.map((t) => t.name).sort(), [
+      'create_todo',
+      'set_completed',
+      'todo',
+      'todos',
+    ]);
+    assert.deepEqual((await reader.listTools()).tools.map((t) => t.name).sort(), ['todo', 'todos']);
+    await reader.close();
+    await writer.close();
+  });
+
+  test('a tool left out for a caller is not there to call', async () => {
+    const reader = await connectAs(hosted.url, 'reader');
+    const result = (await reader.callTool({
+      name: 'create_todo',
+      arguments: { input: { description: 'x' } },
+    })) as TextResult;
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /not found/);
+    await reader.close();
+  });
+
+  test('the context is resolved once per request and is the one the call runs with', async () => {
+    const writer = await connectAs(hosted.url, 'writer');
+    resolved.length = 0;
+    seenByCalls.length = 0;
+    await writer.callTool({ name: 'todos', arguments: {} });
+    assert.equal(resolved.length, 1);
+    assert.deepEqual(seenByCalls, resolved);
+    assert.equal(seenByCalls[0], resolved[0]);
+    await writer.close();
+  });
+});
+
+describe('createHttpHandler with serverFor', () => {
+  // The other host: a server that differs per caller in more than its tools,
+  // here a prompt naming the caller, built by the host and plumbed by the handler.
+  let hosted: { url: URL; close: () => void };
+
+  before(async () => {
+    const { schema, root } = makeTodoSchema();
+    const makeServer = createServerFactory({ schema, executor: createLocalExecutor(schema, { rootValue: root }) });
+    hosted = await hostRaw(
+      createHttpHandler({
+        schema,
+        contextFromRequest: (req) => ({ role: req.headers['x-role'] }),
+        serverFor: (_req, context) => {
+          const { role } = context as { role: string };
+          const server = makeServer(() => context, role === 'writer' ? undefined : { include: ['todos'] });
+          server.registerPrompt('whoami', { description: 'Names the caller.' }, () => ({
+            messages: [{ role: 'user', content: { type: 'text', text: `You are ${role}.` } }],
+          }));
+          return server;
+        },
+        maxBodyBytes: 64 * 1024,
+      }),
+    );
+  });
+
+  after(() => hosted.close());
+
+  test('the host’s server answers, prompts and tools as it built them', async () => {
+    const reader = await connectAs(hosted.url, 'reader');
+    assert.deepEqual(
+      (await reader.listTools()).tools.map((t) => t.name),
+      ['todos'],
+    );
+    const { messages } = await reader.getPrompt({ name: 'whoami' });
+    assert.deepEqual(messages[0].content, { type: 'text', text: 'You are reader.' });
+    const result = (await reader.callTool({ name: 'todos', arguments: {} })) as TextResult;
+    assert.equal(result.isError, false);
+    await reader.close();
+  });
+
+  test('toolsFor and serverFor together are refused when the handler is made', () => {
+    const { schema } = makeTodoSchema();
+    assert.throws(
+      () => createHttpHandler({ schema, toolsFor: () => undefined, serverFor: () => createMcpServer({ schema }) }),
+      /toolsFor and serverFor cannot be combined/,
+    );
+  });
+});
+
+describe('createHttpHandler with maxBodyBytes', () => {
+  let hosted: { url: URL; close: () => void };
+
+  before(async () => {
+    const { schema, root } = makeTodoSchema();
+    hosted = await hostRaw(
+      createHttpHandler({ schema, executor: createLocalExecutor(schema, { rootValue: root }), maxBodyBytes: 1024 }),
+    );
+  });
+
+  after(() => hosted.close());
+
+  /** POSTs `body` as it is, with the headers a real client sends. */
+  function post(body: string, headers: Record<string, string> = {}): Promise<Response> {
+    return fetch(hosted.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers },
+      body,
+    });
+  }
+
+  test('a body under the cap is read and answered', async () => {
+    const client = await connect(hosted.url);
+    const result = (await client.callTool({ name: 'todos', arguments: {} })) as TextResult;
+    assert.equal(result.isError, false);
+    await client.close();
+  });
+
+  test('a body over the cap is refused with 413 and a JSON-RPC error', async () => {
+    const response = await post(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping', params: { pad: 'x'.repeat(2048) } }),
+    );
+    assert.equal(response.status, 413);
+    const body = (await response.json()) as { jsonrpc: string; id: null; error: { code: number; message: string } };
+    assert.equal(body.jsonrpc, '2.0');
+    assert.equal(body.id, null);
+    assert.match(body.error.message, /exceeds 1024 bytes/);
+  });
+
+  test('a body over the cap is refused without a Content-Length too', async () => {
+    const chunk = new TextEncoder().encode('x'.repeat(512));
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let index = 0; index < 4; index++) {
+          controller.enqueue(chunk);
+        }
+        controller.close();
+      },
+    });
+    // `duplex` is required by undici for a streamed body and missing from the DOM types.
+    const response = await fetch(hosted.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: stream,
+      duplex: 'half',
+    } as RequestInit);
+    assert.equal(response.status, 413);
+  });
+
+  test('a body that is not JSON is a 400 parse error', async () => {
+    const response = await post('{not json');
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as { error: { code: number } };
+    assert.equal(body.error.code, -32700);
   });
 });

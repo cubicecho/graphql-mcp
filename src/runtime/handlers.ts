@@ -3,8 +3,8 @@
  * Both wrappers delegate to the SDK's own handler and do nothing if it cannot be found, so a change in the SDK's
  * internals costs a slower listing and a worse error message, never a wrong answer.
  *
- * `tools/list` is rendered once per factory, because the SDK converts every Zod input schema to JSON Schema on each
- * request and stateless HTTP mints a fresh server per request. The arguments of `tools/call` are checked before the SDK
+ * `tools/list` is rendered once per factory and tool set, because the SDK converts every Zod input schema to JSON
+ * Schema on each request and stateless HTTP mints a fresh server per request. The arguments of `tools/call` are checked before the SDK
  * checks them, because the SDK reports a validation failure as bare text while every other outcome is the JSON envelope
  * that `result.ts` documents.
  */
@@ -22,51 +22,90 @@ const TOOLS_CALL = 'tools/call';
 type RawRequestHandler = (request: unknown, extra: unknown) => Promise<unknown>;
 
 /**
- * One factory's shared listing. `off` latches: once any server's tool set has
- * changed, servers can disagree about what they expose and no single listing is
- * right for all of them.
+ * One factory's rendered listings, one per set of tools a server offers, so servers that offer different tools are
+ * never handed each other's listing. The table is bounded and evicts the least recently used set, because a set is
+ * chosen per caller and the number of distinct ones is the host's, not this package's; an evicted set is rendered
+ * again. `off` latches: once any server's tool set has changed after it was minted, servers can disagree about what
+ * they expose and no rendered listing is right for any of them.
  */
-export interface ToolListingCache {
-  rendering?: Promise<unknown>;
-  off?: true;
+export class ToolListings {
+  /** Set once a server's tools change after registration; from then on every listing renders afresh. */
+  off = false;
+  readonly #max: number;
+  readonly #renderings = new Map<string, { rendering?: Promise<unknown> }>();
+
+  /**
+   * Creates an empty table.
+   *
+   * @param max - Tool sets to keep a rendering for at once.
+   */
+  constructor(max: number) {
+    this.#max = max;
+  }
+
+  /**
+   * The slot for one tool set, created when the set is new and moved to most recently used either way.
+   *
+   * @param names - The names of the tools a server registered, in registration order.
+   * @returns The slot whose `rendering` every server offering exactly these tools shares.
+   */
+  slot(names: ReadonlyArray<string>): { rendering?: Promise<unknown> } {
+    const key = JSON.stringify(names);
+    const slot = this.#renderings.get(key) ?? {};
+    this.#renderings.delete(key);
+    this.#renderings.set(key, slot);
+    if (this.#renderings.size > this.#max) {
+      const oldest = this.#renderings.keys().next().value;
+      if (oldest !== undefined) {
+        this.#renderings.delete(oldest);
+      }
+    }
+    return slot;
+  }
+
+  /** Stops sharing for good and drops every held rendering. */
+  retire(): void {
+    this.off = true;
+    this.#renderings.clear();
+  }
 }
 
 /**
- * Points `server`'s `tools/list` at `cache`, rendering it (via the SDK) on the
- * first request that needs it and reusing that answer everywhere after.
+ * Points `server`'s `tools/list` at the shared rendering for the tools it registered, rendering it (via the SDK) on
+ * the first request that needs it and reusing that answer everywhere after.
  *
- * Call it once, after every tool is registered. Any later change to the tool set
- * — a `registerTool` on the live server, or `enable`/`disable`/`update`/`remove`
- * on a registered one — retires the cache for good: each of those paths calls
- * `sendToolListChanged`, which is what this hooks.
+ * Call it once, after every tool is registered. Any later change to the tool set — a `registerTool` on the live
+ * server, or `enable`/`disable`/`update`/`remove` on a registered one — retires sharing for good: each of those paths
+ * calls `sendToolListChanged`, which is what this hooks.
  *
  * @param server - A freshly built server, all tools already registered.
- * @param cache - The cache shared by every server from the same factory.
+ * @param listings - The table shared by every server from the same factory.
+ * @param names - The names of the tools the server registered, which pick its slot in `listings`.
  */
-export function shareToolListing(server: McpServer, cache: ToolListingCache): void {
+export function shareToolListing(server: McpServer, listings: ToolListings, names: ReadonlyArray<string>): void {
   const handlers = requestHandlers(server);
   const render = handlers?.get(TOOLS_LIST);
   if (!handlers || !render) {
     return;
   }
+  const slot = listings.slot(names);
 
   handlers.set(TOOLS_LIST, (request, extra) => {
-    if (cache.off) {
+    if (listings.off) {
       return render(request, extra);
     }
     // Stored as the promise, not the value: two listings arriving together on a
     // cold cache should share one rendering rather than both paying for it.
-    cache.rendering ??= render(request, extra).catch((error: unknown) => {
-      cache.rendering = undefined;
+    slot.rendering ??= render(request, extra).catch((error: unknown) => {
+      slot.rendering = undefined;
       throw error;
     });
-    return cache.rendering;
+    return slot.rendering;
   });
 
   const notify = server.sendToolListChanged.bind(server);
   server.sendToolListChanged = () => {
-    cache.off = true;
-    cache.rendering = undefined;
+    listings.retire();
     notify();
   };
 }

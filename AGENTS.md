@@ -67,7 +67,7 @@ src/
   index.ts          — public API entry point; the only file that re-exports
   core/             — what every other folder shares and no one concept owns
     types.ts        — GraphqlExecutor / GraphqlRequest / GraphqlResult, the execution seam
-    defaults.ts     — every tunable default, in frozen groups (TOOL_, RESULT_, SEARCH_, REPLAY_, SESSION_DEFAULTS)
+    defaults.ts     — every tunable default, in frozen groups (TOOL_, LISTING_, RESULT_, SEARCH_, REPLAY_, SESSION_DEFAULTS)
     errors.ts       — packageError (the `graphql-mcp: ` prefix) and messageOf (a caught value's text)
     version.ts      — VERSION, read from package.json (the version servers advertise)
     zod-compat.ts   — zod v3/v4-tolerant type aliases (AnyZodType, ZodShape)
@@ -94,6 +94,8 @@ src/
   transport/        — serving a server over HTTP
     http.ts         — createHttpHandler for Node (IncomingMessage/ServerResponse)
     fetch.ts        — createFetchHandler for Request/Response runtimes
+    request-server.ts — the server a request is answered by (toolsFor / serverFor), shared by both handlers
+    body.ts         — the capped JSON body reader behind maxBodyBytes
     sessions.ts     — the bounded session table behind stateful HTTP (SessionStore), the
                       lifecycle both handlers drive it through (SessionHost), and
                       SessionDirectory, which reports session ownership across instances
@@ -442,20 +444,37 @@ No folder has an index file; a module imports the file it needs.
   all, and the price is state that has to be bounded — hence `SessionStore`'s
   idle timeout and LRU cap. It sweeps on lookup rather than on a timer, because
   a timer would need `unref`ing and would add a lifecycle callers must own.
-- **The tool listing is rendered once per factory (`handlers.ts`).** The SDK
+- **The tool listing is rendered once per factory and tool set (`handlers.ts`).** The SDK
   converts each tool's Zod schema to JSON Schema *inside* its `tools/list`
   handler, not at registration — so a stateless server repeats that conversion on
   every request, and it is the bulk of the request: on a 50-tool CRUD schema,
   20-29 ms per listing against 0.3 ms to mint the server. Its handler reads
-  neither the request nor `extra`, and every server a factory mints registers the
-  same tools, so `shareToolListing` renders the first one and reuses it (0.5-0.8
-  ms). It *wraps* the SDK's handler rather than reimplementing it, so the bytes
+  neither the request nor `extra`, and every server a factory mints with the same
+  selection registers the same tools, so `shareToolListing` renders the first one
+  and reuses it (0.5-0.8 ms). It *wraps* the SDK's handler rather than reimplementing it, so the bytes
   stay the SDK's; if the handler can't be found, nothing is cached and every
   listing renders as before. Any change to a tool set — `registerTool` on a live
   server, or `enable`/`disable`/`update`/`remove`, all of which call
   `sendToolListChanged` — retires the cache permanently, because from then on two
   servers can disagree about what they expose. `registerGeneratedTool` hoists its
   `z.object(shape).strict()` for the same reason (a `WeakMap` on the shape).
+- **A per-caller tool set is a selection on one factory, not a factory per caller**
+  (`toolsFor`, `ToolSelection`). Two hosts hand-rolled their HTTP handler for it:
+  one picked between two factories per caller, the other filtered `tools/list`
+  and `tools/call` on the *transport*, because the shared listing would
+  otherwise hand one caller's narrowed list to the next. The selection is by
+  final tool name, since field rules cannot reach operation, meta or custom
+  tools; a left-out tool is simply not registered, so the SDK's own "not found"
+  answers a call to it. `ToolListings` keys the rendering on the names actually
+  registered (two spellings of one set share it), bounded LRU because the number
+  of distinct sets is the host's; the `off` latch stays factory-wide. Choosing
+  needs the caller first, so with a hook `contextFromRequest` is resolved once
+  per request and reused for its calls; without one it stays lazy, as before.
+  `serverFor` is the escape hatch for a server that differs in more than tools
+  (per-caller prompts), and is refused beside `toolsFor`, which would have
+  nothing of ours to narrow. `maxBodyBytes` reads the body itself only when set,
+  with `destroyOnReturn: false` and `Connection: close` on the 413, because
+  destroying the request stream would take the socket the refusal goes out on.
 - **A session's stream is resumable, and the buffer is bounded** (`event-store.ts`).
   The SDK writes SSE event ids only when given an `eventStore`, so without one a
   dropped connection loses whatever was in flight — which is the work a stateful

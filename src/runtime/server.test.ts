@@ -1232,6 +1232,107 @@ describe('the tool listing is rendered once per factory', () => {
   });
 });
 
+describe('a factory narrows its tools per server', () => {
+  // The HTTP handlers' `toolsFor` mints every caller's server from one factory
+  // with a selection, so these hold the factory to what that relies on.
+  async function names(server: McpServer): Promise<string[]> {
+    const client = await connect(server);
+    const listed = (await client.listTools()).tools.map((tool) => tool.name).sort();
+    await client.close();
+    return listed;
+  }
+
+  test('include and exclude choose tools by their final name', async () => {
+    const { schema } = makeTodoSchema();
+    const factory = createServerFactory({ schema });
+    assert.deepEqual(await names(factory(undefined, { include: ['todo', 'todos', 'create_todo'] })), [
+      'create_todo',
+      'todo',
+      'todos',
+    ]);
+    assert.deepEqual(await names(factory(undefined, { exclude: new Set(['create_todo', 'set_completed']) })), [
+      'todo',
+      'todos',
+    ]);
+    assert.deepEqual(await names(factory(undefined, { include: ['todos', 'todo'], exclude: ['todo'] })), ['todos']);
+  });
+
+  test('an empty include offers no tools at all', async () => {
+    const { schema } = makeTodoSchema();
+    const client = await connect(createServerFactory({ schema })(undefined, { include: [] }));
+    // The SDK declares the tools capability on the first registered tool, so a server with none says it has none.
+    assert.equal(client.getServerCapabilities()?.tools, undefined);
+    await client.close();
+  });
+
+  test('a selection reaches custom, meta and operation tools, which field rules cannot', async () => {
+    const { schema } = makeTodoSchema();
+    const factory = createServerFactory({
+      schema,
+      metaTools: { tools: ['search'] },
+      operations: [TODO_OPERATIONS, TODO_FRAGMENTS],
+      tools: [{ name: 'ping', description: 'Answers pong.', handler: () => ({ content: [] }) }],
+    });
+    const left = ['ping', 'graphql_search', 'list_todos'];
+    const every = await names(factory());
+    assert.deepEqual(
+      left.filter((name) => every.includes(name)),
+      left,
+    );
+    assert.deepEqual(
+      await names(factory(undefined, { exclude: left })),
+      every.filter((name) => left.includes(name) === false),
+    );
+  });
+
+  test('a call to a tool left out is answered as one to a tool that does not exist', async () => {
+    const { schema, root } = makeTodoSchema();
+    const factory = createServerFactory({ schema, executor: createLocalExecutor(schema, { rootValue: root }) });
+    const client = await connect(factory(undefined, { exclude: ['todos'] }));
+    const result = (await client.callTool({ name: 'todos', arguments: {} })) as TextResult;
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /not found/);
+    await client.close();
+  });
+
+  test('servers offering different tools are never handed each other’s listing', async () => {
+    const { schema } = makeTodoSchema();
+    const factory = createServerFactory({ schema });
+    // Narrowed first, so a listing shared across the factory would leak it into the full one.
+    assert.deepEqual(await names(factory(undefined, { include: ['todos'] })), ['todos']);
+    assert.deepEqual(await names(factory()), ['create_todo', 'set_completed', 'todo', 'todos']);
+    assert.deepEqual(await names(factory(undefined, { include: ['todos'] })), ['todos']);
+  });
+
+  test('servers offering the same tools share one rendering, however the selection was spelled', async () => {
+    const { schema } = makeTodoSchema();
+    const factory = createServerFactory({ schema });
+    const rendered = await rawToolsList(factory(undefined, { include: ['todos'] }));
+    assert.equal(await rawToolsList(factory(undefined, { include: ['todos'] })), rendered);
+    assert.equal(
+      await rawToolsList(factory(undefined, { exclude: ['todo', 'create_todo', 'set_completed'] })),
+      rendered,
+    );
+  });
+});
+
+/**
+ * One `tools/list` answer straight from the server's handler table, so two answers can be compared by identity.
+ *
+ * @param server - The server whose listing is wanted.
+ * @returns The handler's answer, as the SDK would send it.
+ */
+function rawToolsList(server: McpServer): Promise<unknown> {
+  const handlers = (
+    server.server as unknown as {
+      _requestHandlers: Map<string, (request: unknown, extra: unknown) => Promise<unknown>>;
+    }
+  )._requestHandlers;
+  const list = handlers.get('tools/list');
+  assert.ok(list, 'the SDK registered no tools/list handler');
+  return list({ method: 'tools/list', params: {} }, {});
+}
+
 describe('a rejected argument reads like every other failure', () => {
   // The SDK validates `arguments` before the handler runs and reports a failure
   // as bare text, which is the one tool body that would not parse. See
